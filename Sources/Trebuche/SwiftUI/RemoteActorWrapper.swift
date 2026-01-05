@@ -157,6 +157,10 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
     @MainActor
     public var state: RemoteActorState<Act> {
         let effectiveConnection = resolveConnection()
+        let currentConnectionState = effectiveConnection?.state
+
+        // Handle connection state transitions
+        handleConnectionStateChange(from: lastConnectionState, to: currentConnectionState)
 
         guard let conn = effectiveConnection else {
             return .disconnected
@@ -178,6 +182,8 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
             return .resolved(actor)
         }
 
+        // Connected but not resolved yet - trigger auto-resolution
+        triggerAutoResolution()
         return .loading
     }
 
@@ -185,6 +191,42 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
 
     nonisolated public mutating func update() {
         // DynamicProperty update is called by SwiftUI on the main thread
+        // State observation happens through the `state` computed property
+    }
+
+    // MARK: - Auto-Resolution
+
+    @SwiftUI.State private var resolutionTask: Task<Void, Never>?
+
+    @MainActor
+    private func handleConnectionStateChange(from oldState: ConnectionState?, to newState: ConnectionState?) {
+        guard oldState != newState else { return }
+
+        // Update tracked state (using a task to avoid mutating during view update)
+        Task { @MainActor in
+            lastConnectionState = newState
+        }
+
+        // If we just disconnected, clear the resolved actor
+        if oldState?.isConnected == true && newState?.isConnected != true {
+            Task { @MainActor in
+                resolvedActor = nil
+                resolutionError = nil
+                resolutionTask?.cancel()
+                resolutionTask = nil
+            }
+        }
+    }
+
+    @MainActor
+    private func triggerAutoResolution() {
+        // Don't start if already resolving or have a pending task
+        guard !isResolving, resolutionTask == nil else { return }
+
+        resolutionTask = Task { @MainActor in
+            await resolveActor()
+            resolutionTask = nil
+        }
     }
 
     // MARK: - Private

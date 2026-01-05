@@ -214,6 +214,11 @@ public struct TrebuchetEnvironment<Content: View>: View {
             let mgr = TrebuchetConnectionManager()
             manager = mgr
 
+            // Apply the user-specified default connection name
+            if let defaultConnectionName {
+                mgr.defaultConnectionName = defaultConnectionName
+            }
+
             if autoConnect {
                 for (name, transport) in multiTransports.sorted(by: { $0.key < $1.key }) {
                     try? await mgr.addConnection(
