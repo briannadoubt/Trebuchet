@@ -23,7 +23,8 @@ jobs:
       - name: Build Documentation
         run: |
           swift package resolve
-          swift package generate-documentation \
+          swift package --allow-writing-to-directory ./docs \
+            generate-documentation \
             --target Trebuche \
             --disable-indexing \
             --transform-for-static-hosting \
