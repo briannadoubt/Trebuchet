@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import SwiftUI
 
@@ -286,3 +287,4 @@ public final class TrebuchetConnection {
 // MARK: - Sendable Conformance
 
 extension TrebuchetConnection: @unchecked Sendable {}
+#endif

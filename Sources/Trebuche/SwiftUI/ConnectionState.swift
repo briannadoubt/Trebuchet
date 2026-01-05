@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 
 /// Represents the current state of a Trebuchet connection.
@@ -251,3 +252,4 @@ public enum ConnectionEvent: Sendable {
     /// - Parameter afterAttempts: How many attempts were needed.
     case didReconnect(afterAttempts: Int)
 }
+#endif

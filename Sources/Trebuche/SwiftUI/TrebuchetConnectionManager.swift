@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import SwiftUI
 
@@ -235,3 +236,4 @@ public final class TrebuchetConnectionManager {
 // MARK: - Sendable Conformance
 
 extension TrebuchetConnectionManager: @unchecked Sendable {}
+#endif

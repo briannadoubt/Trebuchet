@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - View Extension
@@ -232,3 +233,4 @@ private struct TrebuchetStateMatchModifier<Placeholder: View>: ViewModifier {
         }
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 // MARK: - Environment Keys
@@ -234,3 +235,4 @@ public struct TrebuchetEnvironment<Content: View>: View {
         }
     }
 }
+#endif

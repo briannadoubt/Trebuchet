@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Distributed
 import SwiftUI
 
@@ -355,3 +356,4 @@ extension RemoteActorView where Loading == ProgressView<EmptyView, EmptyView>,
         self.failed = { error in Text(verbatim: "Error: \(error)") }
     }
 }
+#endif
