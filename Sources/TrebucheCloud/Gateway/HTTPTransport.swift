@@ -154,14 +154,15 @@ private actor ConnectionManager {
         to endpoint: Endpoint,
         eventLoopGroup: EventLoopGroup
     ) async throws -> Channel {
-        let key = "\(endpoint.host):\(endpoint.port)"
+        // Determine if TLS should be used
+        let useTLS = defaultTLSEnabled ?? (endpoint.port == 443)
+
+        // Include TLS state in the cache key to avoid mixing TLS and non-TLS connections
+        let key = "\(endpoint.host):\(endpoint.port):\(useTLS ? "tls" : "plain")"
 
         if let existing = connections[key], existing.isActive {
             return existing
         }
-
-        // Determine if TLS should be used
-        let useTLS = defaultTLSEnabled ?? (endpoint.port == 443)
 
         let channel: Channel
         if useTLS {
@@ -194,22 +195,28 @@ private actor ConnectionManager {
         to endpoint: Endpoint,
         eventLoopGroup: EventLoopGroup
     ) async throws -> Channel {
-        // Create TLS configuration for client
-        var tlsConfig = TLSConfiguration.makeClientConfiguration()
+        // Create TLS configuration for client connections
+        var tlsConfig = NIOSSL.TLSConfiguration.makeClientConfiguration()
         tlsConfig.certificateVerification = .fullVerification
 
         let sslContext = try NIOSSLContext(configuration: tlsConfig)
+        let hostname = endpoint.host
 
         let bootstrap = ClientBootstrap(group: eventLoopGroup)
             .channelOption(.socketOption(.so_reuseaddr), value: 1)
             .channelInitializer { channel in
-                // Add TLS handler first, then HTTP handlers
-                let sslHandler = try! NIOSSLClientHandler(
-                    context: sslContext,
-                    serverHostname: endpoint.host
-                )
-                return channel.pipeline.addHandler(sslHandler).flatMap {
-                    channel.pipeline.addHTTPClientHandlers()
+                do {
+                    // Create the TLS handler with SNI (Server Name Indication)
+                    let sslHandler = try NIOSSLClientHandler(
+                        context: sslContext,
+                        serverHostname: hostname
+                    )
+                    // Add TLS handler first, then HTTP handlers on top
+                    return channel.pipeline.addHandler(sslHandler).flatMap {
+                        channel.pipeline.addHTTPClientHandlers()
+                    }
+                } catch {
+                    return channel.eventLoop.makeFailedFuture(error)
                 }
             }
 
@@ -229,7 +236,7 @@ private actor ConnectionManager {
 
 // MARK: - HTTP Server Handler
 
-private final class HTTPServerHandler: ChannelInboundHandler, RemovableChannelHandler {
+private final class HTTPServerHandler: ChannelInboundHandler, RemovableChannelHandler, @unchecked Sendable {
     typealias InboundIn = HTTPServerRequestPart
     typealias OutboundOut = HTTPServerResponsePart
 
@@ -259,14 +266,28 @@ private final class HTTPServerHandler: ChannelInboundHandler, RemovableChannelHa
 
             // Only handle POST /invoke
             if request.method == .POST && request.uri.hasPrefix("/invoke") {
-                let capturedContext = context
+                let channel = context.channel
                 let body = requestBody
 
                 let message = TransportMessage(
                     data: body,
                     source: nil,
-                    respond: { [weak self] responseData in
-                        self?.sendResponse(context: capturedContext, data: responseData, status: .ok)
+                    respond: { responseData in
+                        // Execute response on the channel's event loop
+                        channel.eventLoop.execute {
+                            var headers = HTTPHeaders()
+                            headers.add(name: "Content-Type", value: "application/json")
+                            headers.add(name: "Content-Length", value: "\(responseData.count)")
+
+                            let responseHead = HTTPResponseHead(version: .http1_1, status: .ok, headers: headers)
+                            channel.write(HTTPServerResponsePart.head(responseHead), promise: nil)
+
+                            var buffer = channel.allocator.buffer(capacity: responseData.count)
+                            buffer.writeBytes(responseData)
+                            channel.write(HTTPServerResponsePart.body(.byteBuffer(buffer)), promise: nil)
+
+                            channel.writeAndFlush(HTTPServerResponsePart.end(nil), promise: nil)
+                        }
                     }
                 )
 
@@ -310,7 +331,7 @@ private final class HTTPServerHandler: ChannelInboundHandler, RemovableChannelHa
 
 // MARK: - HTTP Client Response Handler
 
-private final class HTTPClientResponseHandler: ChannelInboundHandler, RemovableChannelHandler {
+private final class HTTPClientResponseHandler: ChannelInboundHandler, RemovableChannelHandler, @unchecked Sendable {
     typealias InboundIn = HTTPClientResponsePart
 
     private let promise: EventLoopPromise<Data>

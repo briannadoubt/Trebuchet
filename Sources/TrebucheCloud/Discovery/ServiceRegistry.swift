@@ -351,13 +351,13 @@ public actor InMemoryRegistry: ServiceRegistry {
         registrations[actorID]?.endpoints ?? []
     }
 
-    public func watch(actorID: String) -> AsyncStream<RegistryEvent> {
+    public nonisolated func watch(actorID: String) -> AsyncStream<RegistryEvent> {
         AsyncStream { continuation in
-            Task {
-                await addWatcher(actorID: actorID, continuation: continuation)
+            Task { [self] in
+                await self.addWatcher(actorID: actorID, continuation: continuation)
 
                 // Send current state
-                if let entry = await registrations[actorID] {
+                if let entry = await self.registrations[actorID] {
                     if entry.endpoints.count == 1, let endpoint = entry.endpoints.first {
                         continuation.yield(.updated(actorID: actorID, endpoint: endpoint))
                     } else if entry.endpoints.count > 1 {

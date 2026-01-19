@@ -181,7 +181,7 @@ public actor CloudGateway {
         on actor: any DistributedActor
     ) async throws -> ResponseEnvelope {
         // Create decoder and result handler
-        let decoder = TrebuchetDecoder(envelope: envelope)
+        var decoder = TrebuchetDecoder(envelope: envelope)
         let handler = TrebuchetResultHandler()
 
         do {
@@ -189,7 +189,7 @@ public actor CloudGateway {
             try await actorSystem.executeDistributedTarget(
                 on: actor,
                 target: RemoteCallTarget(envelope.targetIdentifier),
-                invocationDecoder: decoder,
+                invocationDecoder: &decoder,
                 handler: handler
             )
 

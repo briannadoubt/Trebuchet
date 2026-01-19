@@ -23,11 +23,13 @@ public protocol CloudProvider: Sendable {
     ///   - actorType: The distributed actor type to deploy
     ///   - actorID: The logical ID for this actor instance
     ///   - config: Provider-specific configuration
+    ///   - factory: A closure that creates the actor given an actor system
     /// - Returns: Deployment result containing function identifier
     func deploy<A: DistributedActor>(
         _ actorType: A.Type,
         as actorID: String,
-        config: FunctionConfig
+        config: FunctionConfig,
+        factory: @Sendable (TrebuchetActorSystem) -> A
     ) async throws -> DeploymentResult where A.ActorSystem == TrebuchetActorSystem
 
     /// Create a transport for invoking deployed actors

@@ -33,7 +33,8 @@ public actor LocalProvider: CloudProvider {
     public func deploy<A: DistributedActor>(
         _ actorType: A.Type,
         as actorID: String,
-        config: LocalFunctionConfig
+        config: LocalFunctionConfig,
+        factory: @Sendable (TrebuchetActorSystem) -> A
     ) async throws -> LocalDeployment where A.ActorSystem == TrebuchetActorSystem {
         let port = nextPort
         nextPort += 1
@@ -46,8 +47,8 @@ public actor LocalProvider: CloudProvider {
             registry: config.registry
         ))
 
-        // Create the actor instance
-        let actor = A(actorSystem: gateway.system)
+        // Create the actor instance using the factory
+        let actor = factory(gateway.system)
 
         // Expose the actor
         try await gateway.expose(actor, as: actorID)
@@ -177,13 +178,20 @@ public struct LocalDeployment: CloudDeployment {
 
 extension LocalProvider {
     /// Quick setup for development with a single actor
+    /// - Parameters:
+    ///   - actorType: The distributed actor type to deploy
+    ///   - actorID: The logical ID for this actor instance
+    ///   - port: The port to use (default: 8080)
+    ///   - factory: A closure that creates the actor given an actor system
+    /// - Returns: A tuple containing the provider, deployment, and actor system
     public static func quickStart<A: DistributedActor>(
         _ actorType: A.Type,
         as actorID: String,
-        port: UInt16 = 8080
+        port: UInt16 = 8080,
+        factory: @Sendable @escaping (TrebuchetActorSystem) -> A
     ) async throws -> (provider: LocalProvider, deployment: LocalDeployment, system: TrebuchetActorSystem) where A.ActorSystem == TrebuchetActorSystem {
         let provider = LocalProvider(basePort: port)
-        let deployment = try await provider.deploy(actorType, as: actorID, config: .default)
+        let deployment = try await provider.deploy(actorType, as: actorID, config: .default, factory: factory)
 
         // Get the gateway's actor system for creating actors
         let gateway = await provider.gateway(for: actorID)

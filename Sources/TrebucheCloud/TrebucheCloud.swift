@@ -242,10 +242,10 @@ public actor LocalDevelopmentRegistry: ServiceRegistry {
         return [defaultEndpoint]
     }
 
-    public func watch(actorID: String) -> AsyncStream<RegistryEvent> {
+    public nonisolated func watch(actorID: String) -> AsyncStream<RegistryEvent> {
         AsyncStream { continuation in
-            Task {
-                let endpoint = await registrations[actorID] ?? defaultEndpoint
+            Task { [self] in
+                let endpoint = await self.registrations[actorID] ?? self.defaultEndpoint
                 continuation.yield(.updated(actorID: actorID, endpoint: endpoint))
             }
         }
