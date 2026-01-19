@@ -2,6 +2,7 @@ import Foundation
 import NIO
 import NIOHTTP1
 import NIOFoundationCompat
+import NIOSSL
 import Trebuche
 
 // MARK: - HTTP Transport
@@ -11,6 +12,9 @@ import Trebuche
 /// This transport uses HTTP POST requests to invoke distributed actors,
 /// making it compatible with API Gateway, Cloud Functions, and other
 /// HTTP-based serverless triggers.
+///
+/// TLS is automatically negotiated for connections to port 443 or when
+/// explicitly enabled.
 public final class HTTPTransport: TrebuchetTransport, @unchecked Sendable {
     private let eventLoopGroup: EventLoopGroup
     private let ownsEventLoopGroup: Bool
@@ -18,11 +22,14 @@ public final class HTTPTransport: TrebuchetTransport, @unchecked Sendable {
     private let incomingContinuation: AsyncStream<TransportMessage>.Continuation
     public let incoming: AsyncStream<TransportMessage>
 
-    private let connectionManager = ConnectionManager()
+    private let connectionManager: ConnectionManager
+    private let tlsEnabled: Bool?  // nil = auto-detect based on port
 
     /// Create an HTTP transport
-    /// - Parameter eventLoopGroup: Optional event loop group (creates one if not provided)
-    public init(eventLoopGroup: EventLoopGroup? = nil) {
+    /// - Parameters:
+    ///   - eventLoopGroup: Optional event loop group (creates one if not provided)
+    ///   - tlsEnabled: Whether to use TLS. If nil, auto-detects based on port (443 = TLS)
+    public init(eventLoopGroup: EventLoopGroup? = nil, tlsEnabled: Bool? = nil) {
         if let group = eventLoopGroup {
             self.eventLoopGroup = group
             self.ownsEventLoopGroup = false
@@ -31,9 +38,17 @@ public final class HTTPTransport: TrebuchetTransport, @unchecked Sendable {
             self.ownsEventLoopGroup = true
         }
 
+        self.tlsEnabled = tlsEnabled
+        self.connectionManager = ConnectionManager(defaultTLSEnabled: tlsEnabled)
+
         var continuation: AsyncStream<TransportMessage>.Continuation!
         self.incoming = AsyncStream { continuation = $0 }
         self.incomingContinuation = continuation
+    }
+
+    /// Create an HTTPS transport (TLS always enabled)
+    public static func https(eventLoopGroup: EventLoopGroup? = nil) -> HTTPTransport {
+        HTTPTransport(eventLoopGroup: eventLoopGroup, tlsEnabled: true)
     }
 
     // MARK: - Client Operations
@@ -129,6 +144,11 @@ public final class HTTPTransport: TrebuchetTransport, @unchecked Sendable {
 
 private actor ConnectionManager {
     private var connections: [String: Channel] = [:]
+    private let defaultTLSEnabled: Bool?
+
+    init(defaultTLSEnabled: Bool? = nil) {
+        self.defaultTLSEnabled = defaultTLSEnabled
+    }
 
     func getOrCreateConnection(
         to endpoint: Endpoint,
@@ -140,19 +160,63 @@ private actor ConnectionManager {
             return existing
         }
 
+        // Determine if TLS should be used
+        let useTLS = defaultTLSEnabled ?? (endpoint.port == 443)
+
+        let channel: Channel
+        if useTLS {
+            channel = try await createTLSConnection(to: endpoint, eventLoopGroup: eventLoopGroup)
+        } else {
+            channel = try await createPlainConnection(to: endpoint, eventLoopGroup: eventLoopGroup)
+        }
+
+        connections[key] = channel
+        return channel
+    }
+
+    private func createPlainConnection(
+        to endpoint: Endpoint,
+        eventLoopGroup: EventLoopGroup
+    ) async throws -> Channel {
         let bootstrap = ClientBootstrap(group: eventLoopGroup)
             .channelOption(.socketOption(.so_reuseaddr), value: 1)
             .channelInitializer { channel in
                 channel.pipeline.addHTTPClientHandlers()
             }
 
-        let channel = try await bootstrap.connect(
+        return try await bootstrap.connect(
             host: endpoint.host,
             port: Int(endpoint.port)
         ).get()
+    }
 
-        connections[key] = channel
-        return channel
+    private func createTLSConnection(
+        to endpoint: Endpoint,
+        eventLoopGroup: EventLoopGroup
+    ) async throws -> Channel {
+        // Create TLS configuration for client
+        var tlsConfig = TLSConfiguration.makeClientConfiguration()
+        tlsConfig.certificateVerification = .fullVerification
+
+        let sslContext = try NIOSSLContext(configuration: tlsConfig)
+
+        let bootstrap = ClientBootstrap(group: eventLoopGroup)
+            .channelOption(.socketOption(.so_reuseaddr), value: 1)
+            .channelInitializer { channel in
+                // Add TLS handler first, then HTTP handlers
+                let sslHandler = try! NIOSSLClientHandler(
+                    context: sslContext,
+                    serverHostname: endpoint.host
+                )
+                return channel.pipeline.addHandler(sslHandler).flatMap {
+                    channel.pipeline.addHTTPClientHandlers()
+                }
+            }
+
+        return try await bootstrap.connect(
+            host: endpoint.host,
+            port: Int(endpoint.port)
+        ).get()
     }
 
     func closeAll() async {

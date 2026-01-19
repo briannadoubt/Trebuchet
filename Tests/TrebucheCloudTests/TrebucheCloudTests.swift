@@ -59,6 +59,60 @@ struct CloudEndpointTests {
 
         #expect(endpoint.toEndpoint() == nil)
     }
+
+    @Test("GCP Cloud Function endpoint uses proper URL format")
+    func gcpCloudFunctionEndpoint() {
+        let endpoint = CloudEndpoint.gcpCloudFunction(
+            name: "my-function",
+            project: "my-project",
+            region: "us-central1"
+        )
+
+        #expect(endpoint.provider == .gcp)
+        #expect(endpoint.region == "us-central1")
+        #expect(endpoint.scheme == .https)
+        // Should be a proper URL, not a resource path
+        #expect(endpoint.identifier == "https://us-central1-my-project.cloudfunctions.net/my-function")
+        #expect(endpoint.metadata["generation"] == "1")
+
+        // Should convert to a valid Trebuche Endpoint
+        let trebucheEndpoint = endpoint.toEndpoint()
+        #expect(trebucheEndpoint != nil)
+        #expect(trebucheEndpoint?.host == "us-central1-my-project.cloudfunctions.net")
+        #expect(trebucheEndpoint?.port == 443)
+
+        // Should have the correct path
+        #expect(endpoint.path == "/my-function")
+    }
+
+    @Test("GCP Cloud Function direct endpoint uses resource path")
+    func gcpCloudFunctionDirectEndpoint() {
+        let endpoint = CloudEndpoint.gcpCloudFunctionDirect(
+            name: "my-function",
+            project: "my-project",
+            region: "us-central1"
+        )
+
+        #expect(endpoint.scheme == .cloudFunction)
+        #expect(endpoint.identifier.contains("projects/my-project"))
+        // Direct invocation doesn't convert to HTTP endpoint
+        #expect(endpoint.toEndpoint() == nil)
+    }
+
+    @Test("HTTPS URL with path parses correctly")
+    func httpsUrlWithPath() {
+        let endpoint = CloudEndpoint(
+            provider: .gcp,
+            region: "us-central1",
+            identifier: "https://example.cloudfunctions.net/myfunction",
+            scheme: .https
+        )
+
+        let trebucheEndpoint = endpoint.toEndpoint()
+        #expect(trebucheEndpoint?.host == "example.cloudfunctions.net")
+        #expect(trebucheEndpoint?.port == 443)
+        #expect(endpoint.path == "/myfunction")
+    }
 }
 
 // MARK: - Service Registry Tests
@@ -152,6 +206,87 @@ struct InMemoryRegistryTests {
         let endpoints = try await registry.resolveAll(actorID: "replicated-actor")
 
         #expect(endpoints.count == 2)
+    }
+}
+
+// MARK: - Local Development Registry Tests
+
+@Suite("LocalDevelopmentRegistry Tests")
+struct LocalDevelopmentRegistryTests {
+    @Test("Returns default endpoint for any actor ID")
+    func defaultEndpointForAnyActor() async throws {
+        let defaultEndpoint = CloudEndpoint(
+            provider: .local,
+            region: "local",
+            identifier: "localhost:8080",
+            scheme: .http
+        )
+        let registry = LocalDevelopmentRegistry(defaultEndpoint: defaultEndpoint)
+
+        // Should return default for any actor ID, even unregistered ones
+        let endpoint1 = try await registry.resolve(actorID: "actor-1")
+        let endpoint2 = try await registry.resolve(actorID: "actor-2")
+        let endpoint3 = try await registry.resolve(actorID: "completely-random-name")
+
+        #expect(endpoint1?.identifier == "localhost:8080")
+        #expect(endpoint2?.identifier == "localhost:8080")
+        #expect(endpoint3?.identifier == "localhost:8080")
+    }
+
+    @Test("Specific registration overrides default")
+    func specificRegistrationOverridesDefault() async throws {
+        let defaultEndpoint = CloudEndpoint(
+            provider: .local,
+            region: "local",
+            identifier: "localhost:8080",
+            scheme: .http
+        )
+        let specificEndpoint = CloudEndpoint(
+            provider: .local,
+            region: "local",
+            identifier: "localhost:9000",
+            scheme: .http
+        )
+        let registry = LocalDevelopmentRegistry(defaultEndpoint: defaultEndpoint)
+
+        try await registry.register(
+            actorID: "special-actor",
+            endpoint: specificEndpoint,
+            metadata: [:],
+            ttl: nil
+        )
+
+        // Specific actor gets specific endpoint
+        let special = try await registry.resolve(actorID: "special-actor")
+        #expect(special?.identifier == "localhost:9000")
+
+        // Other actors still get default
+        let other = try await registry.resolve(actorID: "other-actor")
+        #expect(other?.identifier == "localhost:8080")
+    }
+
+    @Test("Deregister falls back to default")
+    func deregisterFallsBackToDefault() async throws {
+        let defaultEndpoint = CloudEndpoint(
+            provider: .local,
+            region: "local",
+            identifier: "localhost:8080",
+            scheme: .http
+        )
+        let specificEndpoint = CloudEndpoint(
+            provider: .local,
+            region: "local",
+            identifier: "localhost:9000",
+            scheme: .http
+        )
+        let registry = LocalDevelopmentRegistry(defaultEndpoint: defaultEndpoint)
+
+        try await registry.register(actorID: "actor", endpoint: specificEndpoint, metadata: [:], ttl: nil)
+        try await registry.deregister(actorID: "actor")
+
+        // After deregister, should fall back to default (not nil)
+        let resolved = try await registry.resolve(actorID: "actor")
+        #expect(resolved?.identifier == "localhost:8080")
     }
 }
 

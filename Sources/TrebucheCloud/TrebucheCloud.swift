@@ -155,12 +155,15 @@ public actor TrebucheCloudClient {
         // Create appropriate transport based on endpoint scheme
         let transport: any TrebuchetTransport
         switch endpoint.scheme {
-        case .http, .https:
-            transport = HTTPTransport()
+        case .http:
+            transport = HTTPTransport(tlsEnabled: false)
+        case .https:
+            transport = HTTPTransport.https()
         case .lambda, .cloudFunction, .azureFunction:
-            // For now, fall back to HTTP transport
-            // Full implementation would use provider-specific SDK
-            transport = HTTPTransport()
+            // For now, fall back to HTTPS transport since cloud function
+            // endpoints typically use HTTPS. Full implementation would
+            // use provider-specific SDKs (AWS SDK, GCP SDK, etc.)
+            transport = HTTPTransport.https()
         }
 
         transports[key] = transport
@@ -188,26 +191,80 @@ public enum ActorAvailability: Sendable {
 
 extension TrebucheCloudClient {
     /// Create a client for local development
-    public static func local(port: UInt16 = 8080) async -> TrebucheCloudClient {
-        let registry = InMemoryRegistry()
-        await registerLocalEndpoint(registry: registry, port: port)
-        return TrebucheCloudClient(registry: registry, provider: .local)
-    }
-
-    private static func registerLocalEndpoint(registry: InMemoryRegistry, port: UInt16) async {
-        // Pre-register a local endpoint for development
+    /// - Parameters:
+    ///   - host: The host to connect to (default: localhost)
+    ///   - port: The port to connect to (default: 8080)
+    /// - Returns: A cloud client configured for local development
+    public static func local(host: String = "localhost", port: UInt16 = 8080) async -> TrebucheCloudClient {
         let endpoint = CloudEndpoint(
             provider: .local,
             region: "local",
-            identifier: "localhost:\(port)",
+            identifier: "\(host):\(port)",
             scheme: .http
         )
-        try? await registry.register(
-            actorID: "*",
-            endpoint: endpoint,
-            metadata: [:],
-            ttl: nil
-        )
+        let registry = LocalDevelopmentRegistry(defaultEndpoint: endpoint)
+        return TrebucheCloudClient(registry: registry, provider: .local)
+    }
+}
+
+// MARK: - Local Development Registry
+
+/// A registry that returns a default endpoint for any actor ID.
+/// Used for local development where all actors are hosted on the same gateway.
+public actor LocalDevelopmentRegistry: ServiceRegistry {
+    private let defaultEndpoint: CloudEndpoint
+    private var registrations: [String: CloudEndpoint] = [:]
+
+    /// Create a local development registry
+    /// - Parameter defaultEndpoint: The default endpoint for unregistered actors
+    public init(defaultEndpoint: CloudEndpoint) {
+        self.defaultEndpoint = defaultEndpoint
+    }
+
+    public func register(
+        actorID: String,
+        endpoint: CloudEndpoint,
+        metadata: [String: String],
+        ttl: Duration?
+    ) async throws {
+        registrations[actorID] = endpoint
+    }
+
+    public func resolve(actorID: String) async throws -> CloudEndpoint? {
+        // Return specific registration if exists, otherwise return default
+        registrations[actorID] ?? defaultEndpoint
+    }
+
+    public func resolveAll(actorID: String) async throws -> [CloudEndpoint] {
+        if let specific = registrations[actorID] {
+            return [specific]
+        }
+        return [defaultEndpoint]
+    }
+
+    public func watch(actorID: String) -> AsyncStream<RegistryEvent> {
+        AsyncStream { continuation in
+            Task {
+                let endpoint = await registrations[actorID] ?? defaultEndpoint
+                continuation.yield(.updated(actorID: actorID, endpoint: endpoint))
+            }
+        }
+    }
+
+    public func deregister(actorID: String) async throws {
+        registrations.removeValue(forKey: actorID)
+    }
+
+    public func heartbeat(actorID: String) async throws {
+        // No-op for local development
+    }
+
+    public func list(prefix: String?) async throws -> [String] {
+        let keys = Array(registrations.keys)
+        if let prefix {
+            return keys.filter { $0.hasPrefix(prefix) }
+        }
+        return keys
     }
 }
 

@@ -129,8 +129,71 @@ public struct CloudEndpoint: Sendable, Codable, Hashable {
         )
     }
 
-    /// Create a GCP Cloud Function endpoint
+    /// Create a GCP Cloud Function endpoint (Gen 1)
+    ///
+    /// For Cloud Functions Gen 1, the URL format is:
+    /// `https://{region}-{project}.cloudfunctions.net/{name}`
+    ///
+    /// - Parameters:
+    ///   - name: The function name
+    ///   - project: The GCP project ID
+    ///   - region: The GCP region (e.g., "us-central1")
+    /// - Returns: A cloud endpoint for the function
     public static func gcpCloudFunction(
+        name: String,
+        project: String,
+        region: String
+    ) -> CloudEndpoint {
+        // Gen 1 Cloud Functions URL format
+        let url = "https://\(region)-\(project).cloudfunctions.net/\(name)"
+        return CloudEndpoint(
+            provider: .gcp,
+            region: region,
+            identifier: url,
+            scheme: .https,
+            metadata: [
+                "functionName": name,
+                "project": project,
+                "generation": "1"
+            ]
+        )
+    }
+
+    /// Create a GCP Cloud Function endpoint (Gen 2 / Cloud Run)
+    ///
+    /// For Cloud Functions Gen 2, functions run on Cloud Run with URLs like:
+    /// `https://{name}-{hash}-{region}.a.run.app`
+    ///
+    /// Since the hash is auto-generated, you must provide the full URL.
+    ///
+    /// - Parameters:
+    ///   - url: The full Cloud Run URL for the function
+    ///   - region: The GCP region
+    /// - Returns: A cloud endpoint for the function
+    public static func gcpCloudFunctionGen2(
+        url: String,
+        region: String
+    ) -> CloudEndpoint {
+        CloudEndpoint(
+            provider: .gcp,
+            region: region,
+            identifier: url,
+            scheme: .https,
+            metadata: ["generation": "2"]
+        )
+    }
+
+    /// Create a GCP Cloud Function endpoint using direct invocation
+    ///
+    /// Uses the Cloud Functions API for direct invocation (requires auth).
+    /// The identifier is the resource path for API calls.
+    ///
+    /// - Parameters:
+    ///   - name: The function name
+    ///   - project: The GCP project ID
+    ///   - region: The GCP region
+    /// - Returns: A cloud endpoint for direct API invocation
+    public static func gcpCloudFunctionDirect(
         name: String,
         project: String,
         region: String
@@ -139,7 +202,12 @@ public struct CloudEndpoint: Sendable, Codable, Hashable {
             provider: .gcp,
             region: region,
             identifier: "projects/\(project)/locations/\(region)/functions/\(name)",
-            scheme: .https
+            scheme: .cloudFunction,
+            metadata: [
+                "functionName": name,
+                "project": project,
+                "invocationType": "direct"
+            ]
         )
     }
 
@@ -159,21 +227,58 @@ public struct CloudEndpoint: Sendable, Codable, Hashable {
 
     /// Convert to a traditional Trebuche Endpoint if possible
     public func toEndpoint() -> Endpoint? {
-        // Parse host:port from identifier for HTTP-based endpoints
+        // Only HTTP-based schemes can be converted
         switch scheme {
         case .http, .https:
-            let parts = identifier.replacingOccurrences(of: "https://", with: "")
-                .replacingOccurrences(of: "http://", with: "")
-                .split(separator: ":")
-            if parts.count == 2, let port = UInt16(parts[1].split(separator: "/").first ?? "") {
-                return Endpoint(host: String(parts[0]), port: port)
-            } else if parts.count == 1 {
-                return Endpoint(host: String(parts[0]), port: scheme == .https ? 443 : 80)
-            }
+            return parseHTTPEndpoint()
         case .lambda, .cloudFunction, .azureFunction:
-            // These don't map to traditional endpoints
+            // These don't map to traditional endpoints - they require
+            // provider-specific SDKs for invocation
             return nil
         }
+    }
+
+    private func parseHTTPEndpoint() -> Endpoint? {
+        // Remove scheme prefix if present
+        var hostPart = identifier
+        if hostPart.hasPrefix("https://") {
+            hostPart = String(hostPart.dropFirst(8))
+        } else if hostPart.hasPrefix("http://") {
+            hostPart = String(hostPart.dropFirst(7))
+        }
+
+        // Remove path component (everything after first /)
+        if let slashIndex = hostPart.firstIndex(of: "/") {
+            hostPart = String(hostPart[..<slashIndex])
+        }
+
+        // Parse host:port
+        let components = hostPart.split(separator: ":")
+        if components.count == 2, let port = UInt16(components[1]) {
+            return Endpoint(host: String(components[0]), port: port)
+        } else if components.count == 1 {
+            // No port specified, use default based on scheme
+            return Endpoint(host: String(components[0]), port: scheme == .https ? 443 : 80)
+        }
+
+        return nil
+    }
+
+    /// The path component of the identifier URL, if any
+    public var path: String? {
+        guard scheme.isHTTPBased else { return nil }
+
+        var pathPart = identifier
+        if pathPart.hasPrefix("https://") {
+            pathPart = String(pathPart.dropFirst(8))
+        } else if pathPart.hasPrefix("http://") {
+            pathPart = String(pathPart.dropFirst(7))
+        }
+
+        if let slashIndex = pathPart.firstIndex(of: "/") {
+            return String(pathPart[slashIndex...])
+        }
+
         return nil
     }
 }
