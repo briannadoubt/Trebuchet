@@ -11,6 +11,10 @@ let package = Package(
             name: "Trebuche",
             targets: ["Trebuche"]
         ),
+        .library(
+            name: "TrebucheCloud",
+            targets: ["TrebucheCloud"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
@@ -41,9 +45,23 @@ let package = Package(
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
             ]
         ),
+        .target(
+            name: "TrebucheCloud",
+            dependencies: [
+                "Trebuche",
+                .product(name: "NIO", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "NIOFoundationCompat", package: "swift-nio"),
+                .product(name: "NIOSSL", package: "swift-nio-ssl"),
+            ]
+        ),
         .testTarget(
             name: "TrebucheTests",
             dependencies: ["Trebuche"]
+        ),
+        .testTarget(
+            name: "TrebucheCloudTests",
+            dependencies: ["TrebucheCloud"]
         ),
     ]
 )
