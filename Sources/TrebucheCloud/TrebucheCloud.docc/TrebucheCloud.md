@@ -17,6 +17,11 @@ The module defines three key protocols:
 
 - <doc:CloudDeploymentOverview>
 
+### Deployment Guides
+
+- <doc:DeployingToGCP>
+- <doc:DeployingToAzure>
+
 ### Gateway
 
 - ``CloudGateway``
