@@ -1,176 +1,103 @@
 # Getting Started with Trebuche
 
-Learn how to build distributed applications with location-transparent actors.
+Learn how to create distributed actors that communicate across network boundaries.
 
 ## Overview
 
-Trebuche makes it easy to build networked Swift applications using distributed actors. Your actors work the same whether they're running locally or on a remote server.
+Trebuche is a distributed actor framework that enables location-transparent RPC for Swift. Your actors work the same whether they're local or remote – Trebuche handles the networking transparently.
 
-## Adding Trebuche to Your Project
+## Creating Your First Distributed Actor
 
-Add Trebuche as a dependency in your `Package.swift`:
-
-```swift
-dependencies: [
-    .package(url: "https://github.com/briannadoubt/Trebuche.git", from: "1.0.0")
-]
-```
-
-Then add it to your target:
-
-```swift
-.target(
-    name: "MyApp",
-    dependencies: ["Trebuche"]
-)
-```
-
-## Defining a Distributed Actor
-
-Use the ``Trebuchet()`` macro to mark your distributed actors:
+Use the `@Trebuchet` macro to mark an actor for distributed communication:
 
 ```swift
 import Trebuche
 
 @Trebuchet
 distributed actor Counter {
-    private var value = 0
+    private var count = 0
 
     distributed func increment() -> Int {
-        value += 1
-        return value
+        count += 1
+        return count
     }
 
-    distributed func getValue() -> Int {
-        value
-    }
-}
-```
-
-The macro automatically adds the required `ActorSystem` typealias, so you don't need any boilerplate.
-
-### Serialization Requirements
-
-All parameters and return types of `distributed` methods must conform to `Codable`. This ensures they can be serialized for network transport.
-
-```swift
-struct Player: Codable, Sendable {
-    let id: String
-    let name: String
-}
-
-@Trebuchet
-distributed actor GameRoom {
-    private var players: [Player] = []
-
-    distributed func join(player: Player) -> [Player] {
-        players.append(player)
-        return players
+    distributed func get() -> Int {
+        return count
     }
 }
 ```
 
-## Creating a Server
+The `@Trebuchet` macro automatically adds `typealias ActorSystem = TrebuchetActorSystem` to your actor.
 
-Use ``TrebuchetServer`` to host your actors:
+## Running a Server
+
+Expose your actors on a server:
 
 ```swift
+import Trebuche
+
+let server = TrebuchetServer(transport: .webSocket(port: 8080))
+let counter = Counter(actorSystem: server.actorSystem)
+await server.expose(counter, as: "counter")
+
+print("Server running on port 8080")
+try await server.run()
+```
+
+## Connecting as a Client
+
+Resolve and call remote actors:
+
+```swift
+import Trebuche
+
+let client = TrebuchetClient(transport: .webSocket(host: "localhost", port: 8080))
+try await client.connect()
+
+let counter = try client.resolve(Counter.self, id: "counter")
+let newValue = try await counter.increment()
+print("Counter is now: \(newValue)")
+```
+
+## Using with SwiftUI
+
+Trebuche provides SwiftUI integration for reactive actor connections:
+
+```swift
+import SwiftUI
 import Trebuche
 
 @main
-struct GameServer {
-    static func main() async throws {
-        // Create a server on port 8080
-        let server = TrebuchetServer(
-            transport: .webSocket(port: 8080)
-        )
-
-        // Create and expose an actor
-        let room = GameRoom(actorSystem: server.actorSystem)
-        await server.expose(room, as: "lobby")
-
-        print("Server running on port 8080")
-        try await server.run()
+struct MyApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .trebuche(transport: .webSocket(host: "api.example.com", port: 8080))
+        }
     }
 }
-```
 
-### Exposing Multiple Actors
+struct CounterView: View {
+    @RemoteActor(id: "counter") var counter: Counter?
 
-You can expose as many actors as you need:
-
-```swift
-let lobby = GameRoom(actorSystem: server.actorSystem)
-let ranked = GameRoom(actorSystem: server.actorSystem)
-let counter = Counter(actorSystem: server.actorSystem)
-
-await server.expose(lobby, as: "lobby")
-await server.expose(ranked, as: "ranked")
-await server.expose(counter, as: "global-counter")
-```
-
-## Creating a Client
-
-Use ``TrebuchetClient`` to connect and resolve remote actors:
-
-```swift
-import Trebuche
-
-let client = TrebuchetClient(
-    transport: .webSocket(host: "localhost", port: 8080)
-)
-
-try await client.connect()
-
-// Resolve a remote actor
-let lobby = try client.resolve(GameRoom.self, id: "lobby")
-
-// Call methods as if it were local!
-let players = try await lobby.join(player: Player(id: "1", name: "Alice"))
-print("Players in lobby: \(players)")
-```
-
-## Using TLS for Secure Connections
-
-For production deployments, enable TLS:
-
-```swift
-// Server with TLS
-let tls = try TLSConfiguration(
-    certificatePath: "/path/to/cert.pem",
-    privateKeyPath: "/path/to/key.pem"
-)
-
-let server = TrebuchetServer(
-    transport: .webSocket(port: 8443, tls: tls)
-)
-```
-
-## Error Handling
-
-Trebuche throws ``TrebuchetError`` for various failure conditions:
-
-```swift
-do {
-    let room = try client.resolve(GameRoom.self, id: "unknown")
-    try await room.join(player: me)
-} catch let error as TrebuchetError {
-    switch error {
-    case .actorNotFound(let id):
-        print("Actor not found: \(id)")
-    case .connectionFailed(let reason):
-        print("Connection failed: \(reason)")
-    case .remoteInvocationFailed(let message):
-        print("Remote call failed: \(message)")
-    default:
-        print("Error: \(error)")
+    var body: some View {
+        switch $counter.state {
+        case .loading:
+            ProgressView()
+        case .resolved(let counter):
+            CounterContent(counter: counter)
+        case .failed(let error):
+            Text("Error: \(error.localizedDescription)")
+        case .disconnected:
+            Text("Disconnected")
+        }
     }
 }
 ```
 
 ## Next Steps
 
-- See <doc:SwiftUIIntegration> for building SwiftUI apps with observable connections
-- Explore ``TrebuchetServer`` for advanced server configuration
-- Learn about ``TrebuchetTransport`` for custom transport implementations
-- Check out ``TrebuchetActorID`` to understand actor identification
+- Learn about <doc:DefiningActors> for best practices
+- Explore cloud deployment with ``TrebucheCloud`` and ``TrebucheAWS``
+- Use the `trebuche` CLI for serverless deployment
