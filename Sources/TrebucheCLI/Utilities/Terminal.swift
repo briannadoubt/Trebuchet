@@ -61,6 +61,17 @@ public struct Terminal {
     }
 }
 
+/// Flush stdout in a concurrency-safe way
+@inline(__always)
+nonisolated private func flushStdout() {
+    #if canImport(Darwin)
+    fflush(stdout)
+    #else
+    // On Linux, stdout is not concurrency-safe, use FileHandle instead
+    FileHandle.standardOutput.synchronizeFile()
+    #endif
+}
+
 /// Progress reporter for long-running operations
 public actor ProgressReporter {
     private let terminal: Terminal
@@ -77,11 +88,11 @@ public actor ProgressReporter {
 
         Task {
             var frame = 0
-            while await self.isRunning {
+            while self.isRunning {
                 let spinner = terminal.spinner(frame: frame)
-                let task = await self.currentTask
+                let task = self.currentTask
                 print("\r\(spinner) \(task)...", terminator: "")
-                fflush(stdout)
+                flushStdout()
                 frame += 1
                 try? await Task.sleep(for: .milliseconds(100))
             }
