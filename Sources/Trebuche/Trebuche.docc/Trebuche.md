@@ -72,3 +72,8 @@ try await room.join(player: me)
 - <doc:AWSConfiguration>
 - <doc:DeployingToGCP>
 - <doc:DeployingToAzure>
+
+### Module Reference
+
+- <doc:TrebucheCloud>
+- <doc:TrebucheAWS>
