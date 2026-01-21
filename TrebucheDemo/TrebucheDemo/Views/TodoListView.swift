@@ -57,7 +57,7 @@ struct TodoListView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .disabled($todoList.state != .resolved(todoList!))
+                    .disabled(todoList == nil)
                 }
 
                 ToolbarItem(placement: .secondaryAction) {
@@ -98,7 +98,9 @@ struct TodoListView: View {
                     )
                 }
             }
+            #if !os(macOS)
             .listStyle(.insetGrouped)
+            #endif
         }
     }
 

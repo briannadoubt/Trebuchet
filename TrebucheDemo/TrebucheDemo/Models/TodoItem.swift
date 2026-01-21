@@ -8,7 +8,7 @@
 import Foundation
 
 /// A single todo item
-public struct TodoItem: Identifiable, Codable, Sendable, Hashable {
+public nonisolated struct TodoItem: Identifiable, Codable, Sendable, Hashable {
     public let id: UUID
     public var title: String
     public var isCompleted: Bool

@@ -10,7 +10,7 @@ import Trebuche
 
 /// A distributed actor that manages a list of todos
 @Trebuchet
-nonisolated distributed actor TodoList {
+distributed actor TodoList {
 
     /// The current list of todos
     private var todos: [TodoItem] = []

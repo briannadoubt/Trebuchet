@@ -26,7 +26,9 @@ struct AddTodoView: View {
                 }
             }
             .navigationTitle("New Todo")
+            #if !os(macOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
