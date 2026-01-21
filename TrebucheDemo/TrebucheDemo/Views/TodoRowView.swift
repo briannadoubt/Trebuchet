@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import TrebucheDemoShared
 
 struct TodoRowView: View {
     let todo: TodoItem
