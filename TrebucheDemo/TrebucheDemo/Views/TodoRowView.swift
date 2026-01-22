@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import TrebucheDemoShared
+import Shared
 
 struct TodoRowView: View {
     let todo: TodoItem

@@ -7,7 +7,7 @@
 
 import SwiftUI
 import Trebuche
-import TrebucheDemoShared
+import Shared
 
 struct TodoListView: View {
     /// The remote TodoList actor - automatically resolved via Trebuche

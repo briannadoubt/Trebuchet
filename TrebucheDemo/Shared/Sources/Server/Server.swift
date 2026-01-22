@@ -1,14 +1,14 @@
 //
-//  main.swift
+//  Server.swift
 //  TrebucheDemoServer
 //
 
 import Foundation
 import Trebuche
-import TrebucheDemoShared
+import Shared
 
 @main
-struct TrebucheDemoServer {
+struct Server {
     static func main() async throws {
         let port: UInt16 = 8080
 
