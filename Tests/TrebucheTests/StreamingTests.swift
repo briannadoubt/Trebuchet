@@ -380,4 +380,216 @@ struct StreamingTests {
 
         continuation.finish()
     }
+
+    @Test("StreamFilter matches all data when type is .all")
+    func testFilterAll() async throws {
+        let filter = StreamFilter.all
+        let testData = "test".data(using: .utf8)!
+
+        #expect(filter.matches(testData) == true)
+        #expect(filter.type == .all)
+    }
+
+    @Test("StreamFilter predefined type stores name and parameters")
+    func testFilterPredefined() async throws {
+        let filter = StreamFilter.predefined("changed", parameters: ["threshold": "10"])
+
+        #expect(filter.type == .predefined)
+        #expect(filter.name == "changed")
+        #expect(filter.parameters?["threshold"] == "10")
+    }
+
+    @Test("StreamFilter encodes and decodes correctly")
+    func testFilterSerialization() async throws {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        let filter = StreamFilter.predefined("nonEmpty", parameters: ["min": "1"])
+        let data = try encoder.encode(filter)
+        let decoded = try decoder.decode(StreamFilter.self, from: data)
+
+        #expect(decoded.type == filter.type)
+        #expect(decoded.name == filter.name)
+        #expect(decoded.parameters?["min"] == "1")
+    }
+
+    @Test("InvocationEnvelope carries optional streamFilter")
+    func testInvocationEnvelopeWithFilter() async throws {
+        let filter = StreamFilter.predefined("changed")
+        let envelope = InvocationEnvelope(
+            callID: UUID(),
+            actorID: TrebuchetActorID(id: "test"),
+            targetIdentifier: "observeState",
+            genericSubstitutions: [],
+            arguments: [],
+            streamFilter: filter
+        )
+
+        #expect(envelope.streamFilter != nil)
+        #expect(envelope.streamFilter?.type == .predefined)
+        #expect(envelope.streamFilter?.name == "changed")
+
+        // Verify serialization
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        let data = try encoder.encode(envelope)
+        let decoded = try decoder.decode(InvocationEnvelope.self, from: data)
+
+        #expect(decoded.streamFilter?.name == "changed")
+    }
+
+    @Test("StreamStartEnvelope carries optional filter from invocation")
+    func testStreamStartEnvelopeWithFilter() async throws {
+        let filter = StreamFilter.predefined("threshold", parameters: ["value": "100"])
+        let envelope = StreamStartEnvelope(
+            streamID: UUID(),
+            callID: UUID(),
+            actorID: TrebuchetActorID(id: "test"),
+            targetIdentifier: "observeState",
+            filter: filter
+        )
+
+        #expect(envelope.filter != nil)
+        #expect(envelope.filter?.name == "threshold")
+        #expect(envelope.filter?.parameters?["value"] == "100")
+
+        // Verify serialization
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        let envelopeWrapper = TrebuchetEnvelope.streamStart(envelope)
+        let data = try encoder.encode(envelopeWrapper)
+        let decoded = try decoder.decode(TrebuchetEnvelope.self, from: data)
+
+        if case .streamStart(let start) = decoded {
+            #expect(start.filter?.name == "threshold")
+        } else {
+            Issue.record("Expected streamStart envelope")
+        }
+    }
+
+    @Test("StreamResumeEnvelope encodes resume request")
+    func testStreamResumeEnvelope() async throws {
+        let streamID = UUID()
+        let actorID = TrebuchetActorID(id: "test-actor")
+        let envelope = StreamResumeEnvelope(
+            streamID: streamID,
+            lastSequence: 42,
+            actorID: actorID,
+            targetIdentifier: "observeState"
+        )
+
+        #expect(envelope.streamID == streamID)
+        #expect(envelope.lastSequence == 42)
+        #expect(envelope.actorID.id == "test-actor")
+        #expect(envelope.targetIdentifier == "observeState")
+
+        // Verify serialization
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        let wrapper = TrebuchetEnvelope.streamResume(envelope)
+        let data = try encoder.encode(wrapper)
+        let decoded = try decoder.decode(TrebuchetEnvelope.self, from: data)
+
+        if case .streamResume(let resume) = decoded {
+            #expect(resume.streamID == streamID)
+            #expect(resume.lastSequence == 42)
+        } else {
+            Issue.record("Expected streamResume envelope")
+        }
+    }
+
+    @Test("ServerStreamBuffer buffers and retrieves data")
+    func testServerStreamBuffer() async throws {
+        // This tests the server-side buffering for stream resumption
+        // The ServerStreamBuffer is private, but we can test the concept
+
+        struct TestBuffer {
+            private var buffers: [UUID: [(sequence: UInt64, data: Data)]] = [:]
+            private let maxSize: Int
+
+            init(maxSize: Int = 100) {
+                self.maxSize = maxSize
+            }
+
+            mutating func buffer(streamID: UUID, sequence: UInt64, data: Data) {
+                var buffer = buffers[streamID] ?? []
+                buffer.append((sequence, data))
+                if buffer.count > maxSize {
+                    buffer.removeFirst()
+                }
+                buffers[streamID] = buffer
+            }
+
+            func getBuffered(streamID: UUID, afterSequence: UInt64) -> [(sequence: UInt64, data: Data)]? {
+                guard let buffer = buffers[streamID] else { return nil }
+                return buffer.filter { $0.sequence > afterSequence }
+            }
+        }
+
+        var buffer = TestBuffer(maxSize: 5)
+        let streamID = UUID()
+        let testData = "test".data(using: .utf8)!
+
+        // Buffer some data
+        for i in 1...10 {
+            buffer.buffer(streamID: streamID, sequence: UInt64(i), data: testData)
+        }
+
+        // Should only keep last 5 due to maxSize
+        let all = buffer.getBuffered(streamID: streamID, afterSequence: 0)
+        #expect(all?.count == 5)
+        #expect(all?.first?.sequence == 6)  // First 5 dropped
+        #expect(all?.last?.sequence == 10)
+
+        // Get data after sequence 7
+        let recent = buffer.getBuffered(streamID: streamID, afterSequence: 7)
+        #expect(recent?.count == 3)
+        #expect(recent?.first?.sequence == 8)
+        #expect(recent?.last?.sequence == 10)
+    }
+
+    @Test("Checkpoint tracking concept for stream resumption")
+    func testCheckpointTracking() async throws {
+        // Test the checkpoint concept that ObservedActor uses
+        struct StreamCheckpoint: Sendable {
+            let streamID: UUID
+            let actorID: String
+            let methodName: String
+            var lastSequence: UInt64
+        }
+
+        // Create initial checkpoint
+        var checkpoint = StreamCheckpoint(
+            streamID: UUID(),
+            actorID: "test-actor",
+            methodName: "observeState",
+            lastSequence: 0
+        )
+
+        #expect(checkpoint.lastSequence == 0)
+
+        // Simulate receiving data and updating checkpoint
+        for i in 1...5 {
+            checkpoint = StreamCheckpoint(
+                streamID: checkpoint.streamID,
+                actorID: checkpoint.actorID,
+                methodName: checkpoint.methodName,
+                lastSequence: checkpoint.lastSequence + 1
+            )
+            #expect(checkpoint.lastSequence == UInt64(i))
+        }
+
+        // Final checkpoint should track we received 5 items
+        #expect(checkpoint.lastSequence == 5)
+
+        // This checkpoint could be used to resume from sequence 5
+        let resumeEnvelope = StreamResumeEnvelope(
+            streamID: checkpoint.streamID,
+            lastSequence: checkpoint.lastSequence,
+            actorID: TrebuchetActorID(id: checkpoint.actorID),
+            targetIdentifier: checkpoint.methodName
+        )
+
+        #expect(resumeEnvelope.lastSequence == 5)
+    }
 }
