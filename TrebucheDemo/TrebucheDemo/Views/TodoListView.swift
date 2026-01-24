@@ -10,44 +10,34 @@ import Trebuche
 import Shared
 
 struct TodoListView: View {
-    /// The remote TodoList actor - automatically resolved via Trebuche
-    @RemoteActor(id: "todos") var todoList: TodoList?
-
-    /// Local state for the list of todos
-    @State private var todos: [TodoItem] = []
+    /// The remote TodoList actor with streaming state - automatically updates in realtime
+    @ObservedActor<TodoList, TodoList.State>(
+        id: "todos",
+        property: "state"
+    ) var state
 
     /// State for showing the add todo sheet
     @State private var showingAddTodo = false
 
-    /// Loading state
-    @State private var isLoading = true
-
-    /// Error message
-    @State private var errorMessage: String?
-
     var body: some View {
         NavigationStack {
             Group {
-                switch $todoList.state {
-                case .loading:
+                if $state.isConnecting {
                     ProgressView("Connecting...")
-
-                case .disconnected:
-                    ContentUnavailableView(
-                        "Disconnected",
-                        systemImage: "wifi.slash",
-                        description: Text("Unable to connect to the server")
-                    )
-
-                case .failed(let error):
+                } else if let error = $state.error {
                     ContentUnavailableView(
                         "Error",
                         systemImage: "exclamationmark.triangle",
                         description: Text(error.localizedDescription)
                     )
-
-                case .resolved:
-                    todoListContent
+                } else if let currentState = state {
+                    todoListContent(state: currentState)
+                } else {
+                    ContentUnavailableView(
+                        "Disconnected",
+                        systemImage: "wifi.slash",
+                        description: Text("Unable to connect to the server")
+                    )
                 }
             }
             .navigationTitle("Todos")
@@ -58,14 +48,14 @@ struct TodoListView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .disabled(todoList == nil)
+                    .disabled($state.actor == nil)
                 }
 
                 ToolbarItem(placement: .secondaryAction) {
                     Button("Clear Completed") {
                         Task { await clearCompleted() }
                     }
-                    .disabled(todos.filter(\.isCompleted).isEmpty)
+                    .disabled(state?.todos.filter(\.isCompleted).isEmpty ?? true)
                 }
             }
             .sheet(isPresented: $showingAddTodo) {
@@ -73,23 +63,12 @@ struct TodoListView: View {
                     Task { await addTodo(title: title) }
                 }
             }
-            .refreshable {
-                await loadTodos()
-            }
-            .task(id: todoList?.id) {
-                // Load todos when actor becomes available
-                if todoList != nil {
-                    await loadTodos()
-                }
-            }
         }
     }
 
     @ViewBuilder
-    private var todoListContent: some View {
-        if isLoading {
-            ProgressView("Loading todos...")
-        } else if todos.isEmpty {
+    private func todoListContent(state: TodoList.State) -> some View {
+        if state.todos.isEmpty {
             ContentUnavailableView(
                 "No Todos",
                 systemImage: "checklist",
@@ -97,12 +76,18 @@ struct TodoListView: View {
             )
         } else {
             List {
-                ForEach(todos) { todo in
+                ForEach(state.todos) { todo in
                     TodoRowView(
                         todo: todo,
                         onToggle: { Task { await toggleTodo(id: todo.id) } },
                         onDelete: { Task { await deleteTodo(id: todo.id) } }
                     )
+                }
+
+                Section {
+                    Text("\(state.pendingCount) remaining")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             #if !os(macOS)
@@ -112,64 +97,57 @@ struct TodoListView: View {
     }
 
     // MARK: - Actions
-
-    private func loadTodos() async {
-        guard let todoList else { return }
-
-        isLoading = true
-        defer { isLoading = false }
-
-        do {
-            todos = try await todoList.getTodos()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
+    // Note: State updates happen automatically via streaming - no manual state management needed!
 
     private func addTodo(title: String) async {
-        guard let todoList else { return }
+        print("[TodoListView] addTodo called with title: '\(title)'")
+        print("[TodoListView] $state.actor = \($state.actor != nil ? "resolved" : "nil")")
+
+        guard let todoList = $state.actor else {
+            print("[TodoListView] Guard failed: actor is nil")
+            return
+        }
 
         do {
-            let newTodo = try await todoList.addTodo(title: title)
-            todos.append(newTodo)
+            print("[TodoListView] Calling todoList.addTodo...")
+            let result = try await todoList.addTodo(title: title)
+            print("[TodoListView] addTodo returned: \(result)")
+            // State automatically updates via stream - no manual todos.append needed!
         } catch {
-            errorMessage = error.localizedDescription
+            print("[TodoListView] Error adding todo: \(error)")
         }
     }
 
     private func toggleTodo(id: UUID) async {
-        guard let todoList else { return }
+        guard let todoList = $state.actor else { return }
 
         do {
-            if let updated = try await todoList.toggleTodo(id: id),
-               let index = todos.firstIndex(where: { $0.id == id }) {
-                todos[index] = updated
-            }
+            _ = try await todoList.toggleTodo(id: id)
+            // State automatically updates via stream - no manual todos update needed!
         } catch {
-            errorMessage = error.localizedDescription
+            print("Error toggling todo: \(error)")
         }
     }
 
     private func deleteTodo(id: UUID) async {
-        guard let todoList else { return }
+        guard let todoList = $state.actor else { return }
 
         do {
-            if try await todoList.deleteTodo(id: id) {
-                todos.removeAll { $0.id == id }
-            }
+            _ = try await todoList.deleteTodo(id: id)
+            // State automatically updates via stream - no manual todos.removeAll needed!
         } catch {
-            errorMessage = error.localizedDescription
+            print("Error deleting todo: \(error)")
         }
     }
 
     private func clearCompleted() async {
-        guard let todoList else { return }
+        guard let todoList = $state.actor else { return }
 
         do {
             _ = try await todoList.clearCompleted()
-            todos.removeAll { $0.isCompleted }
+            // State automatically updates via stream - no manual todos.removeAll needed!
         } catch {
-            errorMessage = error.localizedDescription
+            print("Error clearing completed: \(error)")
         }
     }
 }

@@ -18,6 +18,13 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
     /// Pending remote calls waiting for responses
     private let pendingCalls = PendingCallsRegistry()
 
+    /// Active streams waiting for data
+    public let streamRegistry = StreamRegistry()
+
+    /// Optional streaming handler - set by TrebuchetServer to handle streaming invocations
+    /// This allows the server to use concrete actor types for streaming
+    public var streamingHandler: (@Sendable (InvocationEnvelope, any DistributedActor) async throws -> AsyncStream<Data>)?
+
     /// The transport layer for network communication
     private var transport: (any TrebuchetTransport)?
 
@@ -187,6 +194,101 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
         Task { await pendingCalls.complete(response) }
     }
 
+    // MARK: - Stream Support
+
+    /// Make a remote call that returns a stream
+    func remoteCallStream<Act, Res>(
+        on actor: Act,
+        target: RemoteCallTarget,
+        invocation: inout InvocationEncoder,
+        returning: Res.Type
+    ) async throws -> AsyncStream<Res>
+    where Act: DistributedActor,
+          Act.ID == TrebuchetActorID,
+          Res: Codable & Sendable {
+        let callID = UUID()
+        let envelope = try invocation.build(
+            callID: callID,
+            actorID: actor.id,
+            targetIdentifier: target.identifier
+        )
+
+        guard let transport else {
+            throw TrebuchetError.systemNotRunning
+        }
+
+        guard let host = envelope.actorID.host,
+              let port = envelope.actorID.port else {
+            throw TrebuchetError.actorNotFound(envelope.actorID)
+        }
+
+        // Create a stream for receiving data
+        let (_, dataStream) = await streamRegistry.createRemoteStream(callID: callID)
+
+        // Send the invocation
+        let invocationEnvelope = TrebuchetEnvelope.invocation(envelope)
+        let data = try encoder.encode(invocationEnvelope)
+        try await transport.send(data, to: .init(host: host, port: port))
+
+        let decoder = self.decoder
+        // Transform the data stream into a typed stream
+        return AsyncStream<Res> { continuation in
+            Task {
+                print("[ActorSystem] Starting to iterate dataStream...")
+                for await dataItem in dataStream {
+                    print("[ActorSystem] Received dataItem (\(dataItem.count) bytes)")
+                    do {
+                        let value = try decoder.decode(Res.self, from: dataItem)
+                        print("[ActorSystem] Decoded value successfully, yielding to continuation")
+                        continuation.yield(value)
+                    } catch {
+                        print("[ActorSystem] Decode error: \(error)")
+                        continuation.finish()
+                        return
+                    }
+                }
+                print("[ActorSystem] dataStream iteration completed, finishing outer stream")
+                continuation.finish()
+            }
+        }
+    }
+
+    /// Handle incoming stream start envelope
+    func handleStreamStart(_ envelope: StreamStartEnvelope) async {
+        await streamRegistry.handleStreamStart(envelope)
+    }
+
+    /// Handle incoming stream data envelope
+    func handleStreamData(_ envelope: StreamDataEnvelope) async {
+        await streamRegistry.handleStreamData(envelope)
+    }
+
+    /// Handle incoming stream end envelope
+    func handleStreamEnd(_ envelope: StreamEndEnvelope) async {
+        await streamRegistry.handleStreamEnd(envelope)
+    }
+
+    /// Handle incoming stream error envelope
+    func handleStreamError(_ envelope: StreamErrorEnvelope) async {
+        await streamRegistry.handleStreamError(envelope)
+    }
+
+    /// Execute a streaming target and return a stream of encoded data
+    func executeStreamingTarget(_ envelope: InvocationEnvelope) async throws -> AsyncStream<Data> {
+        // Find the local actor
+        guard let actor = await localActors.getAny(id: envelope.actorID) else {
+            throw TrebuchetError.actorNotFound(envelope.actorID)
+        }
+
+        // Use the streaming handler if set
+        if let handler = streamingHandler {
+            return try await handler(envelope, actor)
+        }
+
+        // No streaming handler configured
+        throw TrebuchetError.remoteInvocationFailed("No streaming handler configured for actor")
+    }
+
     // MARK: - Private Methods
 
     private func executeLocalCall<Act, Res>(
@@ -248,21 +350,31 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
         envelope: InvocationEnvelope,
         returning: Res.Type
     ) async throws -> Res {
+        print("[ActorSystem] executeRemoteCall for method '\(envelope.targetIdentifier)'")
+
         guard let transport else {
+            print("[ActorSystem] ERROR: No transport configured")
             throw TrebuchetError.systemNotRunning
         }
 
         guard let host = envelope.actorID.host,
               let port = envelope.actorID.port else {
+            print("[ActorSystem] ERROR: Actor has no host/port: \(envelope.actorID)")
             throw TrebuchetError.actorNotFound(envelope.actorID)
         }
 
         // Send the invocation
-        let data = try encoder.encode(envelope)
+        print("[ActorSystem] Wrapping in TrebuchetEnvelope...")
+        let trebuchetEnvelope = TrebuchetEnvelope.invocation(envelope)
+        print("[ActorSystem] Encoding invocation envelope...")
+        let data = try encoder.encode(trebuchetEnvelope)
+        print("[ActorSystem] Sending \(data.count) bytes to \(host):\(port)...")
         try await transport.send(data, to: .init(host: host, port: port))
+        print("[ActorSystem] Message sent, waiting for response...")
 
         // Wait for response
         let response = try await registerPendingCall(id: envelope.callID)
+        print("[ActorSystem] Received response for callID \(envelope.callID)")
 
         if let errorMessage = response.errorMessage {
             throw TrebuchetError.remoteInvocationFailed(errorMessage)
@@ -283,21 +395,31 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
     }
 
     private func executeRemoteCallVoid(envelope: InvocationEnvelope) async throws {
+        print("[ActorSystem] executeRemoteCallVoid for method '\(envelope.targetIdentifier)'")
+
         guard let transport else {
+            print("[ActorSystem] ERROR: No transport configured")
             throw TrebuchetError.systemNotRunning
         }
 
         guard let host = envelope.actorID.host,
               let port = envelope.actorID.port else {
+            print("[ActorSystem] ERROR: Actor has no host/port: \(envelope.actorID)")
             throw TrebuchetError.actorNotFound(envelope.actorID)
         }
 
         // Send the invocation
-        let data = try encoder.encode(envelope)
+        print("[ActorSystem] Wrapping in TrebuchetEnvelope...")
+        let trebuchetEnvelope = TrebuchetEnvelope.invocation(envelope)
+        print("[ActorSystem] Encoding invocation envelope...")
+        let data = try encoder.encode(trebuchetEnvelope)
+        print("[ActorSystem] Sending \(data.count) bytes to \(host):\(port)...")
         try await transport.send(data, to: .init(host: host, port: port))
+        print("[ActorSystem] Message sent, waiting for response...")
 
         // Wait for response
         let response = try await registerPendingCall(id: envelope.callID)
+        print("[ActorSystem] Received response for callID \(envelope.callID)")
 
         if let errorMessage = response.errorMessage {
             throw TrebuchetError.remoteInvocationFailed(errorMessage)

@@ -29,17 +29,49 @@
 /// Marks a distributed actor for use with the Trebuchet system.
 ///
 /// The `@Trebuchet` macro simplifies distributed actor declarations by
-/// automatically adding the `ActorSystem` typealias and other boilerplate.
+/// automatically adding the `ActorSystem` typealias and scanning for
+/// @StreamedState properties to generate observe methods.
 ///
 /// Usage:
 /// ```swift
 /// @Trebuchet
 /// distributed actor ChatRoom {
+///     @StreamedState var state = State(messages: [])
+///
 ///     distributed func sendMessage(_ message: String) -> MessageID
 /// }
 /// ```
-@attached(member, names: named(ActorSystem))
+///
+/// The macro will generate:
+/// - `public func observeState() -> AsyncStream<State>`
+@attached(member, names: named(ActorSystem), arbitrary)
 public macro Trebuchet() = #externalMacro(module: "TrebucheMacros", type: "TrebuchetMacro")
+
+/// Marks a property for automatic state streaming.
+///
+/// The `@StreamedState` macro transforms a stored property into a computed property
+/// that automatically notifies all subscribers when the value changes.
+///
+/// Usage:
+/// ```swift
+/// @Trebuchet
+/// distributed actor TodoList {
+///     @StreamedState var state = State(todos: [], pendingCount: 0)
+///
+///     distributed func addTodo(title: String) {
+///         var todo = TodoItem(title: title)
+///         state.todos.append(todo)  // Automatically notifies subscribers
+///     }
+/// }
+/// ```
+///
+/// Requirements:
+/// - Property must have an explicit type annotation
+/// - Property type must be Codable and Sendable
+/// - Can only be used within @Trebuchet distributed actors
+@attached(accessor)
+@attached(peer, names: arbitrary)
+public macro StreamedState() = #externalMacro(module: "TrebucheMacros", type: "StreamedStateMacro")
 
 // MARK: - Convenience Extensions
 

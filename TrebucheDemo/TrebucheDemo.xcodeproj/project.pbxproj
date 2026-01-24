@@ -33,6 +33,7 @@
 		03E7DEF62F20BA5B004233F5 /* TrebucheDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrebucheDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		03E7DF002F20BA5B004233F5 /* TrebucheDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrebucheDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		03E7DF652F20C950004233F5 /* Shared */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = Shared; sourceTree = "<group>"; };
+		03E7DF692F23F1DB004233F5 /* TrebucheDemo.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = TrebucheDemo.xctestplan; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -83,6 +84,7 @@
 		03E7DEE02F20BA58004233F5 = {
 			isa = PBXGroup;
 			children = (
+				03E7DF692F23F1DB004233F5 /* TrebucheDemo.xctestplan */,
 				03E7DF652F20C950004233F5 /* Shared */,
 				03E7DEEB2F20BA59004233F5 /* TrebucheDemo */,
 				03E7DEF92F20BA5B004233F5 /* TrebucheDemoTests */,

@@ -1,0 +1,38 @@
+{
+  "configurations" : [
+    {
+      "id" : "C674E13D-3000-4432-81D6-7A5CDEABCD3C",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:TrebucheDemo.xcodeproj",
+      "identifier" : "03E7DEE82F20BA59004233F5",
+      "name" : "TrebucheDemo"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:TrebucheDemo.xcodeproj",
+        "identifier" : "03E7DEF52F20BA5B004233F5",
+        "name" : "TrebucheDemoTests"
+      }
+    },
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:TrebucheDemo.xcodeproj",
+        "identifier" : "03E7DEFF2F20BA5B004233F5",
+        "name" : "TrebucheDemoUITests"
+      }
+    }
+  ],
+  "version" : 1
+}
