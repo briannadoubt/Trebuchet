@@ -28,6 +28,24 @@ public struct StreamFilter: Codable, Sendable {
     public static func predefined(_ name: String, parameters: [String: String] = [:]) -> StreamFilter {
         StreamFilter(type: .predefined, name: name, parameters: parameters)
     }
+
+    /// Check if data passes this filter
+    /// - Parameter data: Encoded data to check
+    /// - Returns: true if data should be sent, false if it should be filtered out
+    public func matches(_ data: Data) -> Bool {
+        switch type {
+        case .all:
+            return true
+        case .predefined:
+            // TODO: Implement predefined filters (changed, nonEmpty, threshold)
+            // For now, pass all data through
+            // Full implementation requires decoding the data and tracking state
+            return true
+        case .custom:
+            // Custom filters cannot be sent over the wire
+            return true
+        }
+    }
 }
 
 /// Protocol for types that support stream filtering

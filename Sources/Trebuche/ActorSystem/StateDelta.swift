@@ -1,11 +1,32 @@
 import Foundation
 
 /// Protocol for types that support delta encoding
+///
+/// ## Example Implementation
+///
+/// ```swift
+/// struct Counter: DeltaCodable {
+///     let count: Int
+///
+///     func delta(from previous: Counter) -> Counter? {
+///         let diff = count - previous.count
+///         return diff != 0 ? Counter(count: diff) : nil
+///     }
+///
+///     func applying(delta: Counter) -> Counter {
+///         Counter(count: count + delta.count)
+///     }
+/// }
+/// ```
 public protocol DeltaCodable: Codable {
     /// Compute the delta from a previous value to this value
+    /// - Parameter previous: The previous value to compute delta from
+    /// - Returns: A delta representing the change, or nil if no change
     func delta(from previous: Self) -> Self?
 
     /// Apply a delta to produce a new value
+    /// - Parameter delta: The delta to apply
+    /// - Returns: A new value with the delta applied
     func applying(delta: Self) -> Self
 }
 
@@ -117,4 +138,56 @@ public enum DeltaError: Error {
     case noBaseValue
     case deltaComputationFailed
     case deltaApplicationFailed
+}
+
+// MARK: - Stream Helpers
+
+extension AsyncStream where Element: DeltaCodable & Sendable {
+    /// Convert a regular state stream to a delta-encoded stream
+    /// - Returns: A stream that sends full state first, then deltas
+    public func withDeltaEncoding() -> AsyncStream<StateDelta<Element>> {
+        AsyncStream<StateDelta<Element>> { continuation in
+            Task {
+                let manager = DeltaStreamManager<Element>()
+
+                for await value in self {
+                    do {
+                        let delta = try await manager.encode(value)
+                        continuation.yield(delta)
+                    } catch {
+                        // On error, send full state
+                        if let fullDelta = try? StateDelta<Element>.full(value) {
+                            continuation.yield(fullDelta)
+                        }
+                    }
+                }
+
+                continuation.finish()
+            }
+        }
+    }
+}
+
+extension AsyncStream where Element: Codable & Sendable {
+    /// Decode a delta-encoded stream back to regular state stream
+    /// - Returns: A stream that applies deltas to produce full state values
+    public func decodingDeltas<T: DeltaCodable & Sendable>() -> AsyncStream<T> where Element == StateDelta<T> {
+        AsyncStream<T> { continuation in
+            Task {
+                let applier = DeltaStreamApplier<T>()
+
+                for await delta in self {
+                    do {
+                        let value = try await applier.apply(delta)
+                        continuation.yield(value)
+                    } catch {
+                        // On error, skip this update
+                        continue
+                    }
+                }
+
+                continuation.finish()
+            }
+        }
+    }
 }

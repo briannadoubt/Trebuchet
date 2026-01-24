@@ -296,7 +296,8 @@ public final class TrebuchetServer: Sendable {
                 streamID: streamID,
                 callID: envelope.callID,
                 actorID: envelope.actorID,
-                targetIdentifier: envelope.targetIdentifier
+                targetIdentifier: envelope.targetIdentifier,
+                filter: envelope.streamFilter
             )
             let startEnvelope = TrebuchetEnvelope.streamStart(streamStart)
             let startData = try encoder.encode(startEnvelope)
@@ -307,10 +308,16 @@ public final class TrebuchetServer: Sendable {
 
             // Run stream iteration in background task to avoid blocking the message handler
             let buffer = streamBuffer
+            let filter = envelope.streamFilter
             Task {
                 do {
                     var sequenceNumber: UInt64 = 0
                     for try await data in stream {
+                        // Apply filter before sending (if specified)
+                        if let filter = filter, !filter.matches(data) {
+                            continue  // Skip this update
+                        }
+
                         sequenceNumber += 1
 
                         // Buffer the data for potential resumption

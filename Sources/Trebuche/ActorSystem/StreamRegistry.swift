@@ -210,6 +210,11 @@ public actor StreamRegistry {
         callIDToStreamID[callID]
     }
 
+    /// Get the last sequence number for a stream
+    public func getLastSequence(streamID: UUID) -> UInt64? {
+        streams[streamID]?.sequenceNumber
+    }
+
     /// Clean up stale streams that haven't had activity within TTL
     private func cleanupStaleStreams() {
         let now = Date()

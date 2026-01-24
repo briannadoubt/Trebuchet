@@ -2,6 +2,22 @@ import Testing
 import Foundation
 @testable import Trebuche
 
+// MARK: - Test Types
+
+/// Simple counter for testing delta encoding
+struct Counter: DeltaCodable, Sendable, Equatable {
+    let count: Int
+
+    func delta(from previous: Counter) -> Counter? {
+        let diff = count - previous.count
+        return diff != 0 ? Counter(count: diff) : nil
+    }
+
+    func applying(delta: Counter) -> Counter {
+        Counter(count: count + delta.count)
+    }
+}
+
 /// Tests for realtime state streaming functionality
 @Suite("Streaming Tests")
 struct StreamingTests {
@@ -218,5 +234,150 @@ struct StreamingTests {
 
         // Clean up
         await registry.removeStream(streamID: streamID)
+    }
+
+    @Test("StreamRegistry tracks last sequence number")
+    func testLastSequenceTracking() async throws {
+        let registry = StreamRegistry()
+
+        let callID = UUID()
+        let (streamID, stream) = await registry.createRemoteStream(callID: callID)
+
+        let testData = "test".data(using: .utf8)!
+
+        // Set up receiver
+        let receiverTask = Task {
+            var count = 0
+            for await _ in stream {
+                count += 1
+                if count >= 3 {
+                    break
+                }
+            }
+            return count
+        }
+
+        // Give stream time to set up
+        try await Task.sleep(for: .milliseconds(100))
+
+        // Initial sequence should be 0
+        let initialSequence = await registry.getLastSequence(streamID: streamID)
+        #expect(initialSequence == 0)
+
+        // Send data with sequence numbers
+        await registry.handleStreamData(
+            StreamDataEnvelope(streamID: streamID, sequenceNumber: 1, data: testData, timestamp: Date())
+        )
+        await registry.handleStreamData(
+            StreamDataEnvelope(streamID: streamID, sequenceNumber: 2, data: testData, timestamp: Date())
+        )
+        await registry.handleStreamData(
+            StreamDataEnvelope(streamID: streamID, sequenceNumber: 3, data: testData, timestamp: Date())
+        )
+
+        // Verify sequence is tracked
+        let lastSequence = await registry.getLastSequence(streamID: streamID)
+        #expect(lastSequence == 3)
+
+        // Wait for receiver
+        let count = await receiverTask.value
+        #expect(count == 3)
+
+        // Clean up
+        await registry.removeStream(streamID: streamID)
+
+        // After removal, should return nil
+        let afterRemoval = await registry.getLastSequence(streamID: streamID)
+        #expect(afterRemoval == nil)
+    }
+
+    @Test("Delta encoding reduces bandwidth for incremental updates")
+    func testDeltaEncoding() async throws {
+        // Create a manager and encode several values
+        let manager = DeltaStreamManager<Counter>()
+
+        // First value should be full
+        let delta1 = try await manager.encode(Counter(count: 10))
+        #expect(delta1.isFull == true)
+        let decoded1 = try delta1.decode()
+        #expect(decoded1.count == 10)
+
+        // Second value should be delta (diff = 5)
+        let delta2 = try await manager.encode(Counter(count: 15))
+        #expect(delta2.isFull == false)
+        let decoded2 = try delta2.decode()
+        #expect(decoded2.count == 5)  // Delta is the difference
+
+        // Third value with no change should return nil delta
+        let value3 = Counter(count: 15)
+        #expect(value3.delta(from: Counter(count: 15)) == nil)
+    }
+
+    @Test("Delta stream applier reconstructs full state")
+    func testDeltaApplier() async throws {
+        let applier = DeltaStreamApplier<Counter>()
+
+        // Apply full state
+        let full = try StateDelta<Counter>.full(Counter(count: 10))
+        let value1 = try await applier.apply(full)
+        #expect(value1.count == 10)
+
+        // Apply delta (+5)
+        let delta = try StateDelta<Counter>.delta(Counter(count: 5))
+        let value2 = try await applier.apply(delta)
+        #expect(value2.count == 15)
+
+        // Apply another delta (-3)
+        let delta2 = try StateDelta<Counter>.delta(Counter(count: -3))
+        let value3 = try await applier.apply(delta2)
+        #expect(value3.count == 12)
+    }
+
+    @Test("Delta stream helper converts regular stream")
+    func testDeltaStreamHelper() async throws {
+        // Create a regular stream
+        let (regularStream, continuation) = AsyncStream<Counter>.makeStream()
+
+        // Convert to delta stream
+        let deltaStream = regularStream.withDeltaEncoding()
+
+        // Start consuming delta stream
+        let consumerTask = Task {
+            var receivedDeltas: [(isFull: Bool, value: Counter)] = []
+            for await delta in deltaStream {
+                let value = try delta.decode()
+                receivedDeltas.append((delta.isFull, value))
+                if receivedDeltas.count >= 3 {
+                    break
+                }
+            }
+            return receivedDeltas
+        }
+
+        // Give stream time to set up
+        try await Task.sleep(for: .milliseconds(100))
+
+        // Send values
+        continuation.yield(Counter(count: 100))
+        continuation.yield(Counter(count: 105))
+        continuation.yield(Counter(count: 110))
+
+        // Check results
+        let deltas = try await consumerTask.value
+        #expect(deltas.count == 3)
+
+        // First should be full state
+        #expect(deltas[0].isFull == true)
+        #expect(deltas[0].value.count == 100)
+
+        // Second should be delta
+        #expect(deltas[1].isFull == false)
+        #expect(deltas[1].value.count == 5)
+
+        // Third should be delta
+        #expect(deltas[2].isFull == false)
+        #expect(deltas[2].value.count == 5)
+
+        continuation.finish()
     }
 }

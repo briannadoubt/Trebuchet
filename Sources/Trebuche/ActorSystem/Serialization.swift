@@ -41,14 +41,16 @@ public struct TrebuchetEncoder: DistributedTargetInvocationEncoder {
     func build(
         callID: UUID,
         actorID: TrebuchetActorID,
-        targetIdentifier: String
+        targetIdentifier: String,
+        streamFilter: StreamFilter? = nil
     ) throws -> InvocationEnvelope {
         InvocationEnvelope(
             callID: callID,
             actorID: actorID,
             targetIdentifier: targetIdentifier,
             genericSubstitutions: genericSubstitutions,
-            arguments: arguments
+            arguments: arguments,
+            streamFilter: streamFilter
         )
     }
 }
@@ -158,19 +160,22 @@ public struct InvocationEnvelope: Codable, Sendable {
     public let targetIdentifier: String
     public let genericSubstitutions: [String]
     public let arguments: [Data]
+    public let streamFilter: StreamFilter?  // Optional filter for streaming methods
 
     public init(
         callID: UUID,
         actorID: TrebuchetActorID,
         targetIdentifier: String,
         genericSubstitutions: [String],
-        arguments: [Data]
+        arguments: [Data],
+        streamFilter: StreamFilter? = nil
     ) {
         self.callID = callID
         self.actorID = actorID
         self.targetIdentifier = targetIdentifier
         self.genericSubstitutions = genericSubstitutions
         self.arguments = arguments
+        self.streamFilter = streamFilter
     }
 }
 
