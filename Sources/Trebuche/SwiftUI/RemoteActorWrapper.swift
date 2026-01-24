@@ -223,9 +223,13 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
         // Don't start if already resolving or have a pending task
         guard !isResolving, resolutionTask == nil else { return }
 
-        resolutionTask = Task { @MainActor in
-            await resolveActor()
-            resolutionTask = nil
+        // Defer to next run loop to avoid modifying state during view update
+        Task { @MainActor in
+            guard self.resolutionTask == nil else { return }
+            self.resolutionTask = Task { @MainActor in
+                await self.resolveActor()
+                self.resolutionTask = nil
+            }
         }
     }
 

@@ -59,13 +59,14 @@ Sources/Trebuche/
 │   ├── TrebuchetActorSystem.swift  # DistributedActorSystem implementation
 │   ├── TrebuchetActorID.swift      # Actor identification (local/remote)
 │   ├── TrebuchetError.swift        # Error types
-│   └── Serialization.swift         # Encoder/Decoder/ResultHandler for wire format
+│   ├── Serialization.swift         # Encoder/Decoder/ResultHandler for wire format
+│   └── StreamRegistry.swift        # Client-side stream state management
 ├── Transport/
 │   ├── Transport.swift             # Transport protocol, Endpoint, TransportMessage
 │   └── WebSocket/
 │       └── WebSocketTransport.swift # WebSocket implementation using swift-nio
 ├── Server/
-│   └── TrebuchetServer.swift       # Server API for hosting actors
+│   └── TrebuchetServer.swift       # Server API for hosting actors, stream buffering
 ├── Client/
 │   └── TrebuchetClient.swift       # Client API for resolving remote actors
 └── SwiftUI/
@@ -74,10 +75,11 @@ Sources/Trebuche/
     ├── TrebuchetConnectionManager.swift # Multi-server manager
     ├── TrebuchetEnvironment.swift  # SwiftUI environment integration
     ├── TrebuchetViewModifiers.swift # View modifiers
-    └── RemoteActorWrapper.swift    # @RemoteActor property wrapper
+    ├── RemoteActorWrapper.swift    # @RemoteActor property wrapper
+    └── ObservedActor.swift         # @ObservedActor for streaming state
 
 Sources/TrebucheMacros/
-└── TrebucheMacros.swift            # @Trebuchet macro implementation
+└── TrebucheMacros.swift            # @Trebuchet and @StreamedState macros
 
 Sources/TrebucheCloud/
 ├── TrebucheCloud.swift             # Module exports
@@ -131,12 +133,21 @@ Sources/TrebucheCLI/
 - **TrebuchetTransport**: Protocol for pluggable network transports
 - **@Trebuchet macro**: Adds `typealias ActorSystem = TrebuchetActorSystem` to distributed actors
 
+#### Streaming Types
+
+- **@StreamedState macro**: Property wrapper that automatically notifies subscribers on changes
+- **StreamRegistry**: Client-side actor managing incoming stream state and continuations
+- **ServerStreamBuffer**: Server-side actor buffering outgoing stream data for resumption
+- **StreamingMethod enum**: Auto-generated type-safe enum for streaming methods
+- **Stream envelopes**: StreamStartEnvelope, StreamDataEnvelope, StreamEndEnvelope, StreamErrorEnvelope, StreamResumeEnvelope
+
 #### SwiftUI Types
 
 - **TrebuchetConnection**: Observable connection wrapper with auto-reconnection
 - **TrebuchetConnectionManager**: Multi-server connection orchestrator
 - **TrebuchetEnvironment**: SwiftUI environment container view
 - **@RemoteActor**: Property wrapper for automatic actor resolution
+- **@ObservedActor**: Property wrapper for streaming state with automatic view updates
 - **ConnectionState**: Connection lifecycle state enum
 
 #### Cloud Types (TrebucheCloud)

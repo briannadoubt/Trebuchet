@@ -41,14 +41,16 @@ public struct TrebuchetEncoder: DistributedTargetInvocationEncoder {
     func build(
         callID: UUID,
         actorID: TrebuchetActorID,
-        targetIdentifier: String
+        targetIdentifier: String,
+        streamFilter: StreamFilter? = nil
     ) throws -> InvocationEnvelope {
         InvocationEnvelope(
             callID: callID,
             actorID: actorID,
             targetIdentifier: targetIdentifier,
             genericSubstitutions: genericSubstitutions,
-            arguments: arguments
+            arguments: arguments,
+            streamFilter: streamFilter
         )
     }
 }
@@ -124,6 +126,33 @@ public final class TrebuchetResultHandler: DistributedTargetInvocationResultHand
     }
 }
 
+/// Marker type indicating a streaming subscription has been established
+/// This is Codable so it can be returned from distributed methods
+public struct StreamSubscription: Codable, Sendable {
+    public let streamID: UUID
+    public let propertyName: String
+
+    public init(streamID: UUID, propertyName: String) {
+        self.streamID = streamID
+        self.propertyName = propertyName
+    }
+}
+
+/// Wire format for stream resumption after reconnection
+public struct StreamResumeEnvelope: Codable, Sendable {
+    public let streamID: UUID
+    public let lastSequence: UInt64
+    public let actorID: TrebuchetActorID
+    public let targetIdentifier: String
+
+    public init(streamID: UUID, lastSequence: UInt64, actorID: TrebuchetActorID, targetIdentifier: String) {
+        self.streamID = streamID
+        self.lastSequence = lastSequence
+        self.actorID = actorID
+        self.targetIdentifier = targetIdentifier
+    }
+}
+
 /// Wire format for a remote method invocation
 public struct InvocationEnvelope: Codable, Sendable {
     public let callID: UUID
@@ -131,19 +160,22 @@ public struct InvocationEnvelope: Codable, Sendable {
     public let targetIdentifier: String
     public let genericSubstitutions: [String]
     public let arguments: [Data]
+    public let streamFilter: StreamFilter?  // Optional filter for streaming methods
 
     public init(
         callID: UUID,
         actorID: TrebuchetActorID,
         targetIdentifier: String,
         genericSubstitutions: [String],
-        arguments: [Data]
+        arguments: [Data],
+        streamFilter: StreamFilter? = nil
     ) {
         self.callID = callID
         self.actorID = actorID
         self.targetIdentifier = targetIdentifier
         self.genericSubstitutions = genericSubstitutions
         self.arguments = arguments
+        self.streamFilter = streamFilter
     }
 }
 
@@ -169,5 +201,153 @@ public struct ResponseEnvelope: Codable, Sendable {
 
     public static func failure(callID: UUID, error: String) -> ResponseEnvelope {
         ResponseEnvelope(callID: callID, result: nil, errorMessage: error)
+    }
+}
+
+// MARK: - Streaming Envelopes
+
+/// Wire format for stream initiation
+public struct StreamStartEnvelope: Codable, Sendable {
+    public let streamID: UUID
+    public let callID: UUID
+    public let actorID: TrebuchetActorID
+    public let targetIdentifier: String
+    public let filter: StreamFilter?  // Optional filter for server-side filtering
+
+    public init(streamID: UUID, callID: UUID, actorID: TrebuchetActorID, targetIdentifier: String, filter: StreamFilter? = nil) {
+        self.streamID = streamID
+        self.callID = callID
+        self.actorID = actorID
+        self.targetIdentifier = targetIdentifier
+        self.filter = filter
+    }
+}
+
+/// Wire format for stream data update
+public struct StreamDataEnvelope: Codable, Sendable {
+    public let streamID: UUID
+    public let sequenceNumber: UInt64
+    public let data: Data
+    public let timestamp: Date
+
+    public init(streamID: UUID, sequenceNumber: UInt64, data: Data, timestamp: Date = Date()) {
+        self.streamID = streamID
+        self.sequenceNumber = sequenceNumber
+        self.data = data
+        self.timestamp = timestamp
+    }
+}
+
+/// Reason for stream termination
+public enum StreamEndReason: String, Codable, Sendable {
+    case completed
+    case actorTerminated
+    case clientUnsubscribed
+    case connectionClosed
+    case error
+}
+
+/// Wire format for stream completion
+public struct StreamEndEnvelope: Codable, Sendable {
+    public let streamID: UUID
+    public let reason: StreamEndReason
+
+    public init(streamID: UUID, reason: StreamEndReason) {
+        self.streamID = streamID
+        self.reason = reason
+    }
+}
+
+/// Wire format for stream error
+public struct StreamErrorEnvelope: Codable, Sendable {
+    public let streamID: UUID
+    public let errorMessage: String
+
+    public init(streamID: UUID, errorMessage: String) {
+        self.streamID = streamID
+        self.errorMessage = errorMessage
+    }
+}
+
+/// Discriminated union for all Trebuchet message types
+public enum TrebuchetEnvelope: Codable, Sendable {
+    case invocation(InvocationEnvelope)
+    case response(ResponseEnvelope)
+    case streamStart(StreamStartEnvelope)
+    case streamData(StreamDataEnvelope)
+    case streamEnd(StreamEndEnvelope)
+    case streamError(StreamErrorEnvelope)
+    case streamResume(StreamResumeEnvelope)
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case payload
+    }
+
+    enum EnvelopeType: String, Codable {
+        case invocation
+        case response
+        case streamStart
+        case streamData
+        case streamEnd
+        case streamError
+        case streamResume
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        switch self {
+        case .invocation(let envelope):
+            try container.encode(EnvelopeType.invocation, forKey: .type)
+            try container.encode(envelope, forKey: .payload)
+        case .response(let envelope):
+            try container.encode(EnvelopeType.response, forKey: .type)
+            try container.encode(envelope, forKey: .payload)
+        case .streamStart(let envelope):
+            try container.encode(EnvelopeType.streamStart, forKey: .type)
+            try container.encode(envelope, forKey: .payload)
+        case .streamData(let envelope):
+            try container.encode(EnvelopeType.streamData, forKey: .type)
+            try container.encode(envelope, forKey: .payload)
+        case .streamEnd(let envelope):
+            try container.encode(EnvelopeType.streamEnd, forKey: .type)
+            try container.encode(envelope, forKey: .payload)
+        case .streamError(let envelope):
+            try container.encode(EnvelopeType.streamError, forKey: .type)
+            try container.encode(envelope, forKey: .payload)
+        case .streamResume(let envelope):
+            try container.encode(EnvelopeType.streamResume, forKey: .type)
+            try container.encode(envelope, forKey: .payload)
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(EnvelopeType.self, forKey: .type)
+
+        switch type {
+        case .invocation:
+            let envelope = try container.decode(InvocationEnvelope.self, forKey: .payload)
+            self = .invocation(envelope)
+        case .response:
+            let envelope = try container.decode(ResponseEnvelope.self, forKey: .payload)
+            self = .response(envelope)
+        case .streamStart:
+            let envelope = try container.decode(StreamStartEnvelope.self, forKey: .payload)
+            self = .streamStart(envelope)
+        case .streamData:
+            let envelope = try container.decode(StreamDataEnvelope.self, forKey: .payload)
+            self = .streamData(envelope)
+        case .streamEnd:
+            let envelope = try container.decode(StreamEndEnvelope.self, forKey: .payload)
+            self = .streamEnd(envelope)
+        case .streamError:
+            let envelope = try container.decode(StreamErrorEnvelope.self, forKey: .payload)
+            self = .streamError(envelope)
+        case .streamResume:
+            let envelope = try container.decode(StreamResumeEnvelope.self, forKey: .payload)
+            self = .streamResume(envelope)
+        }
     }
 }

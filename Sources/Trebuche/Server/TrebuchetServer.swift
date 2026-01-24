@@ -23,6 +23,12 @@ public final class TrebuchetServer: Sendable {
     /// Registry of exposed actors by name
     private let exposedActors = ExposedActorRegistry()
 
+    /// Registry of streaming handlers by type
+    private let streamingHandlers = StreamingHandlerRegistry()
+
+    /// Buffer for outgoing stream data (for resumption support)
+    private let streamBuffer = ServerStreamBuffer()
+
     /// Create a new server with the specified transport
     /// - Parameter transport: The transport configuration (e.g., `.webSocket(port: 8080)`)
     public init(transport: TransportConfiguration) {
@@ -42,6 +48,12 @@ public final class TrebuchetServer: Sendable {
             host: transport.endpoint.host,
             port: transport.endpoint.port
         )
+
+        // Set up the main streaming handler to dispatch to registered handlers
+        let handlers = streamingHandlers
+        actorSystem.streamingHandler = { envelope, actor in
+            try await handlers.handle(envelope: envelope, actor: actor)
+        }
     }
 
     /// Expose an actor with a given name so clients can resolve it
@@ -50,6 +62,135 @@ public final class TrebuchetServer: Sendable {
     ///   - name: The name clients will use to resolve this actor
     public func expose<Act: DistributedActor>(_ actor: Act, as name: String) async where Act.ID == TrebuchetActorID {
         await exposedActors.register(actor, as: name)
+    }
+
+    /// Create and expose an actor with a factory closure
+    /// - Parameters:
+    ///   - name: The name clients will use to resolve this actor
+    ///   - factory: A closure that creates the actor instance
+    /// - Returns: The created actor instance
+    @discardableResult
+    public func expose<Act: DistributedActor>(
+        _ name: String,
+        factory: @Sendable (TrebuchetActorSystem) -> Act
+    ) async -> Act where Act.ID == TrebuchetActorID {
+        let actor = factory(actorSystem)
+        await exposedActors.register(actor, as: name)
+        return actor
+    }
+
+    /// Configure streaming support for a specific actor type
+    /// Multiple calls to this method will register handlers for different types
+    /// - Parameter configure: A closure that receives an invocation envelope and actor, and returns a data stream
+    public func configureStreaming(_ configure: @escaping @Sendable (InvocationEnvelope, any DistributedActor) async throws -> AsyncStream<Data>) async {
+        await streamingHandlers.register(handler: configure)
+    }
+
+    /// Configure streaming for actors that conform to a specific protocol
+    /// Multiple calls to this method will register handlers for different protocol types
+    public func configureStreaming<T>(
+        for protocolType: T.Type,
+        handler: @escaping @Sendable (InvocationEnvelope, T) async throws -> AsyncStream<Data>
+    ) async {
+        // Capture the handler in a way that doesn't require sending the metatype
+        await streamingHandlers.registerTyped(handler: handler)
+    }
+
+    /// Helper to create a streaming data stream from a typed stream
+    /// - Parameter stream: A typed async stream to encode
+    /// - Returns: An async stream of encoded data
+    public static func encodeStream<T: Codable & Sendable>(_ stream: AsyncStream<T>) -> AsyncStream<Data> {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        return AsyncStream { continuation in
+            Task {
+                for await value in stream {
+                    if let data = try? encoder.encode(value) {
+                        continuation.yield(data)
+                    }
+                }
+                continuation.finish()
+            }
+        }
+    }
+
+    /// Configure streaming for a single observe method on a protocol
+    /// Multiple calls to this method will register handlers for different protocol types
+    /// This is a convenience for the common case of one streaming property
+    ///
+    /// Example:
+    /// ```swift
+    /// // Register streaming for TodoList
+    /// await server.configureStreaming(
+    ///     for: TodoListStreaming.self,
+    ///     method: "observeState"
+    /// ) { await $0.observeState() }
+    ///
+    /// // Register streaming for GameRoom (doesn't overwrite TodoList!)
+    /// await server.configureStreaming(
+    ///     for: GameRoomStreaming.self,
+    ///     method: "observePlayers"
+    /// ) { await $0.observePlayers() }
+    /// ```
+    public func configureStreaming<T, State: Codable & Sendable>(
+        for protocolType: T.Type,
+        method: String,
+        observe: @escaping @Sendable (T) async -> AsyncStream<State>
+    ) async {
+        await configureStreaming(for: protocolType) { envelope, actor in
+            guard envelope.targetIdentifier == method else {
+                throw TrebuchetError.remoteInvocationFailed("Unknown streaming method: \(envelope.targetIdentifier)")
+            }
+            return Self.encodeStream(await observe(actor))
+        }
+    }
+
+    /// Configure streaming using a type-safe enum for methods
+    /// The enum is auto-generated by @Trebuchet as ActorName.StreamingMethod
+    ///
+    /// Example:
+    /// ```swift
+    /// await server.configureStreaming(
+    ///     for: TodoListStreaming.self,
+    ///     method: TodoList.StreamingMethod.observeState
+    /// ) { await $0.observeState() }
+    /// ```
+    public func configureStreaming<T, Method: RawRepresentable, State: Codable & Sendable>(
+        for protocolType: T.Type,
+        method: Method,
+        observe: @escaping @Sendable (T) async -> AsyncStream<State>
+    ) async where Method.RawValue == String {
+        await configureStreaming(for: protocolType, method: method.rawValue, observe: observe)
+    }
+
+    /// Configure streaming with a type-safe switch over all streaming methods
+    ///
+    /// Example:
+    /// ```swift
+    /// await server.configureStreaming(for: GameRoomStreaming.self) { method, room in
+    ///     switch method {
+    ///     case .observeGameState:
+    ///         return await room.observeGameState()
+    ///     case .observePlayerList:
+    ///         return await room.observePlayerList()
+    ///     }
+    /// }
+    /// ```
+    public func configureStreaming<T, Method, State: Codable & Sendable>(
+        for protocolType: T.Type,
+        handler: @escaping @Sendable (Method, T) async throws -> AsyncStream<State>
+    ) async where Method: RawRepresentable & CaseIterable & Sendable, Method.RawValue == String {
+        // Capture all cases outside the closure to avoid Sendable warnings
+        let allCases = Array(Method.allCases)
+
+        await configureStreaming(for: protocolType) { envelope, actor in
+            // Try to parse the target identifier as an enum case
+            guard let method = allCases.first(where: { $0.rawValue == envelope.targetIdentifier }) else {
+                throw TrebuchetError.remoteInvocationFailed("Unknown streaming method: \(envelope.targetIdentifier)")
+            }
+            return Self.encodeStream(try await handler(method, actor))
+        }
     }
 
     /// Get the ID for an exposed actor by name
@@ -74,6 +215,13 @@ public final class TrebuchetServer: Sendable {
 
     /// Stop the server
     public func shutdown() async {
+        // Clean up all active streams
+        await actorSystem.streamRegistry.removeAllStreams()
+
+        // Clean up all stream buffers
+        await streamBuffer.removeAllBuffers()
+
+        // Shutdown transport
         await transport.shutdown()
     }
 
@@ -87,33 +235,180 @@ public final class TrebuchetServer: Sendable {
         encoder.dateEncodingStrategy = .iso8601
 
         do {
-            var envelope = try decoder.decode(InvocationEnvelope.self, from: message.data)
+            let envelope = try decoder.decode(TrebuchetEnvelope.self, from: message.data)
 
-            // Translate exposed name to real actor ID if needed
-            if let realID = await exposedActors.getID(for: envelope.actorID.id) {
-                envelope = InvocationEnvelope(
-                    callID: envelope.callID,
-                    actorID: realID,
-                    targetIdentifier: envelope.targetIdentifier,
-                    genericSubstitutions: envelope.genericSubstitutions,
-                    arguments: envelope.arguments
-                )
+            switch envelope {
+            case .invocation(var invocationEnvelope):
+                // Translate exposed name to real actor ID if needed
+                if let realID = await exposedActors.getID(for: invocationEnvelope.actorID.id) {
+                    invocationEnvelope = InvocationEnvelope(
+                        callID: invocationEnvelope.callID,
+                        actorID: realID,
+                        targetIdentifier: invocationEnvelope.targetIdentifier,
+                        genericSubstitutions: invocationEnvelope.genericSubstitutions,
+                        arguments: invocationEnvelope.arguments
+                    )
+                }
+
+                // Check if this is a streaming method (observe* methods)
+                if invocationEnvelope.targetIdentifier.hasPrefix("observe") {
+                    await handleStreamingInvocation(invocationEnvelope, respond: message.respond)
+                } else {
+                    // Regular RPC invocation
+                    let response = await actorSystem.handleIncomingInvocation(invocationEnvelope)
+                    let responseEnvelope = TrebuchetEnvelope.response(response)
+                    let responseData = try encoder.encode(responseEnvelope)
+                    try await message.respond(responseData)
+                }
+
+            case .streamResume(let resumeEnvelope):
+                await handleStreamResume(resumeEnvelope, respond: message.respond)
+
+            case .response, .streamStart, .streamData, .streamEnd, .streamError:
+                // Servers shouldn't receive these - silently ignore
+                break
             }
-
-            let response = await actorSystem.handleIncomingInvocation(envelope)
-            let responseData = try encoder.encode(response)
-            try await message.respond(responseData)
         } catch {
             // Try to extract callID from the message for error response
-            if let envelope = try? decoder.decode(InvocationEnvelope.self, from: message.data) {
+            if let envelope = try? decoder.decode(TrebuchetEnvelope.self, from: message.data),
+               case .invocation(let invocation) = envelope {
                 let errorResponse = ResponseEnvelope.failure(
-                    callID: envelope.callID,
+                    callID: invocation.callID,
                     error: String(describing: error)
                 )
-                if let responseData = try? encoder.encode(errorResponse) {
+                let responseEnvelope = TrebuchetEnvelope.response(errorResponse)
+                if let responseData = try? encoder.encode(responseEnvelope) {
                     try? await message.respond(responseData)
                 }
             }
+        }
+    }
+
+    private func handleStreamingInvocation(_ envelope: InvocationEnvelope, respond: @escaping @Sendable (Data) async throws -> Void) async {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        let streamID = UUID()
+
+        do {
+            // Send StreamStart envelope
+            let streamStart = StreamStartEnvelope(
+                streamID: streamID,
+                callID: envelope.callID,
+                actorID: envelope.actorID,
+                targetIdentifier: envelope.targetIdentifier,
+                filter: envelope.streamFilter
+            )
+            let startEnvelope = TrebuchetEnvelope.streamStart(streamStart)
+            let startData = try encoder.encode(startEnvelope)
+            try await respond(startData)
+
+            // Execute the streaming method through the actor system
+            let stream = try await actorSystem.executeStreamingTarget(envelope)
+
+            // Run stream iteration in background task to avoid blocking the message handler
+            let buffer = streamBuffer
+            let filter = envelope.streamFilter
+            Task {
+                do {
+                    var sequenceNumber: UInt64 = 0
+                    for try await data in stream {
+                        // Apply filter before sending (if specified)
+                        if let filter = filter, !filter.matches(data) {
+                            continue  // Skip this update
+                        }
+
+                        sequenceNumber += 1
+
+                        // Buffer the data for potential resumption
+                        await buffer.buffer(streamID: streamID, sequence: sequenceNumber, data: data)
+
+                        let dataEnvelope = StreamDataEnvelope(
+                            streamID: streamID,
+                            sequenceNumber: sequenceNumber,
+                            data: data,
+                            timestamp: Date()
+                        )
+                        let envelope = TrebuchetEnvelope.streamData(dataEnvelope)
+                        let envelopeData = try encoder.encode(envelope)
+                        try await respond(envelopeData)
+                    }
+
+                    // Stream completed successfully
+                    let endEnvelope = TrebuchetEnvelope.streamEnd(
+                        StreamEndEnvelope(streamID: streamID, reason: .completed)
+                    )
+                    let endData = try encoder.encode(endEnvelope)
+                    try await respond(endData)
+
+                    // Clean up buffer
+                    await buffer.removeBuffer(streamID: streamID)
+                } catch {
+                    // Send error envelope
+                    let errorEnvelope = TrebuchetEnvelope.streamError(
+                        StreamErrorEnvelope(
+                            streamID: streamID,
+                            errorMessage: "Stream error: \(error.localizedDescription)"
+                        )
+                    )
+                    if let errorData = try? encoder.encode(errorEnvelope) {
+                        try? await respond(errorData)
+                    }
+                }
+            }
+
+        } catch {
+            // Send error envelope
+            let errorEnvelope = TrebuchetEnvelope.streamError(
+                StreamErrorEnvelope(
+                    streamID: streamID,
+                    errorMessage: "Stream setup error: \(error.localizedDescription)"
+                )
+            )
+            if let errorData = try? encoder.encode(errorEnvelope) {
+                try? await respond(errorData)
+            }
+        }
+    }
+
+    private func handleStreamResume(_ envelope: StreamResumeEnvelope, respond: @escaping @Sendable (Data) async throws -> Void) async {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        // Check if we have buffered data for this stream
+        if let bufferedData = await streamBuffer.getBufferedData(
+            streamID: envelope.streamID,
+            afterSequence: envelope.lastSequence
+        ), !bufferedData.isEmpty {
+            // Replay buffered data
+            do {
+                for (sequence, data) in bufferedData {
+                    let dataEnvelope = StreamDataEnvelope(
+                        streamID: envelope.streamID,
+                        sequenceNumber: sequence,
+                        data: data,
+                        timestamp: Date()
+                    )
+                    let envelopeData = try encoder.encode(TrebuchetEnvelope.streamData(dataEnvelope))
+                    try await respond(envelopeData)
+                }
+            } catch {
+                // Silently ignore replay errors - stream will restart
+                return
+            }
+        } else {
+            // Buffer expired or stream not found - restart stream
+            // Convert resume envelope to invocation envelope
+            let invocation = InvocationEnvelope(
+                callID: UUID(),
+                actorID: envelope.actorID,
+                targetIdentifier: envelope.targetIdentifier,
+                genericSubstitutions: [],
+                arguments: []
+            )
+
+            // Restart the stream
+            await handleStreamingInvocation(invocation, respond: respond)
         }
     }
 }
@@ -130,5 +425,110 @@ private actor ExposedActorRegistry {
 
     func getID(for name: String) -> TrebuchetActorID? {
         actors[name]
+    }
+}
+
+// MARK: - Streaming Handler Registry
+
+/// Registry for managing multiple streaming handlers for different actor types
+private actor StreamingHandlerRegistry {
+    private var handlers: [@Sendable (InvocationEnvelope, any DistributedActor) async throws -> AsyncStream<Data>?] = []
+
+    /// Register a general streaming handler
+    func register(handler: @escaping @Sendable (InvocationEnvelope, any DistributedActor) async throws -> AsyncStream<Data>) {
+        handlers.append { envelope, actor in
+            try await handler(envelope, actor)
+        }
+    }
+
+    /// Register a type-specific streaming handler
+    /// The type checking happens within the closure, avoiding metatype transfer
+    func registerTyped<T>(handler: @escaping @Sendable (InvocationEnvelope, T) async throws -> AsyncStream<Data>) {
+        handlers.append { envelope, actor in
+            guard let typedActor = actor as? T else {
+                return nil
+            }
+            return try await handler(envelope, typedActor)
+        }
+    }
+
+    /// Handle a streaming invocation by trying each registered handler
+    func handle(envelope: InvocationEnvelope, actor: any DistributedActor) async throws -> AsyncStream<Data> {
+        // Try each handler in order until one succeeds
+        for handler in handlers {
+            do {
+                if let stream = try await handler(envelope, actor) {
+                    return stream
+                }
+                // nil means type mismatch, continue to next handler
+            } catch {
+                // Handler matched but threw an error - propagate it immediately
+                throw error
+            }
+        }
+
+        // No handler could handle this actor/method combination
+        throw TrebuchetError.remoteInvocationFailed(
+            "No streaming handler registered for actor type '\(type(of: actor))' and method '\(envelope.targetIdentifier)'"
+        )
+    }
+}
+
+// MARK: - Server Stream Buffer
+
+/// Buffer for outgoing stream data to support resumption
+private actor ServerStreamBuffer {
+    private struct BufferedStream {
+        var recentData: [(sequence: UInt64, data: Data)] = []
+        var lastActivity: Date = Date()
+    }
+
+    private var buffers: [UUID: BufferedStream] = [:]
+    private let maxBufferSize: Int
+    private let ttl: TimeInterval
+
+    init(maxBufferSize: Int = 100, ttl: TimeInterval = 300) {
+        self.maxBufferSize = maxBufferSize
+        self.ttl = ttl
+    }
+
+    /// Buffer outgoing stream data
+    func buffer(streamID: UUID, sequence: UInt64, data: Data) {
+        var stream = buffers[streamID] ?? BufferedStream()
+        stream.recentData.append((sequence, data))
+        stream.lastActivity = Date()
+
+        // Keep only recent items
+        if stream.recentData.count > maxBufferSize {
+            stream.recentData.removeFirst()
+        }
+
+        buffers[streamID] = stream
+    }
+
+    /// Get buffered data for resumption
+    func getBufferedData(streamID: UUID, afterSequence: UInt64) -> [(sequence: UInt64, data: Data)]? {
+        guard let stream = buffers[streamID] else {
+            return nil
+        }
+
+        // Check if buffer is still valid (not expired)
+        if Date().timeIntervalSince(stream.lastActivity) > ttl {
+            buffers.removeValue(forKey: streamID)
+            return nil
+        }
+
+        // Return data after the given sequence
+        return stream.recentData.filter { $0.sequence > afterSequence }
+    }
+
+    /// Remove buffer for a completed stream
+    func removeBuffer(streamID: UUID) {
+        buffers.removeValue(forKey: streamID)
+    }
+
+    /// Clean up all buffers
+    func removeAllBuffers() {
+        buffers.removeAll()
     }
 }

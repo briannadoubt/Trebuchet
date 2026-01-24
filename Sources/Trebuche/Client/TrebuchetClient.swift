@@ -98,11 +98,30 @@ public final class TrebuchetClient: Sendable {
 
     private func handleResponse(_ message: TransportMessage) async {
         do {
-            let response = try decoder.decode(ResponseEnvelope.self, from: message.data)
-            actorSystem.completePendingCall(response: response)
+            let envelope = try decoder.decode(TrebuchetEnvelope.self, from: message.data)
+
+            switch envelope {
+            case .response(let response):
+                actorSystem.completePendingCall(response: response)
+
+            case .streamStart(let streamStart):
+                await actorSystem.handleStreamStart(streamStart)
+
+            case .streamData(let streamData):
+                await actorSystem.handleStreamData(streamData)
+
+            case .streamEnd(let streamEnd):
+                await actorSystem.handleStreamEnd(streamEnd)
+
+            case .streamError(let streamError):
+                await actorSystem.handleStreamError(streamError)
+
+            case .streamResume, .invocation:
+                // Clients shouldn't receive these envelope types
+                break
+            }
         } catch {
-            // Log error but don't crash
-            print("Failed to decode response: \(error)")
+            // Silently ignore decoding errors
         }
     }
 }
