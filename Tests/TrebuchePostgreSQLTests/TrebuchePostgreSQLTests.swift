@@ -16,8 +16,7 @@ struct PostgreSQLStateStoreTests {
         //     password: "test"
         // )
         //
-        // For now, we just verify the type exists
-        #expect(PostgreSQLStateStore.self != nil)
+        // Placeholder test - actual initialization requires PostgreSQL
     }
 }
 
@@ -35,8 +34,7 @@ struct PostgreSQLStreamAdapterTests {
         //     password: "test"
         // )
         //
-        // For now, we just verify the type exists
-        #expect(PostgreSQLStreamAdapter.self != nil)
+        // Placeholder test - actual initialization requires PostgreSQL
     }
 
     @Test("PostgreSQLStreamAdapter rejects invalid channel names")
