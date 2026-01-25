@@ -67,7 +67,10 @@ public struct TracingMiddleware: CloudMiddleware {
             try await exporter.export([span])
         } catch {
             if logExportErrors {
-                fputs("⚠️  TracingMiddleware: Failed to export span '\(span.name)': \(error)\n", stderr)
+                let message = "⚠️  TracingMiddleware: Failed to export span '\(span.name)': \(error)\n"
+                if let data = message.data(using: .utf8) {
+                    try? FileHandle.standardError.write(contentsOf: data)
+                }
             }
         }
     }

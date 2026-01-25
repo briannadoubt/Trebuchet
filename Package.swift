@@ -45,6 +45,8 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-docc-plugin.git", from: "1.4.0"),
         // PostgreSQL support
         .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.21.0"),
+        // Cryptography (cross-platform)
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
         // CLI dependencies
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.0"),
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
@@ -87,6 +89,7 @@ let package = Package(
             dependencies: [
                 "Trebuche",
                 "TrebucheCloud",
+                .product(name: "Crypto", package: "swift-crypto"),
             ]
         ),
         .target(

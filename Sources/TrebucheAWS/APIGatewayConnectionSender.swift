@@ -4,7 +4,7 @@ import FoundationNetworking
 #endif
 import Trebuche
 import TrebucheCloud
-import CryptoKit
+import Crypto
 
 // MARK: - API Gateway Connection Sender
 
