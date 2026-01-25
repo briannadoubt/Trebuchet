@@ -152,15 +152,9 @@ public actor TrebucheLogger {
 
 /// Default output handler that prints to stderr
 ///
-/// Note: stderr writes are thread-safe at the OS level despite being exposed as mutable state.
-/// We capture it at module initialization time to satisfy Swift 6 concurrency checking.
-/// On Linux, stderr is typed as optional, so we unwrap it (it's never nil in practice).
-#if os(Linux)
-nonisolated(unsafe) private let stderrHandle = stderr!
-#else
-nonisolated(unsafe) private let stderrHandle = stderr
-#endif
-
+/// Uses Foundation's FileHandle.standardError which is concurrency-safe.
 public let defaultOutput: @Sendable (String) -> Void = { message in
-    fputs(message + "\n", stderrHandle)
+    if let data = (message + "\n").data(using: .utf8) {
+        try? FileHandle.standardError.write(contentsOf: data)
+    }
 }
