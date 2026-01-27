@@ -180,14 +180,44 @@ let middleware: [CloudMiddleware] = [
 Permissive settings for local development:
 
 ```swift
-let devConfig = SecurityConfiguration(
-    authentication: .apiKey(keys: [
-        .init(key: "dev_test", principalId: "dev", roles: ["admin"])
-    ]),
-    authorization: .allowAll,
-    rateLimit: .permissive,  // 1000 req/s
-    validation: .lenient     // Large payload limits
+import TrebuchetCloud
+import TrebuchetSecurity
+
+// Development API key auth
+let devAuth = APIKeyAuthenticator(keys: [
+    .init(key: "dev_test", principalId: "dev", roles: ["admin"])
+])
+
+// Allow all access (dev only!)
+let devPolicy = RoleBasedPolicy(rules: [
+    .init(role: "admin", actorType: "*", method: "*")
+], denyByDefault: false)
+
+// Permissive rate limiting (1000 req/s)
+let devLimiter = TokenBucketLimiter(
+    requestsPerSecond: 1000,
+    burstSize: 2000
 )
+
+// Lenient validation (10MB payload limit)
+let devValidator = RequestValidator(configuration: .init(
+    maxPayloadSize: 10 * 1024 * 1024,
+    maxActorIDLength: 1000,
+    maxMethodNameLength: 500,
+    allowedMethodNamePattern: ".*"
+))
+
+// Configure gateway for development
+let devGateway = CloudGateway(configuration: .init(
+    middleware: [
+        ValidationMiddleware(validator: devValidator),
+        AuthenticationMiddleware(provider: devAuth),
+        AuthorizationMiddleware(policy: devPolicy),
+        RateLimitingMiddleware(limiter: devLimiter)
+    ],
+    stateStore: stateStore,
+    registry: registry
+))
 ```
 
 ### Production
@@ -195,15 +225,42 @@ let devConfig = SecurityConfiguration(
 Strict settings for production deployment:
 
 ```swift
-let prodConfig = SecurityConfiguration(
-    authentication: .jwt(issuer: "https://auth.example.com"),
-    authorization: .rbac(rules: [
-        .adminFullAccess,
-        .userReadOnly
-    ]),
-    rateLimit: .strict,      // 10 req/s per user
-    validation: .strict      // 1MB payload limit
+import TrebuchetCloud
+import TrebuchetSecurity
+
+// Production JWT authentication
+let prodAuth = JWTAuthenticator(configuration: .init(
+    issuer: "https://auth.example.com",
+    audience: "https://api.example.com",
+    clockSkew: 60
+))
+
+// Strict RBAC policy
+let prodPolicy = RoleBasedPolicy(rules: [
+    .adminFullAccess,
+    .userReadOnly
+])
+
+// Strict rate limiting (10 req/s per user)
+let prodLimiter = TokenBucketLimiter(
+    requestsPerSecond: 10,
+    burstSize: 20
 )
+
+// Strict validation (1MB payload limit)
+let prodValidator = RequestValidator(configuration: .strict)
+
+// Configure gateway for production
+let prodGateway = CloudGateway(configuration: .init(
+    middleware: [
+        ValidationMiddleware(validator: prodValidator),
+        AuthenticationMiddleware(provider: prodAuth),
+        AuthorizationMiddleware(policy: prodPolicy),
+        RateLimitingMiddleware(limiter: prodLimiter)
+    ],
+    stateStore: stateStore,
+    registry: registry
+))
 ```
 
 ### Custom
@@ -211,12 +268,35 @@ let prodConfig = SecurityConfiguration(
 Mix and match security components:
 
 ```swift
-let customConfig = SecurityConfiguration(
-    authentication: .apiKey(keys: loadKeysFromVault()),
-    authorization: .custom(MyCustomPolicy()),
-    rateLimit: .tokenBucket(rate: 50, burst: 100),
-    validation: .custom(MyValidator())
+import TrebuchetCloud
+import TrebuchetSecurity
+
+// Custom API key auth with keys from vault
+let customAuth = APIKeyAuthenticator(keys: loadKeysFromVault())
+
+// Custom authorization policy
+let customPolicy = MyCustomPolicy()
+
+// Custom rate limiting (50 req/s with bursts)
+let customLimiter = TokenBucketLimiter(
+    requestsPerSecond: 50,
+    burstSize: 100
 )
+
+// Custom validator
+let customValidator = MyValidator()
+
+// Configure gateway with custom components
+let customGateway = CloudGateway(configuration: .init(
+    middleware: [
+        ValidationMiddleware(validator: customValidator),
+        AuthenticationMiddleware(provider: customAuth),
+        AuthorizationMiddleware(policy: customPolicy),
+        RateLimitingMiddleware(limiter: customLimiter)
+    ],
+    stateStore: stateStore,
+    registry: registry
+))
 ```
 
 ## Error Handling
