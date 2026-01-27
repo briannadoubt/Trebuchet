@@ -76,9 +76,30 @@ let room = try client.resolve(GameRoom.self, id: "main-room")
 try await room.join(player: me)  // Looks local, works remotely!
 ```
 
+## Local Development
+
+Run your actors locally with automatic discovery and hot reload:
+
+```bash
+# Start local development server
+trebuchet dev --port 8080
+
+# Customize host and port
+trebuchet dev --host 0.0.0.0 --port 3000
+
+# Enable verbose output
+trebuchet dev --verbose
+```
+
+The `dev` command:
+- Discovers all `@Trebuchet` actors in your project
+- Builds and runs a local HTTP server
+- Exposes actors at `http://localhost:8080/invoke`
+- Provides health check at `http://localhost:8080/health`
+
 ## Cloud Deployment
 
-Deploy your actors to AWS Lambda with a single command:
+Deploy your actors to the cloud with a single command:
 
 ```bash
 # Initialize configuration
@@ -87,14 +108,26 @@ trebuchet init --name my-game-server --provider aws
 # Preview deployment
 trebuchet deploy --dry-run
 
-# Deploy to AWS
+# Deploy to AWS Lambda
 trebuchet deploy --provider aws --region us-east-1
+
+# Or deploy to Fly.io
+trebuchet deploy --provider fly --region iad
 ```
+
+### AWS Deployment
 
 The CLI discovers your `@Trebuchet` actors, generates Terraform, and deploys to:
 - **AWS Lambda** for actor execution
 - **DynamoDB** for state persistence
 - **CloudMap** for service discovery
+
+### Fly.io Deployment
+
+For Fly.io deployments:
+- **Fly Apps** for actor execution
+- **PostgreSQL** for state persistence (optional)
+- Auto-scaling with zero downtime
 
 See the [Cloud Deployment Guide](https://briannadoubt.github.io/Trebuchet/documentation/trebuchet/clouddeploymentoverview) for details.
 

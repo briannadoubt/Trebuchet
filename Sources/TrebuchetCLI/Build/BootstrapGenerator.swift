@@ -148,6 +148,58 @@ public struct BootstrapGenerator {
         """
     }
 
+    // MARK: - Public Helpers
+
+    /// Generate actor initialization code
+    /// - Parameters:
+    ///   - actors: Discovered actors
+    ///   - indent: Indentation level (spaces)
+    ///   - systemVariable: Name of the actor system variable (default: "gateway.system")
+    /// - Returns: Swift code to initialize actors
+    public static func generateActorInitializations(
+        actors: [ActorMetadata],
+        indent: Int = 8,
+        systemVariable: String = "gateway.system"
+    ) -> String {
+        var lines: [String] = []
+        let indentation = String(repeating: " ", count: indent)
+
+        for actor in actors {
+            let varName = actor.name.lowercased()
+            lines.append("\(indentation)let \(varName) = \(actor.name)(actorSystem: \(systemVariable))")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    /// Generate actor registration code
+    /// - Parameters:
+    ///   - actors: Discovered actors
+    ///   - indent: Indentation level (spaces)
+    ///   - logStatement: Optional log statement format (use %ACTOR% placeholder)
+    /// - Returns: Swift code to register actors with the gateway
+    public static func generateActorRegistrations(
+        actors: [ActorMetadata],
+        indent: Int = 8,
+        logStatement: String? = nil
+    ) -> String {
+        var lines: [String] = []
+        let indentation = String(repeating: " ", count: indent)
+
+        for actor in actors {
+            let varName = actor.name.lowercased()
+            let actorID = actor.name.lowercased()
+            lines.append("\(indentation)try await gateway.expose(\(varName), as: \"\(actorID)\")")
+
+            if let logFormat = logStatement {
+                let log = logFormat.replacingOccurrences(of: "%ACTOR%", with: actor.name)
+                lines.append("\(indentation)\(log)")
+            }
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
     // MARK: - Private
 
     private func generateImports(actors: [ActorMetadata]) -> String {
@@ -163,27 +215,15 @@ public struct BootstrapGenerator {
     }
 
     private func generateActorInitializations(actors: [ActorMetadata]) -> String {
-        var lines: [String] = []
-
-        for actor in actors {
-            let varName = actor.name.lowercased()
-            lines.append("        let \(varName) = \(actor.name)(actorSystem: gateway.system)")
-        }
-
-        return lines.joined(separator: "\n")
+        Self.generateActorInitializations(actors: actors, indent: 8, systemVariable: "gateway.system")
     }
 
     private func generateActorRegistrations(actors: [ActorMetadata]) -> String {
-        var lines: [String] = []
-
-        for actor in actors {
-            let varName = actor.name.lowercased()
-            let actorID = actor.name.lowercased()
-            lines.append("        try await gateway.expose(\(varName), as: \"\(actorID)\")")
-            lines.append("        logger.info(\"Registered actor: \(actor.name)\")")
-        }
-
-        return lines.joined(separator: "\n")
+        Self.generateActorRegistrations(
+            actors: actors,
+            indent: 8,
+            logStatement: #"logger.info("Registered actor: %ACTOR%")"#
+        )
     }
 
     /// Generate a Package.swift for the Lambda target

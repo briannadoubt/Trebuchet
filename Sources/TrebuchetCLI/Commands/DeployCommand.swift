@@ -7,7 +7,7 @@ struct DeployCommand: AsyncParsableCommand {
         abstract: "Deploy distributed actors to the cloud"
     )
 
-    @Option(name: .shortAndLong, help: "Cloud provider (aws, gcp, azure)")
+    @Option(name: .shortAndLong, help: "Cloud provider (aws, fly)")
     var provider: String?
 
     @Option(name: .shortAndLong, help: "Deployment region")

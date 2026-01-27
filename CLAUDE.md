@@ -33,6 +33,9 @@ trebuchet init --name my-project --provider aws
 # Deploy actors to AWS Lambda
 trebuchet deploy --provider aws --region us-east-1
 
+# Deploy to Fly.io
+trebuchet deploy --provider fly --region iad
+
 # Deploy with dry-run to preview changes
 trebuchet deploy --dry-run --verbose
 
@@ -43,7 +46,13 @@ trebuchet status
 trebuchet undeploy
 
 # Run actors locally for development
-trebuchet dev --port 8080
+trebuchet dev --port 8080 --host localhost
+
+# Run dev server with verbose output
+trebuchet dev --verbose
+
+# Generate a standalone server package
+trebuchet generate server --output ./my-server
 ```
 
 ## Architecture
