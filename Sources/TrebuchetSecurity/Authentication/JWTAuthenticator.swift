@@ -1,45 +1,62 @@
 // JWTAuthenticator.swift
-// JWT-based authentication
+// JWT-based authentication with cryptographic signature validation
 
 import Foundation
+import Crypto
 
-/// JWT authenticator
+/// JWT authenticator with full cryptographic signature validation
 ///
-/// **⚠️ SECURITY WARNING**: This is a simplified JWT implementation for demonstration and testing.
-/// This implementation does NOT validate JWT signatures and should NOT be used in production.
+/// This implementation validates JWT signatures using industry-standard algorithms
+/// and provides comprehensive claim validation.
 ///
-/// For production use, integrate a proper JWT library:
-/// - [swift-jwt](https://github.com/Kitura/Swift-JWT) - IBM's JWT library
-/// - [JWTKit](https://github.com/vapor/jwt-kit) - Vapor's JWT library
+/// # Supported Algorithms
+/// - **HS256**: HMAC with SHA-256 (symmetric key)
+/// - **ES256**: ECDSA with P-256 curve and SHA-256 (asymmetric key)
 ///
-/// # What This Implementation Does
-/// - ✅ Validates token structure (header.payload.signature format)
-/// - ✅ Validates issuer claim (`iss`)
-/// - ✅ Validates audience claim (`aud`)
-/// - ✅ Validates expiration claim (`exp`) with clock skew tolerance
-/// - ✅ Extracts roles and custom claims
+/// # Unsupported Algorithms
+/// - **RS256/RS384/RS512**: RSA signatures are not supported by swift-crypto.
+///   For RS256 support, consider using [JWTKit](https://github.com/vapor/jwt-kit)
+///   or [Swift-JWT](https://github.com/Kitura/Swift-JWT)
 ///
-/// # What This Implementation Does NOT Do
-/// - ❌ Verify cryptographic signatures (HS256, RS256, etc.)
-/// - ❌ Validate `nbf` (not before) claim
-/// - ❌ Validate `jti` (JWT ID) for replay protection
-/// - ❌ Support JWK (JSON Web Key) sets
-/// - ❌ Support key rotation
+/// # Security Features
+/// - ✅ Cryptographic signature validation (HS256, ES256)
+/// - ✅ Issuer (`iss`) claim validation
+/// - ✅ Audience (`aud`) claim validation
+/// - ✅ Expiration (`exp`) claim validation with clock skew tolerance
+/// - ✅ Not Before (`nbf`) claim validation
+/// - ✅ JWT ID (`jti`) replay protection
+/// - ✅ Issued At (`iat`) claim validation
 ///
-/// # Security Implications
-/// Without signature validation, tokens can be:
-/// - Forged by attackers
-/// - Modified to escalate privileges
-/// - Reused after revocation
+/// # Usage
+/// ```swift
+/// // HS256 with symmetric secret
+/// let authenticator = JWTAuthenticator(configuration: .init(
+///     issuer: "https://auth.example.com",
+///     audience: "my-app",
+///     signingKey: .symmetric(secret: "your-256-bit-secret")
+/// ))
 ///
-/// **Only use this for local development and testing.**
-///
-/// # TODO
-/// - [ ] Add signature validation using CryptoKit or third-party library
-/// - [ ] Add support for RS256, ES256 algorithms
-/// - [ ] Add JWK set support for key rotation
-/// - [ ] Add `nbf` and `jti` claim validation
+/// // ES256 with public key
+/// let publicKey = try P256.Signing.PublicKey(pemRepresentation: pemString)
+/// let authenticator = JWTAuthenticator(configuration: .init(
+///     issuer: "https://auth.example.com",
+///     signingKey: .asymmetric(publicKey: publicKey)
+/// ))
+/// ```
 public struct JWTAuthenticator: AuthenticationProvider {
+    /// Signing key types for JWT validation
+    public enum SigningKey: Sendable {
+        /// Symmetric key for HS256
+        case symmetric(secret: String)
+
+        /// Asymmetric public key for ES256
+        case asymmetric(publicKey: P256.Signing.PublicKey)
+
+        /// No signature validation (for testing only)
+        /// - Warning: Never use this in production!
+        case none
+    }
+
     /// JWT configuration
     public struct Configuration: Sendable {
         /// Expected issuer
@@ -48,44 +65,66 @@ public struct JWTAuthenticator: AuthenticationProvider {
         /// Expected audience (optional)
         public let audience: String?
 
-        /// Secret key for HS256 (not recommended for production)
-        public let secret: String?
+        /// Signing key for signature validation
+        public let signingKey: SigningKey
 
         /// Clock skew tolerance in seconds
         public let clockSkew: TimeInterval
 
+        /// Maximum age for tokens (optional)
+        public let maxAge: TimeInterval?
+
+        /// Enable JWT ID (jti) replay protection
+        public let enableReplayProtection: Bool
+
+        /// Time-to-live for JTI cache entries (default: 1 hour)
+        public let jtiCacheTTL: TimeInterval
+
         /// Creates a new JWT configuration
         /// - Parameters:
-        ///   - issuer: Expected issuer
-        ///   - audience: Expected audience (optional)
-        ///   - secret: Secret key for HS256 (optional)
+        ///   - issuer: Expected issuer claim value
+        ///   - audience: Expected audience claim value (optional)
+        ///   - signingKey: Key for signature validation
         ///   - clockSkew: Clock skew tolerance (default: 60 seconds)
+        ///   - maxAge: Maximum token age from `iat` (optional)
+        ///   - enableReplayProtection: Enable JTI tracking (default: true)
+        ///   - jtiCacheTTL: JTI cache entry lifetime (default: 3600 seconds)
         public init(
             issuer: String,
             audience: String? = nil,
-            secret: String? = nil,
-            clockSkew: TimeInterval = 60
+            signingKey: SigningKey = .none,
+            clockSkew: TimeInterval = 60,
+            maxAge: TimeInterval? = nil,
+            enableReplayProtection: Bool = true,
+            jtiCacheTTL: TimeInterval = 3600
         ) {
             self.issuer = issuer
             self.audience = audience
-            self.secret = secret
+            self.signingKey = signingKey
             self.clockSkew = clockSkew
+            self.maxAge = maxAge
+            self.enableReplayProtection = enableReplayProtection
+            self.jtiCacheTTL = jtiCacheTTL
         }
     }
 
     private let configuration: Configuration
+    private let jtiCache: JTICache
 
     /// Creates a new JWT authenticator
     /// - Parameter configuration: JWT configuration
     public init(configuration: Configuration) {
         self.configuration = configuration
+        self.jtiCache = JTICache(ttl: configuration.jtiCacheTTL)
 
         #if DEBUG
-        print("""
-        ⚠️  WARNING: JWTAuthenticator does NOT validate signatures!
-        This implementation is for testing only. Use a proper JWT library in production.
-        See documentation for security implications.
-        """)
+        if case .none = configuration.signingKey {
+            print("""
+            ⚠️  WARNING: JWTAuthenticator configured without signature validation!
+            This is acceptable for testing but should NEVER be used in production.
+            Configure a signing key using .symmetric() or .asymmetric() for production use.
+            """)
+        }
         #endif
     }
 
@@ -94,27 +133,25 @@ public struct JWTAuthenticator: AuthenticationProvider {
             throw AuthenticationError.malformed(reason: "Expected bearer token")
         }
 
-        // Parse JWT (simplified - in production use a proper JWT library)
-        let claims = try parseJWT(token)
+        // Parse and validate JWT
+        let (header, claims) = try parseAndValidateJWT(token)
 
-        // Verify issuer
-        guard claims.issuer == configuration.issuer else {
-            throw AuthenticationError.invalidCredentials
-        }
+        // Validate signature
+        try validateSignature(token: token, algorithm: header.algorithm)
 
-        // Verify audience if configured
-        if let expectedAudience = configuration.audience,
-           claims.audience != expectedAudience {
-            throw AuthenticationError.invalidCredentials
-        }
+        // Validate standard claims
+        try validateClaims(claims)
 
-        // Verify expiration
-        let now = Date()
-        if let exp = claims.expiresAt, now > exp.addingTimeInterval(configuration.clockSkew) {
-            throw AuthenticationError.expired
+        // Check JTI for replay protection
+        if configuration.enableReplayProtection, let jti = claims.jwtID {
+            let isNew = await jtiCache.checkAndStore(jti)
+            if !isNew {
+                throw AuthenticationError.custom(message: "Token has already been used (replay detected)")
+            }
         }
 
         // Create principal from claims
+        let now = Date()
         return Principal(
             id: claims.subject,
             type: .user,
@@ -125,26 +162,163 @@ public struct JWTAuthenticator: AuthenticationProvider {
         )
     }
 
-    private func parseJWT(_ token: String) throws -> JWTClaims {
+    // MARK: - JWT Parsing
+
+    private func parseAndValidateJWT(_ token: String) throws -> (JWTHeader, JWTClaims) {
+        let parts = token.split(separator: ".")
+        guard parts.count == 3 else {
+            throw AuthenticationError.malformed(reason: "Invalid JWT format: expected 3 parts separated by '.'")
+        }
+
+        // Decode header
+        let headerData = try base64URLDecode(String(parts[0]))
+        let header = try JSONDecoder().decode(JWTHeader.self, from: headerData)
+
+        // Decode payload
+        let payloadData = try base64URLDecode(String(parts[1]))
+        let payload = try JSONDecoder().decode(JWTPayload.self, from: payloadData)
+
+        let claims = JWTClaims(
+            subject: payload.sub,
+            issuer: payload.iss,
+            audience: payload.aud,
+            expiresAt: payload.exp.map { Date(timeIntervalSince1970: $0) },
+            notBefore: payload.nbf.map { Date(timeIntervalSince1970: $0) },
+            issuedAt: payload.iat.map { Date(timeIntervalSince1970: $0) },
+            jwtID: payload.jti,
+            roles: Set(payload.roles ?? []),
+            customClaims: payload.customClaims ?? [:]
+        )
+
+        return (header, claims)
+    }
+
+    // MARK: - Signature Validation
+
+    private func validateSignature(token: String, algorithm: JWTAlgorithm) throws {
+        switch configuration.signingKey {
+        case .none:
+            // No validation - testing only
+            return
+
+        case .symmetric(let secret):
+            guard algorithm == .hs256 else {
+                throw AuthenticationError.malformed(
+                    reason: "Algorithm mismatch: token uses \(algorithm.rawValue) but symmetric key configured (expects HS256)"
+                )
+            }
+            try validateHS256Signature(token: token, secret: secret)
+
+        case .asymmetric(let publicKey):
+            guard algorithm == .es256 else {
+                throw AuthenticationError.malformed(
+                    reason: "Algorithm mismatch: token uses \(algorithm.rawValue) but ES256 public key configured"
+                )
+            }
+            try validateES256Signature(token: token, publicKey: publicKey)
+        }
+    }
+
+    private func validateHS256Signature(token: String, secret: String) throws {
         let parts = token.split(separator: ".")
         guard parts.count == 3 else {
             throw AuthenticationError.malformed(reason: "Invalid JWT format")
         }
 
-        // Decode payload (base64url)
-        let payloadData = try base64URLDecode(String(parts[1]))
-        let payload = try JSONDecoder().decode(JWTPayload.self, from: payloadData)
+        let signedPart = "\(parts[0]).\(parts[1])"
+        let providedSignature = String(parts[2])
 
-        return JWTClaims(
-            subject: payload.sub,
-            issuer: payload.iss,
-            audience: payload.aud,
-            expiresAt: payload.exp.map { Date(timeIntervalSince1970: $0) },
-            issuedAt: payload.iat.map { Date(timeIntervalSince1970: $0) },
-            roles: Set(payload.roles ?? []),
-            customClaims: payload.customClaims ?? [:]
-        )
+        // Compute expected signature
+        guard let secretData = secret.data(using: .utf8),
+              let signedData = signedPart.data(using: .utf8) else {
+            throw AuthenticationError.malformed(reason: "Invalid encoding")
+        }
+
+        let key = SymmetricKey(data: secretData)
+        let signature = HMAC<SHA256>.authenticationCode(for: signedData, using: key)
+        let expectedSignature = base64URLEncode(Data(signature))
+
+        // Constant-time comparison to prevent timing attacks
+        guard constantTimeCompare(providedSignature, expectedSignature) else {
+            throw AuthenticationError.invalidCredentials
+        }
     }
+
+    private func validateES256Signature(token: String, publicKey: P256.Signing.PublicKey) throws {
+        let parts = token.split(separator: ".")
+        guard parts.count == 3 else {
+            throw AuthenticationError.malformed(reason: "Invalid JWT format")
+        }
+
+        let signedPart = "\(parts[0]).\(parts[1])"
+        let signatureB64 = String(parts[2])
+
+        guard let signedData = signedPart.data(using: .utf8) else {
+            throw AuthenticationError.malformed(reason: "Invalid encoding")
+        }
+
+        // Decode the signature (JWT uses raw R||S format, 64 bytes for P-256)
+        let signatureData = try base64URLDecode(signatureB64)
+
+        // ES256 signatures in JWT are raw concatenated R||S values (64 bytes)
+        guard signatureData.count == 64 else {
+            throw AuthenticationError.malformed(
+                reason: "Invalid ES256 signature length: expected 64 bytes, got \(signatureData.count)"
+            )
+        }
+
+        // Create signature from raw representation
+        let signature = try P256.Signing.ECDSASignature(rawRepresentation: signatureData)
+
+        // Verify the signature
+        guard publicKey.isValidSignature(signature, for: SHA256.hash(data: signedData)) else {
+            throw AuthenticationError.invalidCredentials
+        }
+    }
+
+    // MARK: - Claims Validation
+
+    private func validateClaims(_ claims: JWTClaims) throws {
+        let now = Date()
+
+        // Validate issuer
+        guard claims.issuer == configuration.issuer else {
+            throw AuthenticationError.invalidCredentials
+        }
+
+        // Validate audience if configured
+        if let expectedAudience = configuration.audience {
+            guard claims.audience == expectedAudience else {
+                throw AuthenticationError.invalidCredentials
+            }
+        }
+
+        // Validate expiration (exp)
+        if let exp = claims.expiresAt {
+            let adjustedExp = exp.addingTimeInterval(configuration.clockSkew)
+            if now > adjustedExp {
+                throw AuthenticationError.expired
+            }
+        }
+
+        // Validate not before (nbf)
+        if let nbf = claims.notBefore {
+            let adjustedNbf = nbf.addingTimeInterval(-configuration.clockSkew)
+            if now < adjustedNbf {
+                throw AuthenticationError.custom(message: "Token is not yet valid (nbf claim)")
+            }
+        }
+
+        // Validate max age from issued at (iat)
+        if let maxAge = configuration.maxAge, let iat = claims.issuedAt {
+            let maxValidTime = iat.addingTimeInterval(maxAge + configuration.clockSkew)
+            if now > maxValidTime {
+                throw AuthenticationError.expired
+            }
+        }
+    }
+
+    // MARK: - Utility Functions
 
     private func base64URLDecode(_ string: String) throws -> Data {
         var base64 = string
@@ -158,11 +332,49 @@ public struct JWTAuthenticator: AuthenticationProvider {
         }
 
         guard let data = Data(base64Encoded: base64) else {
-            throw AuthenticationError.malformed(reason: "Invalid base64 encoding")
+            throw AuthenticationError.malformed(reason: "Invalid base64url encoding")
         }
 
         return data
     }
+
+    private func base64URLEncode(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    /// Constant-time string comparison to prevent timing attacks
+    private func constantTimeCompare(_ a: String, _ b: String) -> Bool {
+        guard a.count == b.count else { return false }
+
+        var result: UInt8 = 0
+        for (charA, charB) in zip(a.utf8, b.utf8) {
+            result |= charA ^ charB
+        }
+        return result == 0
+    }
+}
+
+// MARK: - JWT Types
+
+/// JWT header
+struct JWTHeader: Codable {
+    let alg: String
+    let typ: String?
+
+    var algorithm: JWTAlgorithm {
+        JWTAlgorithm(rawValue: alg.uppercased()) ?? .unknown
+    }
+}
+
+/// Supported JWT algorithms
+enum JWTAlgorithm: String {
+    case hs256 = "HS256"
+    case es256 = "ES256"
+    case rs256 = "RS256"  // Not supported but recognized
+    case unknown
 }
 
 /// JWT claims
@@ -171,7 +383,9 @@ struct JWTClaims {
     let issuer: String
     let audience: String?
     let expiresAt: Date?
+    let notBefore: Date?
     let issuedAt: Date?
+    let jwtID: String?
     let roles: Set<String>
     let customClaims: [String: String]
 }
@@ -182,12 +396,14 @@ private struct JWTPayload: Codable {
     let iss: String
     let aud: String?
     let exp: TimeInterval?
+    let nbf: TimeInterval?
     let iat: TimeInterval?
+    let jti: String?
     let roles: [String]?
     let customClaims: [String: String]?
 
     private enum CodingKeys: String, CodingKey {
-        case sub, iss, aud, exp, iat, roles
+        case sub, iss, aud, exp, nbf, iat, jti, roles
     }
 
     init(from decoder: Decoder) throws {
@@ -196,14 +412,17 @@ private struct JWTPayload: Codable {
         iss = try container.decode(String.self, forKey: .iss)
         aud = try container.decodeIfPresent(String.self, forKey: .aud)
         exp = try container.decodeIfPresent(TimeInterval.self, forKey: .exp)
+        nbf = try container.decodeIfPresent(TimeInterval.self, forKey: .nbf)
         iat = try container.decodeIfPresent(TimeInterval.self, forKey: .iat)
+        jti = try container.decodeIfPresent(String.self, forKey: .jti)
         roles = try container.decodeIfPresent([String].self, forKey: .roles)
 
         // Decode custom claims (any keys not in standard claims)
         let allKeys = try decoder.container(keyedBy: AnyCodingKey.self)
         var custom: [String: String] = [:]
+        let standardKeys = ["sub", "iss", "aud", "exp", "nbf", "iat", "jti", "roles"]
         for key in allKeys.allKeys {
-            if !["sub", "iss", "aud", "exp", "iat", "roles"].contains(key.stringValue) {
+            if !standardKeys.contains(key.stringValue) {
                 if let value = try? allKeys.decode(String.self, forKey: key) {
                     custom[key.stringValue] = value
                 }
@@ -218,7 +437,9 @@ private struct JWTPayload: Codable {
         try container.encode(iss, forKey: .iss)
         try container.encodeIfPresent(aud, forKey: .aud)
         try container.encodeIfPresent(exp, forKey: .exp)
+        try container.encodeIfPresent(nbf, forKey: .nbf)
         try container.encodeIfPresent(iat, forKey: .iat)
+        try container.encodeIfPresent(jti, forKey: .jti)
         try container.encodeIfPresent(roles, forKey: .roles)
     }
 }
@@ -236,5 +457,191 @@ private struct AnyCodingKey: CodingKey {
     init?(intValue: Int) {
         self.stringValue = "\(intValue)"
         self.intValue = intValue
+    }
+}
+
+// MARK: - JTI Cache for Replay Protection
+
+/// Thread-safe cache for tracking used JWT IDs
+actor JTICache {
+    private var cache: [String: Date] = [:]
+    private let ttl: TimeInterval
+    private var lastCleanup: Date = Date()
+    private let cleanupInterval: TimeInterval = 300 // Clean every 5 minutes
+
+    init(ttl: TimeInterval) {
+        self.ttl = ttl
+    }
+
+    /// Check if JTI exists and store it if not
+    /// - Returns: `true` if this is a new JTI, `false` if already seen
+    func checkAndStore(_ jti: String) -> Bool {
+        // Periodic cleanup
+        let now = Date()
+        if now.timeIntervalSince(lastCleanup) > cleanupInterval {
+            cleanup()
+            lastCleanup = now
+        }
+
+        // Check if JTI already exists
+        if let storedTime = cache[jti] {
+            // Check if it's still within TTL
+            if now.timeIntervalSince(storedTime) < ttl {
+                return false // Already seen and still valid
+            }
+        }
+
+        // Store the new JTI
+        cache[jti] = now
+        return true
+    }
+
+    /// Remove expired entries
+    private func cleanup() {
+        let now = Date()
+        cache = cache.filter { _, storedTime in
+            now.timeIntervalSince(storedTime) < ttl
+        }
+    }
+
+    /// Clear all cached JTIs (for testing)
+    func clear() {
+        cache.removeAll()
+    }
+}
+
+// MARK: - JWT Creation Helpers (for testing)
+
+/// Helper for creating signed JWTs (primarily for testing)
+public enum JWTHelper {
+    /// Creates an HS256-signed JWT
+    /// - Parameters:
+    ///   - payload: JWT payload dictionary
+    ///   - secret: HMAC secret
+    /// - Returns: Signed JWT string
+    public static func createHS256Token(
+        subject: String,
+        issuer: String,
+        audience: String? = nil,
+        expiresIn: TimeInterval = 3600,
+        notBefore: Date? = nil,
+        jwtID: String? = nil,
+        roles: [String]? = nil,
+        customClaims: [String: String]? = nil,
+        secret: String
+    ) -> String {
+        let now = Date()
+
+        // Build header
+        let header = #"{"alg":"HS256","typ":"JWT"}"#
+
+        // Build payload
+        var payloadDict: [String: Any] = [
+            "sub": subject,
+            "iss": issuer,
+            "exp": now.addingTimeInterval(expiresIn).timeIntervalSince1970,
+            "iat": now.timeIntervalSince1970
+        ]
+
+        if let audience = audience {
+            payloadDict["aud"] = audience
+        }
+        if let nbf = notBefore {
+            payloadDict["nbf"] = nbf.timeIntervalSince1970
+        }
+        if let jti = jwtID {
+            payloadDict["jti"] = jti
+        }
+        if let roles = roles {
+            payloadDict["roles"] = roles
+        }
+        if let custom = customClaims {
+            for (key, value) in custom {
+                payloadDict[key] = value
+            }
+        }
+
+        let payloadData = try! JSONSerialization.data(withJSONObject: payloadDict)
+        let payload = String(data: payloadData, encoding: .utf8)!
+
+        // Encode parts
+        let headerB64 = base64URLEncode(header.data(using: .utf8)!)
+        let payloadB64 = base64URLEncode(payloadData)
+
+        // Sign
+        let signedPart = "\(headerB64).\(payloadB64)"
+        let key = SymmetricKey(data: secret.data(using: .utf8)!)
+        let signature = HMAC<SHA256>.authenticationCode(for: signedPart.data(using: .utf8)!, using: key)
+        let signatureB64 = base64URLEncode(Data(signature))
+
+        return "\(signedPart).\(signatureB64)"
+    }
+
+    /// Creates an ES256-signed JWT
+    /// - Parameters:
+    ///   - privateKey: P-256 signing private key
+    ///   - Other parameters same as HS256
+    /// - Returns: Signed JWT string
+    public static func createES256Token(
+        subject: String,
+        issuer: String,
+        audience: String? = nil,
+        expiresIn: TimeInterval = 3600,
+        notBefore: Date? = nil,
+        jwtID: String? = nil,
+        roles: [String]? = nil,
+        customClaims: [String: String]? = nil,
+        privateKey: P256.Signing.PrivateKey
+    ) throws -> String {
+        let now = Date()
+
+        // Build header
+        let header = #"{"alg":"ES256","typ":"JWT"}"#
+
+        // Build payload
+        var payloadDict: [String: Any] = [
+            "sub": subject,
+            "iss": issuer,
+            "exp": now.addingTimeInterval(expiresIn).timeIntervalSince1970,
+            "iat": now.timeIntervalSince1970
+        ]
+
+        if let audience = audience {
+            payloadDict["aud"] = audience
+        }
+        if let nbf = notBefore {
+            payloadDict["nbf"] = nbf.timeIntervalSince1970
+        }
+        if let jti = jwtID {
+            payloadDict["jti"] = jti
+        }
+        if let roles = roles {
+            payloadDict["roles"] = roles
+        }
+        if let custom = customClaims {
+            for (key, value) in custom {
+                payloadDict[key] = value
+            }
+        }
+
+        let payloadData = try JSONSerialization.data(withJSONObject: payloadDict)
+
+        // Encode parts
+        let headerB64 = base64URLEncode(header.data(using: .utf8)!)
+        let payloadB64 = base64URLEncode(payloadData)
+
+        // Sign
+        let signedPart = "\(headerB64).\(payloadB64)"
+        let signature = try privateKey.signature(for: SHA256.hash(data: signedPart.data(using: .utf8)!))
+        let signatureB64 = base64URLEncode(signature.rawRepresentation)
+
+        return "\(signedPart).\(signatureB64)"
+    }
+
+    private static func base64URLEncode(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 }
