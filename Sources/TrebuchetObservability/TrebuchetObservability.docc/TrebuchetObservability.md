@@ -18,8 +18,11 @@ let metrics = InMemoryMetricsCollector()
 await metrics.incrementCounter("invocations", by: 1, tags: ["method": "join"])
 
 // Distributed tracing
-let tracer = TrebuchetTracer()
-let span = tracer.startSpan("handleRequest", kind: .server)
+var span = Span(
+    context: TraceContext(),
+    name: "handleRequest",
+    kind: .server
+)
 defer { span.end() }
 ```
 
@@ -82,16 +85,20 @@ let logger = TrebuchetLogger(
 // Configure metrics
 let metrics = InMemoryMetricsCollector()
 
-// Configure tracing
-let tracer = TrebuchetTracer()
+// Configure tracing with an exporter
+let spanExporter = InMemorySpanExporter()
 
 // Inject into CloudGateway
 let gateway = CloudGateway(configuration: .init(
     middlewares: [
-        TracingMiddleware(tracer: tracer)
+        TracingMiddleware(exporter: spanExporter)
     ],
-    logger: logger,
-    metrics: metrics,
+    loggingConfiguration: .init(
+        level: .info,
+        formatter: .json,
+        redactedKeys: ["password", "token", "secret"]
+    ),
+    metricsCollector: metrics,
     stateStore: stateStore,
     registry: registry
 ))
@@ -148,12 +155,16 @@ distributed actor GameRoom {
 
 ```swift
 distributed actor GameRoom {
-    let tracer: TrebuchetTracer
+    let spanExporter: any SpanExporter
 
     distributed func join(player: Player) async throws {
-        // Start span for this operation
-        let span = tracer.startSpan("GameRoom.join", kind: .server)
-        defer { span.end() }
+        // Create span for this operation
+        var span = Span(
+            context: TraceContext(),
+            name: "GameRoom.join",
+            kind: .server,
+            startTime: Date()
+        )
 
         // Add span attributes
         span.setAttribute("player.id", value: player.id)
@@ -162,13 +173,21 @@ distributed actor GameRoom {
         do {
             // ... handle join ...
 
-            span.addEvent("Player validated")
+            span.addEvent(SpanEvent(name: "Player validated", timestamp: Date()))
 
             // ... more work ...
 
-            span.addEvent("Player added to room")
+            span.addEvent(SpanEvent(name: "Player added to room", timestamp: Date()))
+
+            // Mark success and export
+            span.end(status: .ok)
+            try await spanExporter.export([span])
         } catch {
-            span.recordError(error)
+            // Mark error
+            span.setAttribute("error.type", value: String(describing: type(of: error)))
+            span.setAttribute("error.message", value: String(describing: error))
+            span.end(status: .error)
+            try? await spanExporter.export([span])
             throw error
         }
     }
@@ -186,16 +205,19 @@ import TrebuchetObservability
 // Create observability components
 let logger = TrebuchetLogger(label: "gateway")
 let metrics = InMemoryMetricsCollector()
-let tracer = TrebuchetTracer()
+let spanExporter = InMemorySpanExporter()
 
 // Create tracing middleware
-let tracingMiddleware = TracingMiddleware(tracer: tracer)
+let tracingMiddleware = TracingMiddleware(exporter: spanExporter)
 
 // Configure gateway
 let gateway = CloudGateway(configuration: .init(
     middlewares: [tracingMiddleware],
-    logger: logger,
-    metrics: metrics,
+    loggingConfiguration: .init(
+        level: .info,
+        formatter: .json
+    ),
+    metricsCollector: metrics,
     stateStore: stateStore,
     registry: registry
 ))
@@ -339,29 +361,26 @@ await logger.info("User login", metadata: [
 
 ## Context Propagation
 
-Trace context automatically propagates across actor boundaries:
+Trace context automatically propagates across actor boundaries when using `TracingMiddleware`:
 
 ```swift
-// Client actor
-distributed actor GameClient {
-    let lobby: Lobby
+// With TracingMiddleware configured in CloudGateway,
+// trace context propagates automatically through invocations
 
-    func findGame() async throws {
-        let span = tracer.startSpan("findGame")
-        defer { span.end() }
+// Client calls actor
+let gameRoom = try client.resolve(GameRoom.self, id: "room-123")
+try await gameRoom.join(player: me)
 
-        // Trace context propagates automatically
-        let room = try await lobby.matchmake()
+// The TracingMiddleware:
+// 1. Extracts or creates a TraceContext
+// 2. Creates a Span for the invocation
+// 3. Propagates the context in the InvocationEnvelope
+// 4. Server-side middleware continues the trace
 
-        // Trace continues in the lobby actor
-        try await room.join()
-
-        // All operations have the same trace_id
-    }
-}
+// All operations in the call chain share the same trace_id
 ```
 
-The trace ID is automatically included in all logs and spans, allowing you to see the complete request flow.
+The trace ID is automatically included in all logs and spans created by the middleware, allowing you to see the complete request flow across multiple actors and services.
 
 ## Best Practices
 
@@ -424,18 +443,20 @@ Use consistent naming conventions:
 
 ### Trace Spans
 
-Create spans for significant operations:
+Create spans for significant operations when using manual tracing:
 
 ```swift
 // ✅ Meaningful spans
-let span = tracer.startSpan("GameRoom.join")       // Good
-let span = tracer.startSpan("validatePlayer")      // Good
-let span = tracer.startSpan("databaseQuery")       // Good
+var span = Span(context: traceContext, name: "GameRoom.join")       // Good
+var span = Span(context: traceContext, name: "validatePlayer")      // Good
+var span = Span(context: traceContext, name: "databaseQuery")       // Good
 
 // ❌ Too granular
-let span = tracer.startSpan("increment counter")   // Too detailed
-let span = tracer.startSpan("if statement")        // Not useful
+var span = Span(context: traceContext, name: "increment counter")   // Too detailed
+var span = Span(context: traceContext, name: "if statement")        // Not useful
 ```
+
+**Note**: When using `TracingMiddleware`, spans are automatically created for actor invocations. Manual span creation is only needed for sub-operations within an actor method.
 
 ## Performance
 
@@ -470,10 +491,14 @@ TrebuchetObservability is designed for production performance:
 ### Distributed Tracing
 
 - <doc:DistributedTracing>
-- ``TrebuchetTracer``
 - ``TraceContext``
 - ``Span``
+- ``SpanKind``
+- ``SpanStatus``
+- ``SpanEvent``
 - ``SpanExporter``
+- ``InMemorySpanExporter``
+- ``ConsoleSpanExporter``
 
 ### Middleware
 
