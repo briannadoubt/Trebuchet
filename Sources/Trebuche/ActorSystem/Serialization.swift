@@ -161,6 +161,7 @@ public struct InvocationEnvelope: Codable, Sendable {
     public let genericSubstitutions: [String]
     public let arguments: [Data]
     public let streamFilter: StreamFilter?  // Optional filter for streaming methods
+    public let traceContext: TraceContext?  // Optional trace context for distributed tracing
 
     public init(
         callID: UUID,
@@ -168,7 +169,8 @@ public struct InvocationEnvelope: Codable, Sendable {
         targetIdentifier: String,
         genericSubstitutions: [String],
         arguments: [Data],
-        streamFilter: StreamFilter? = nil
+        streamFilter: StreamFilter? = nil,
+        traceContext: TraceContext? = nil
     ) {
         self.callID = callID
         self.actorID = actorID
@@ -176,6 +178,7 @@ public struct InvocationEnvelope: Codable, Sendable {
         self.genericSubstitutions = genericSubstitutions
         self.arguments = arguments
         self.streamFilter = streamFilter
+        self.traceContext = traceContext
     }
 }
 

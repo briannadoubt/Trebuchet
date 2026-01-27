@@ -117,13 +117,17 @@ public struct ConfigLoader {
         // Determine discovery namespace
         let discoveryNamespace = config.discovery?.namespace ?? config.name
 
+        // Get state type
+        let stateType = config.state?.type
+
         return ResolvedConfig(
             projectName: config.name,
             provider: config.defaults.provider,
             region: region,
             actors: resolvedActors,
             stateTableName: stateTableName,
-            discoveryNamespace: discoveryNamespace
+            discoveryNamespace: discoveryNamespace,
+            stateType: stateType
         )
     }
 

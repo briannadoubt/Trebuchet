@@ -166,6 +166,23 @@ GameView()
     }
 ```
 
+Show content based on specific connection state:
+
+```swift
+GameView()
+    .whenConnectionState(.connecting) {
+        ProgressView("Connecting to server...")
+    }
+
+GameView()
+    .whenConnectionState(.reconnecting(1)) {
+        VStack {
+            ProgressView()
+            Text("Connection lost. Reconnecting...")
+        }
+    }
+```
+
 ### State Change Callbacks
 
 React to connection state changes:
@@ -314,4 +331,5 @@ struct ContentView: View {
 - ``SwiftUICore/View/trebuche(transport:reconnectionPolicy:autoConnect:)``
 - ``SwiftUICore/View/trebuchetConnection(name:)``
 - ``SwiftUICore/View/whenDisconnected(placeholder:)``
+- ``SwiftUICore/View/whenConnectionState(_:placeholder:)``
 - ``SwiftUICore/View/onTrebuchetStateChange(perform:)``

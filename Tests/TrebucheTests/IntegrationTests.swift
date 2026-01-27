@@ -73,7 +73,7 @@ struct LocalActorTests {
 
 // MARK: - Server Tests
 
-@Suite("Server Tests")
+@Suite("Server Tests", .serialized)
 struct ServerTests {
 
     @Test("Server creates actor with correct ID")
@@ -132,7 +132,7 @@ struct ServerTests {
 
 // MARK: - Client-Server Integration Tests
 
-@Suite("Client-Server Integration")
+@Suite("Client-Server Integration", .serialized)
 struct ClientServerIntegrationTests {
 
     @Test("Client connects to server")
@@ -232,7 +232,7 @@ struct ClientServerIntegrationTests {
 
 // MARK: - TLS Integration Tests
 
-@Suite("TLS Integration")
+@Suite("TLS Integration", .serialized)
 struct TLSIntegrationTests {
 
     // Self-signed test certificate (generated for localhost, valid for testing only)

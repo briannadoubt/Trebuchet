@@ -161,6 +161,7 @@ public struct ResolvedConfig: Sendable {
     public let actors: [ResolvedActorConfig]
     public let stateTableName: String
     public let discoveryNamespace: String
+    public let stateType: String?
 
     public init(
         projectName: String,
@@ -168,7 +169,8 @@ public struct ResolvedConfig: Sendable {
         region: String,
         actors: [ResolvedActorConfig],
         stateTableName: String,
-        discoveryNamespace: String
+        discoveryNamespace: String,
+        stateType: String? = nil
     ) {
         self.projectName = projectName
         self.provider = provider
@@ -176,6 +178,7 @@ public struct ResolvedConfig: Sendable {
         self.actors = actors
         self.stateTableName = stateTableName
         self.discoveryNamespace = discoveryNamespace
+        self.stateType = stateType
     }
 }
 

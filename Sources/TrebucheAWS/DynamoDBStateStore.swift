@@ -54,7 +54,57 @@ public actor DynamoDBStateStore: ActorStateStore {
         for actorID: String
     ) async throws {
         let stateData = try encoder.encode(state)
-        try await putItem(actorID: actorID, state: stateData)
+        try await putItem(actorID: actorID, state: stateData, sequenceNumber: nil)
+    }
+
+    /// Save state with an explicit sequence number for ordering
+    ///
+    /// This method is used for streaming scenarios where order matters.
+    /// The sequence number is stored and used by DynamoDB Streams consumers
+    /// to properly order state updates.
+    ///
+    /// - Parameters:
+    ///   - state: The state to save
+    ///   - actorID: The actor's identifier
+    ///   - sequenceNumber: Explicit sequence number, or nil to auto-increment
+    /// - Returns: The sequence number that was used
+    @discardableResult
+    public func saveWithSequence<State: Codable & Sendable>(
+        _ state: State,
+        for actorID: String,
+        sequenceNumber: UInt64? = nil
+    ) async throws -> UInt64 {
+        let stateData = try encoder.encode(state)
+
+        // If no sequence provided, get current and increment
+        let sequence: UInt64
+        if let provided = sequenceNumber {
+            sequence = provided
+        } else {
+            let current = try await getSequenceNumber(for: actorID) ?? 0
+            sequence = current + 1
+        }
+
+        try await putItem(actorID: actorID, state: stateData, sequenceNumber: sequence)
+
+        return sequence
+    }
+
+    /// Get the current sequence number for an actor
+    ///
+    /// - Parameter actorID: The actor's identifier
+    /// - Returns: The current sequence number, or nil if no state exists
+    public func getSequenceNumber(for actorID: String) async throws -> UInt64? {
+        let item = try await getItem(actorID: actorID)
+
+        guard let item = item,
+              let seqData = item["sequenceNumber"],
+              let seqStr = String(data: seqData, encoding: .utf8),
+              let sequence = UInt64(seqStr) else {
+            return nil
+        }
+
+        return sequence
     }
 
     public func delete(for actorID: String) async throws {
@@ -111,15 +161,22 @@ public actor DynamoDBStateStore: ActorStateStore {
         return result
     }
 
-    private func putItem(actorID: String, state: Data) async throws {
+    private func putItem(actorID: String, state: Data, sequenceNumber: UInt64?) async throws {
+        var item: [String: DynamoDBAttributeValue] = [
+            "actorId": .string(actorID),
+            "state": .binary(state),
+            "updatedAt": .string(ISO8601DateFormatter().string(from: Date()))
+        ]
+
+        // Add sequence number if provided
+        if let sequence = sequenceNumber {
+            item["sequenceNumber"] = .number("\(sequence)")
+        }
+
         let request = DynamoDBRequest(
             operation: "PutItem",
             tableName: tableName,
-            item: [
-                "actorId": .string(actorID),
-                "state": .binary(state),
-                "updatedAt": .string(ISO8601DateFormatter().string(from: Date()))
-            ]
+            item: item
         )
 
         _ = try await execute(request)
@@ -177,8 +234,8 @@ public actor DynamoDBStateStore: ActorStateStore {
 struct DynamoDBRequest: Codable {
     let operation: String
     let tableName: String
-    var key: [String: AttributeValue]?
-    var item: [String: AttributeValue]?
+    var key: [String: DynamoDBAttributeValue]?
+    var item: [String: DynamoDBAttributeValue]?
 
     enum CodingKeys: String, CodingKey {
         case tableName = "TableName"
@@ -201,11 +258,11 @@ struct DynamoDBRequest: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.operation = ""  // Not decoded
         self.tableName = try container.decode(String.self, forKey: .tableName)
-        self.key = try container.decodeIfPresent([String: AttributeValue].self, forKey: .key)
-        self.item = try container.decodeIfPresent([String: AttributeValue].self, forKey: .item)
+        self.key = try container.decodeIfPresent([String: DynamoDBAttributeValue].self, forKey: .key)
+        self.item = try container.decodeIfPresent([String: DynamoDBAttributeValue].self, forKey: .item)
     }
 
-    init(operation: String, tableName: String, key: [String: AttributeValue]? = nil, item: [String: AttributeValue]? = nil) {
+    init(operation: String, tableName: String, key: [String: DynamoDBAttributeValue]? = nil, item: [String: DynamoDBAttributeValue]? = nil) {
         self.operation = operation
         self.tableName = tableName
         self.key = key
@@ -214,14 +271,14 @@ struct DynamoDBRequest: Codable {
 }
 
 struct DynamoDBResponse: Codable {
-    var item: [String: AttributeValue]?
+    var item: [String: DynamoDBAttributeValue]?
 
     enum CodingKeys: String, CodingKey {
         case item = "Item"
     }
 }
 
-enum AttributeValue: Codable {
+enum DynamoDBAttributeValue: Codable {
     case string(String)
     case number(String)
     case binary(Data)

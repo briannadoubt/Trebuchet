@@ -66,33 +66,36 @@ public struct TrebuchetMacro: MemberMacro {
 
             // Generate observe method name: observePropertyName
             let observeMethodName = "observe\(propertyName.prefix(1).uppercased())\(propertyName.dropFirst())"
-            let removeMethodName = "_remove\(propertyName.prefix(1).uppercased())\(propertyName.dropFirst())Continuation"
+            let cleanupMethodName = "_cleanup\(propertyName.prefix(1).uppercased())\(propertyName.dropFirst())Continuation"
 
             // Generate actor-isolated async observe method with cleanup
             let observeMethod: DeclSyntax = """
                 public func \(raw: observeMethodName)() async -> AsyncStream<\(propertyType)> {
+                    let id = UUID()
+                    _\(raw: propertyName)_continuations[id] = nil // Reserve slot
+
                     return AsyncStream { continuation in
-                        _\(raw: propertyName)_continuations.append(continuation)
+                        _\(raw: propertyName)_continuations[id] = continuation
                         continuation.yield(_\(raw: propertyName)_storage)
 
-                        continuation.onTermination = { @Sendable [weak self] _ in
+                        continuation.onTermination = { @Sendable [id, self] _ in
                             Task {
-                                await self?.\(raw: removeMethodName)(continuation)
+                                try? await self.\(raw: cleanupMethodName)(id)
                             }
                         }
                     }
                 }
                 """
 
-            // Generate helper method to remove continuation
-            let removeMethod: DeclSyntax = """
-                private func \(raw: removeMethodName)(_ continuation: AsyncStream<\(propertyType)>.Continuation) {
-                    _\(raw: propertyName)_continuations.removeAll { $0 === continuation }
+            // Generate distributed cleanup method (private, so only callable from within actor)
+            let cleanupMethod: DeclSyntax = """
+                private distributed func \(raw: cleanupMethodName)(_ id: UUID) {
+                    _\(raw: propertyName)_continuations.removeValue(forKey: id)
                 }
                 """
 
             members.append(observeMethod)
-            members.append(removeMethod)
+            members.append(cleanupMethod)
         }
 
         // Generate streaming method enum if there are streaming properties
@@ -182,16 +185,16 @@ public struct StreamedStateMacro: AccessorMacro, PeerMacro {
                 """)
         }
 
-        // Generate continuation storage
+        // Generate continuation storage (optional values to handle reservation)
         peers.append("""
-            private var _\(raw: propertyName)_continuations: [AsyncStream<\(propertyType)>.Continuation] = []
+            private var _\(raw: propertyName)_continuations: [UUID: AsyncStream<\(propertyType)>.Continuation?] = [:]
             """)
 
         // Generate notification method
         peers.append("""
             private func _notify\(raw: propertyName.prefix(1).uppercased())\(raw: propertyName.dropFirst())Change() {
-                for continuation in _\(raw: propertyName)_continuations {
-                    continuation.yield(_\(raw: propertyName)_storage)
+                for continuation in _\(raw: propertyName)_continuations.values {
+                    continuation?.yield(_\(raw: propertyName)_storage)
                 }
             }
             """)

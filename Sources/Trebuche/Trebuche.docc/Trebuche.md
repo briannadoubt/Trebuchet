@@ -32,6 +32,8 @@ try await room.join(player: me)
 - <doc:GettingStarted>
 - <doc:DefiningActors>
 - <doc:SwiftUIIntegration>
+- <doc:Streaming>
+- <doc:AdvancedStreaming>
 
 ### Actor System
 
@@ -70,6 +72,8 @@ try await room.join(player: me)
 - <doc:CloudDeploymentOverview>
 - <doc:DeployingToAWS>
 - <doc:AWSConfiguration>
+- <doc:CloudDeployment/AWSWebSocketStreaming>
+- <doc:CloudDeployment/AWSCosts>
 - <doc:DeployingToGCP>
 - <doc:DeployingToAzure>
 

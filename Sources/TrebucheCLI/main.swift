@@ -13,6 +13,7 @@ struct TrebucheCLI: AsyncParsableCommand {
             UndeployCommand.self,
             DevCommand.self,
             InitCommand.self,
+            GenerateCommand.self,
         ],
         defaultSubcommand: nil
     )

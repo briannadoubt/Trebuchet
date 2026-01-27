@@ -2,6 +2,9 @@ import Distributed
 import Foundation
 import NIO
 import Trebuche
+@_exported import struct Trebuche.TraceContext
+import TrebucheObservability
+import TrebucheSecurity
 
 // MARK: - Cloud Gateway
 
@@ -16,6 +19,9 @@ public actor CloudGateway {
     private let registry: (any ServiceRegistry)?
     private var exposedActors: [String: any DistributedActor] = [:]
     private var running = false
+    private let logger: TrebucheLogger
+    private let metrics: (any MetricsCollector)?
+    private let middlewareChain: MiddlewareChain
 
     /// Configuration for the gateway
     public struct Configuration: Sendable {
@@ -25,6 +31,9 @@ public actor CloudGateway {
         public var registry: (any ServiceRegistry)?
         public var healthCheckPath: String
         public var invokePath: String
+        public var loggingConfiguration: LoggingConfiguration
+        public var metricsCollector: (any MetricsCollector)?
+        public var middlewares: [any CloudMiddleware]
 
         public init(
             host: String = "0.0.0.0",
@@ -32,7 +41,10 @@ public actor CloudGateway {
             stateStore: (any ActorStateStore)? = nil,
             registry: (any ServiceRegistry)? = nil,
             healthCheckPath: String = "/health",
-            invokePath: String = "/invoke"
+            invokePath: String = "/invoke",
+            loggingConfiguration: LoggingConfiguration = .default,
+            metricsCollector: (any MetricsCollector)? = nil,
+            middlewares: [any CloudMiddleware] = []
         ) {
             self.host = host
             self.port = port
@@ -40,6 +52,9 @@ public actor CloudGateway {
             self.registry = registry
             self.healthCheckPath = healthCheckPath
             self.invokePath = invokePath
+            self.loggingConfiguration = loggingConfiguration
+            self.metricsCollector = metricsCollector
+            self.middlewares = middlewares
         }
     }
 
@@ -53,6 +68,12 @@ public actor CloudGateway {
         self.transport = HTTPTransport()
         self.stateStore = configuration.stateStore
         self.registry = configuration.registry
+        self.logger = TrebucheLogger(
+            label: "CloudGateway",
+            configuration: configuration.loggingConfiguration
+        )
+        self.metrics = configuration.metricsCollector
+        self.middlewareChain = MiddlewareChain(middlewares: configuration.middlewares)
     }
 
     /// The actor system used by this gateway
@@ -72,6 +93,20 @@ public actor CloudGateway {
     ) async throws where A.ActorSystem == TrebuchetActorSystem {
         exposedActors[name] = actor
 
+        await logger.info("Exposed actor", metadata: [
+            "actorID": name,
+            "actorType": String(describing: A.self)
+        ])
+
+        // Update metrics
+        if let metrics {
+            await metrics.recordGauge(
+                TrebucheMetrics.actorsActive,
+                value: Double(exposedActors.count),
+                tags: [:]
+            )
+        }
+
         // Register with service registry if available
         if let registry {
             let endpoint = CloudEndpoint(
@@ -86,6 +121,9 @@ public actor CloudGateway {
                 metadata: ["type": String(describing: A.self)],
                 ttl: .seconds(30)
             )
+            await logger.debug("Registered actor with service registry", metadata: [
+                "actorID": name
+            ])
         }
     }
 
@@ -113,11 +151,22 @@ public actor CloudGateway {
         guard !running else { return }
         running = true
 
+        await logger.info("Starting CloudGateway", metadata: [
+            "host": configuration.host,
+            "port": String(configuration.port),
+            "actorCount": String(exposedActors.count)
+        ])
+
         let endpoint = Endpoint(host: configuration.host, port: configuration.port)
         try await transport.listen(on: endpoint)
 
+        await logger.info("CloudGateway listening", metadata: [
+            "endpoint": "\(configuration.host):\(configuration.port)"
+        ])
+
         // Start heartbeat task if registry is configured
         if let registry {
+            await logger.debug("Starting registry heartbeat loop")
             Task {
                 await heartbeatLoop(registry: registry)
             }
@@ -145,11 +194,37 @@ public actor CloudGateway {
     // MARK: - Message Handling
 
     private func handleMessage(_ message: TransportMessage) async {
+        let startTime = Date()
+
         do {
             let envelope = try JSONDecoder().decode(InvocationEnvelope.self, from: message.data)
 
+            // Extract trace context for distributed tracing
+            let traceContext = envelope.traceContext ?? TraceContext()
+
+            await logger.debug("Received invocation", metadata: [
+                "actorID": envelope.actorID.id,
+                "target": envelope.targetIdentifier,
+                "callID": envelope.callID.uuidString,
+                "traceID": traceContext.traceID.uuidString,
+                "spanID": traceContext.spanID.uuidString
+            ], correlationID: traceContext.traceID)
+
             // Find the target actor
             guard let actor = exposedActors[envelope.actorID.id] else {
+                await logger.warning("Actor not found", metadata: [
+                    "actorID": envelope.actorID.id,
+                    "callID": envelope.callID.uuidString
+                ])
+
+                // Record error metric
+                if let metrics {
+                    await metrics.incrementCounter(
+                        TrebucheMetrics.invocationsErrors,
+                        tags: ["reason": "actor_not_found"]
+                    )
+                }
+
                 let response = ResponseEnvelope.failure(
                     callID: envelope.callID,
                     error: "Actor '\(envelope.actorID.id)' not found"
@@ -159,12 +234,163 @@ public actor CloudGateway {
                 return
             }
 
-            // Execute the invocation
-            let response = try await executeInvocation(envelope, on: actor)
+            // Execute through middleware chain
+            let context = MiddlewareContext(
+                correlationID: traceContext.traceID,
+                timestamp: startTime
+            )
+            let response = try await middlewareChain.execute(
+                envelope,
+                actor: actor,
+                context: context
+            ) { envelope, context in
+                try await self.executeInvocation(envelope, on: actor)
+            }
             let responseData = try JSONEncoder().encode(response)
             try await message.respond(responseData)
 
+            let duration = Date().timeIntervalSince(startTime)
+
+            // Record metrics
+            if let metrics {
+                let actorType = String(describing: type(of: actor))
+                await metrics.incrementCounter(
+                    TrebucheMetrics.invocationsCount,
+                    tags: [
+                        "actor_type": actorType,
+                        "target": envelope.targetIdentifier,
+                        "status": "success"
+                    ]
+                )
+                await metrics.recordHistogramMilliseconds(
+                    TrebucheMetrics.invocationsLatency,
+                    milliseconds: duration * 1000,
+                    tags: [
+                        "actor_type": actorType,
+                        "target": envelope.targetIdentifier
+                    ]
+                )
+            }
+
+            await logger.info("Invocation completed", metadata: [
+                "actorID": envelope.actorID.id,
+                "target": envelope.targetIdentifier,
+                "callID": envelope.callID.uuidString,
+                "traceID": traceContext.traceID.uuidString,
+                "spanID": traceContext.spanID.uuidString,
+                "duration_ms": String(format: "%.2f", duration * 1000),
+                "status": "success"
+            ], correlationID: traceContext.traceID)
+
+        } catch let error as ValidationError {
+            // Validation errors - client issue
+            let duration = Date().timeIntervalSince(startTime)
+
+            await logger.warning("Request validation failed", metadata: [
+                "error": error.description,
+                "duration_ms": String(format: "%.2f", duration * 1000)
+            ])
+
+            if let metrics {
+                await metrics.incrementCounter(
+                    TrebucheMetrics.invocationsErrors,
+                    tags: ["reason": "validation_error"]
+                )
+            }
+
+            let response = ResponseEnvelope.failure(
+                callID: UUID(),
+                error: "Validation failed: \(error.description)"
+            )
+            if let responseData = try? JSONEncoder().encode(response) {
+                try? await message.respond(responseData)
+            }
+        } catch let error as AuthenticationError {
+            // Authentication errors - client issue
+            let duration = Date().timeIntervalSince(startTime)
+
+            await logger.warning("Authentication failed", metadata: [
+                "error": error.description,
+                "duration_ms": String(format: "%.2f", duration * 1000)
+            ])
+
+            if let metrics {
+                await metrics.incrementCounter(
+                    TrebucheMetrics.invocationsErrors,
+                    tags: ["reason": "authentication_error"]
+                )
+            }
+
+            let response = ResponseEnvelope.failure(
+                callID: UUID(),
+                error: "Authentication failed: \(error.description)"
+            )
+            if let responseData = try? JSONEncoder().encode(response) {
+                try? await message.respond(responseData)
+            }
+        } catch let error as AuthorizationError {
+            // Authorization errors - client issue
+            let duration = Date().timeIntervalSince(startTime)
+
+            await logger.warning("Authorization failed", metadata: [
+                "error": error.description,
+                "duration_ms": String(format: "%.2f", duration * 1000)
+            ])
+
+            if let metrics {
+                await metrics.incrementCounter(
+                    TrebucheMetrics.invocationsErrors,
+                    tags: ["reason": "authorization_error"]
+                )
+            }
+
+            let response = ResponseEnvelope.failure(
+                callID: UUID(),
+                error: "Authorization failed: \(error.description)"
+            )
+            if let responseData = try? JSONEncoder().encode(response) {
+                try? await message.respond(responseData)
+            }
+        } catch let error as RateLimitError {
+            // Rate limit errors - client issue
+            let duration = Date().timeIntervalSince(startTime)
+
+            await logger.warning("Rate limit exceeded", metadata: [
+                "error": error.description,
+                "duration_ms": String(format: "%.2f", duration * 1000)
+            ])
+
+            if let metrics {
+                await metrics.incrementCounter(
+                    TrebucheMetrics.invocationsErrors,
+                    tags: ["reason": "rate_limit_exceeded"]
+                )
+            }
+
+            let response = ResponseEnvelope.failure(
+                callID: UUID(),
+                error: "Rate limit exceeded: \(error.description)"
+            )
+            if let responseData = try? JSONEncoder().encode(response) {
+                try? await message.respond(responseData)
+            }
         } catch {
+            // Handler errors - server issue or actor logic error
+            let duration = Date().timeIntervalSince(startTime)
+
+            await logger.error("Actor invocation failed", metadata: [
+                "error": String(describing: error),
+                "duration_ms": String(format: "%.2f", duration * 1000)
+            ])
+
+            // Record error metric
+            if let metrics {
+                await metrics.incrementCounter(
+                    TrebucheMetrics.invocationsErrors,
+                    tags: ["reason": "handler_error"]
+                )
+            }
+
             // Send error response
             let response = ResponseEnvelope.failure(
                 callID: UUID(),
@@ -199,6 +425,13 @@ public actor CloudGateway {
                 result: handler.resultData ?? Data()
             )
         } catch {
+            await logger.error("Actor method execution failed", metadata: [
+                "actorID": envelope.actorID.id,
+                "target": envelope.targetIdentifier,
+                "callID": envelope.callID.uuidString,
+                "error": String(describing: error)
+            ])
+
             return ResponseEnvelope.failure(
                 callID: envelope.callID,
                 error: String(describing: error)
