@@ -1,4 +1,4 @@
-/// TrebucheAWS - AWS Lambda deployment support for Trebuche
+/// TrebuchetAWS - AWS Lambda deployment support for Trebuchet
 ///
 /// This module provides AWS-specific implementations for deploying
 /// distributed actors to AWS Lambda with:
@@ -8,14 +8,14 @@
 ///
 /// ## Overview
 ///
-/// TrebucheAWS enables serverless deployment of Swift distributed actors.
+/// TrebuchetAWS enables serverless deployment of Swift distributed actors.
 /// Each actor runs in a Lambda function and can discover and communicate
 /// with other actors through CloudMap.
 ///
 /// ## Basic Usage
 ///
 /// ```swift
-/// import TrebucheAWS
+/// import TrebuchetAWS
 ///
 /// // Configure AWS provider
 /// let provider = AWSProvider(region: "us-east-1")
@@ -62,5 +62,5 @@
 /// }
 /// ```
 
-@_exported import Trebuche
-@_exported import TrebucheCloud
+@_exported import Trebuchet
+@_exported import TrebuchetCloud

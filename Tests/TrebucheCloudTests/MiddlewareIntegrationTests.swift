@@ -3,10 +3,10 @@
 
 import Testing
 import Foundation
-@testable import Trebuche
-@testable import TrebucheCloud
-@testable import TrebucheObservability
-@testable import TrebucheSecurity
+@testable import Trebuchet
+@testable import TrebuchetCloud
+@testable import TrebuchetObservability
+@testable import TrebuchetSecurity
 
 @Suite("Middleware Integration Tests")
 struct MiddlewareIntegrationTests {

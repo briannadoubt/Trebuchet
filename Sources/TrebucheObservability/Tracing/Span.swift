@@ -2,7 +2,7 @@
 // Span representing a single operation in a distributed trace
 
 import Foundation
-import Trebuche
+import Trebuchet
 
 /// Span representing a single operation in the trace
 public struct Span: Sendable {

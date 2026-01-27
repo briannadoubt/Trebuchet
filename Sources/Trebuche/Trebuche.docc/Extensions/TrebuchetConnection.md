@@ -1,4 +1,4 @@
-# ``Trebuche/TrebuchetConnection``
+# ``Trebuchet/TrebuchetConnection``
 
 An observable connection wrapper with automatic reconnection support.
 

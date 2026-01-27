@@ -1,4 +1,4 @@
-# ``Trebuche/TrebuchetError``
+# ``Trebuchet/TrebuchetError``
 
 ## Overview
 

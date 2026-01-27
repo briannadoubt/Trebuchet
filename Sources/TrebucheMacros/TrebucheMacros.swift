@@ -218,7 +218,7 @@ enum MacroError: Error, CustomStringConvertible {
 }
 
 @main
-struct TrebucheMacrosPlugin: CompilerPlugin {
+struct TrebuchetMacrosPlugin: CompilerPlugin {
     let providingMacros: [Macro.Type] = [
         TrebuchetMacro.self,
         StreamedStateMacro.self,

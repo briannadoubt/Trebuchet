@@ -1,7 +1,7 @@
 import Testing
 import Distributed
 import Foundation
-@testable import Trebuche
+@testable import Trebuchet
 
 // MARK: - Actor ID Tests
 

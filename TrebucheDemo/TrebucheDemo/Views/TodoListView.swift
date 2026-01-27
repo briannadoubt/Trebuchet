@@ -1,12 +1,12 @@
 //
 //  TodoListView.swift
-//  TrebucheDemo
+//  TrebuchetDemo
 //
 //  Created by Brianna Zamora on 1/20/26.
 //
 
 import SwiftUI
-import Trebuche
+import Trebuchet
 import Shared
 
 struct TodoListView: View {
@@ -154,5 +154,5 @@ struct TodoListView: View {
 
 #Preview {
     TodoListView()
-        .trebuche(transport: .webSocket(host: "127.0.0.1", port: 8080))
+        .Trebuchet(transport: .webSocket(host: "127.0.0.1", port: 8080))
 }

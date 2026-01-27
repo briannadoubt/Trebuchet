@@ -2,8 +2,8 @@
 // Rate limiting middleware
 
 import Foundation
-import Trebuche
-import TrebucheSecurity
+import Trebuchet
+import TrebuchetSecurity
 
 /// Middleware that enforces rate limits
 public struct RateLimitingMiddleware: CloudMiddleware {

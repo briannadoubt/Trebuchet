@@ -1,10 +1,10 @@
-# ``Trebuche``
+# ``Trebuchet``
 
 A Swift 6.2 location-transparent distributed actor framework that makes RPC stupid simple.
 
 ## Overview
 
-Trebuche enables Swift distributed actors to communicate seamlessly across process and network boundaries. Define your actors once, then deploy them anywhere – from local development to cloud serverless environments.
+Trebuchet enables Swift distributed actors to communicate seamlessly across process and network boundaries. Define your actors once, then deploy them anywhere – from local development to cloud serverless environments.
 
 ```swift
 @Trebuchet
@@ -79,5 +79,5 @@ try await room.join(player: me)
 
 ### Module Reference
 
-- <doc:TrebucheCloud>
-- <doc:TrebucheAWS>
+- <doc:TrebuchetCloud>
+- <doc:TrebuchetAWS>

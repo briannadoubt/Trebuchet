@@ -1,13 +1,13 @@
 //
-//  TrebucheDemoUITests.swift
-//  TrebucheDemoUITests
+//  TrebuchetDemoUITests.swift
+//  TrebuchetDemoUITests
 //
 //  Created by Brianna Zamora on 1/20/26.
 //
 
 import XCTest
 
-final class TrebucheDemoUITests: XCTestCase {
+final class TrebuchetDemoUITests: XCTestCase {
 
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.

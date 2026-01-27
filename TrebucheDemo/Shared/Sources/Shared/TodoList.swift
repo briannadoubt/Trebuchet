@@ -1,10 +1,10 @@
 //
 //  TodoList.swift
-//  TrebucheDemoShared
+//  TrebuchetDemoShared
 //
 
 import Foundation
-import Trebuche
+import Trebuchet
 
 /// A distributed actor that manages a list of todos with streaming state
 @Trebuchet

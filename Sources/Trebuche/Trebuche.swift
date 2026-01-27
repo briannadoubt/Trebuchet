@@ -1,4 +1,4 @@
-// Trebuche - Location-transparent distributed actors for Swift
+// Trebuchet - Location-transparent distributed actors for Swift
 //
 // Make distributed actors stupid simple.
 //
@@ -45,7 +45,7 @@
 /// The macro will generate:
 /// - `public func observeState() -> AsyncStream<State>`
 @attached(member, names: named(ActorSystem), arbitrary)
-public macro Trebuchet() = #externalMacro(module: "TrebucheMacros", type: "TrebuchetMacro")
+public macro Trebuchet() = #externalMacro(module: "TrebuchetMacros", type: "TrebuchetMacro")
 
 /// Marks a property for automatic state streaming.
 ///
@@ -71,7 +71,7 @@ public macro Trebuchet() = #externalMacro(module: "TrebucheMacros", type: "Trebu
 /// - Can only be used within @Trebuchet distributed actors
 @attached(accessor)
 @attached(peer, names: arbitrary)
-public macro StreamedState() = #externalMacro(module: "TrebucheMacros", type: "StreamedStateMacro")
+public macro StreamedState() = #externalMacro(module: "TrebuchetMacros", type: "StreamedStateMacro")
 
 // MARK: - Convenience Extensions
 

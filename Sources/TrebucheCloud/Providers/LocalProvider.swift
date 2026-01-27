@@ -1,6 +1,6 @@
 import Distributed
 import Foundation
-import Trebuche
+import Trebuchet
 
 // MARK: - Local Provider
 
@@ -168,8 +168,8 @@ public struct LocalDeployment: CloudDeployment {
         )
     }
 
-    /// Convert to a traditional Trebuche endpoint
-    public var trebucheEndpoint: Endpoint {
+    /// Convert to a traditional Trebuchet endpoint
+    public var TrebuchetEndpoint: Endpoint {
         Endpoint(host: host, port: port)
     }
 }

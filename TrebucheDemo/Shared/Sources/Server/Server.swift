@@ -1,10 +1,10 @@
 //
 //  Server.swift
-//  TrebucheDemoServer
+//  TrebuchetDemoServer
 //
 
 import Foundation
-import Trebuche
+import Trebuchet
 import Shared
 
 @main
@@ -12,7 +12,7 @@ struct Server {
     static func main() async throws {
         let port: UInt16 = 8080
 
-        print("🚀 Starting Trebuche Demo Server on port \(port)...")
+        print("🚀 Starting Trebuchet Demo Server on port \(port)...")
 
         let server = TrebuchetServer(transport: .webSocket(port: port))
 

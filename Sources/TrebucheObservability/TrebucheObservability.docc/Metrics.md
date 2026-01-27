@@ -1,10 +1,10 @@
 # Metrics
 
-Production-grade metrics collection for Trebuche distributed actors.
+Production-grade metrics collection for Trebuchet distributed actors.
 
 ## Overview
 
-The TrebucheObservability module provides comprehensive metrics collection with support for:
+The TrebuchetObservability module provides comprehensive metrics collection with support for:
 
 - Counters (cumulative values that only increase)
 - Gauges (point-in-time values that can go up or down)
@@ -18,7 +18,7 @@ The TrebucheObservability module provides comprehensive metrics collection with 
 Create a metrics collector and start recording metrics:
 
 ```swift
-import TrebucheObservability
+import TrebuchetObservability
 
 let metrics = InMemoryMetricsCollector()
 
@@ -92,27 +92,27 @@ if let stats = await histogram?.statistics(for: ["endpoint": "/api"]) {
 
 ## Standard Metrics
 
-Trebuche defines standard metrics for common operations:
+Trebuchet defines standard metrics for common operations:
 
 ```swift
-import TrebucheObservability
+import TrebuchetObservability
 
 // Invocation metrics
-TrebucheMetrics.invocationsCount     // "trebuche.invocations.count"
-TrebucheMetrics.invocationsLatency   // "trebuche.invocations.latency"
-TrebucheMetrics.invocationsErrors    // "trebuche.invocations.errors"
+TrebuchetMetrics.invocationsCount     // "Trebuchet.invocations.count"
+TrebuchetMetrics.invocationsLatency   // "Trebuchet.invocations.latency"
+TrebuchetMetrics.invocationsErrors    // "Trebuchet.invocations.errors"
 
 // Connection metrics
-TrebucheMetrics.connectionsActive    // "trebuche.connections.active"
-TrebucheMetrics.connectionsTotal     // "trebuche.connections.total"
+TrebuchetMetrics.connectionsActive    // "Trebuchet.connections.active"
+TrebuchetMetrics.connectionsTotal     // "Trebuchet.connections.total"
 
 // State metrics
-TrebucheMetrics.stateOperationsCount   // "trebuche.state.operations.count"
-TrebucheMetrics.stateOperationsLatency // "trebuche.state.operations.latency"
+TrebuchetMetrics.stateOperationsCount   // "Trebuchet.state.operations.count"
+TrebuchetMetrics.stateOperationsLatency // "Trebuchet.state.operations.latency"
 
 // System metrics
-TrebucheMetrics.actorsActive         // "trebuche.actors.active"
-TrebucheMetrics.memoryUsed           // "trebuche.memory.used"
+TrebuchetMetrics.actorsActive         // "Trebuchet.actors.active"
+TrebuchetMetrics.memoryUsed           // "Trebuchet.memory.used"
 ```
 
 ## CloudGateway Integration
@@ -120,8 +120,8 @@ TrebucheMetrics.memoryUsed           // "trebuche.memory.used"
 Automatically track metrics for all actor invocations:
 
 ```swift
-import TrebucheCloud
-import TrebucheObservability
+import TrebuchetCloud
+import TrebuchetObservability
 
 let metrics = InMemoryMetricsCollector()
 
@@ -133,10 +133,10 @@ let gateway = CloudGateway(configuration: .init(
 try await gateway.expose(myActor, as: "my-actor")
 
 // Gateway now automatically tracks:
-// - trebuche.invocations.count (by actor_type, target, status)
-// - trebuche.invocations.latency (by actor_type, target)
-// - trebuche.invocations.errors (by reason)
-// - trebuche.actors.active
+// - Trebuchet.invocations.count (by actor_type, target, status)
+// - Trebuchet.invocations.latency (by actor_type, target)
+// - Trebuchet.invocations.errors (by reason)
+// - Trebuchet.actors.active
 ```
 
 ## CloudWatch Reporter
@@ -145,7 +145,7 @@ Send metrics to AWS CloudWatch:
 
 ```swift
 let cloudWatch = CloudWatchReporter(configuration: .init(
-    namespace: "Trebuche/Production",
+    namespace: "Trebuchet/Production",
     region: "us-east-1",
     flushInterval: .seconds(60),
     maxBatchSize: 20
@@ -242,8 +242,8 @@ let value = await counter?.value(for: [
 
 ### Metric Naming
 
-- Use dotted notation: `trebuche.invocations.latency`
-- Include component: `trebuche.state.operations.count`
+- Use dotted notation: `Trebuchet.invocations.latency`
+- Include component: `Trebuchet.state.operations.count`
 - End with unit when applicable: `_count`, `_latency`, `_bytes`
 
 ## See Also
@@ -254,4 +254,4 @@ let value = await counter?.value(for: [
 - ``Histogram``
 - ``InMemoryMetricsCollector``
 - ``CloudWatchReporter``
-- ``TrebucheMetrics``
+- ``TrebuchetMetrics``

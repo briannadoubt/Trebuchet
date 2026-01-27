@@ -1,13 +1,13 @@
-# TrebucheAWS Module
+# TrebuchetAWS Module
 
 Deploy Swift distributed actors to AWS Lambda with DynamoDB state and CloudMap discovery.
 
 ## Overview
 
-TrebucheAWS provides AWS-specific implementations of the TrebucheCloud protocols, enabling seamless deployment of distributed actors to AWS Lambda.
+TrebuchetAWS provides AWS-specific implementations of the TrebuchetCloud protocols, enabling seamless deployment of distributed actors to AWS Lambda.
 
 ```swift
-import TrebucheAWS
+import TrebuchetAWS
 
 // Configure state and discovery
 let stateStore = DynamoDBStateStore(tableName: "my-actor-state")
@@ -42,12 +42,12 @@ try await gateway.expose(GameRoom(actorSystem: gateway.system), as: "game-room")
 ## Lambda Integration
 
 - `LambdaInvokeTransport` - Transport for invoking Lambda functions
-- `LambdaEventAdapter` - Converts between Lambda events and Trebuche format
+- `LambdaEventAdapter` - Converts between Lambda events and Trebuchet format
 - `APIGatewayV2Request` - API Gateway HTTP API request format
 - `APIGatewayV2Response` - API Gateway HTTP API response format
 - `HTTPResponseStatus` - HTTP status codes
 
 ## Actor Communication
 
-- `TrebucheCloudClient` - Client for resolving actors across Lambda functions
+- `TrebuchetCloudClient` - Client for resolving actors across Lambda functions
 - `CloudLambdaContext` - Context available to actors running in Lambda

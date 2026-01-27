@@ -1,6 +1,6 @@
 import Distributed
 import Foundation
-import Trebuche
+import Trebuchet
 
 // MARK: - Cloud Provider Protocol
 

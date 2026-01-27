@@ -1,5 +1,5 @@
-// TrebucheLogger.swift
-// Main logging interface for Trebuche observability
+// TrebuchetLogger.swift
+// Main logging interface for Trebuchet observability
 
 import Foundation
 
@@ -45,8 +45,8 @@ public struct LoggingConfiguration: Sendable {
     )
 }
 
-/// Structured logger for Trebuche distributed actors
-public actor TrebucheLogger {
+/// Structured logger for Trebuchet distributed actors
+public actor TrebuchetLogger {
     /// Logger label identifying the source
     public let label: String
 

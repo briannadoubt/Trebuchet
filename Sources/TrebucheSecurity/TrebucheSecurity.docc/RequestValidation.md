@@ -16,7 +16,7 @@ The ``RequestValidator`` checks requests before they're processed, providing a s
 ## Basic Usage
 
 ```swift
-import TrebucheSecurity
+import TrebuchetSecurity
 
 let validator = RequestValidator()
 

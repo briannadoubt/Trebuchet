@@ -3,7 +3,7 @@ import NIO
 import NIOHTTP1
 import NIOFoundationCompat
 import NIOSSL
-import Trebuche
+import Trebuchet
 
 // MARK: - HTTP Transport
 

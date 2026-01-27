@@ -4,7 +4,7 @@ Protect your distributed actors from abuse with flexible rate limiting.
 
 ## Overview
 
-TrebucheSecurity provides two rate limiting algorithms:
+TrebuchetSecurity provides two rate limiting algorithms:
 
 - **Token Bucket**: Allows controlled bursts while maintaining average rate
 - **Sliding Window**: Precise per-window limits with smooth transitions
@@ -30,7 +30,7 @@ The token bucket algorithm is ideal for APIs that need to allow occasional burst
 ### Basic Usage
 
 ```swift
-import TrebucheSecurity
+import TrebuchetSecurity
 
 // Allow 100 requests/second with bursts up to 200
 let limiter = TokenBucketLimiter(
@@ -96,7 +96,7 @@ The sliding window algorithm provides precise limits within time windows and smo
 ### Basic Usage
 
 ```swift
-import TrebucheSecurity
+import TrebuchetSecurity
 
 // Allow 1000 requests per minute
 let limiter = SlidingWindowLimiter(

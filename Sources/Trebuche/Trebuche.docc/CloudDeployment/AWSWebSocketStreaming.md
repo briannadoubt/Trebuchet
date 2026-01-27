@@ -1,10 +1,10 @@
 # AWS WebSocket Streaming
 
-Deploy Trebuche actors with realtime WebSocket streaming on AWS Lambda and API Gateway.
+Deploy Trebuchet actors with realtime WebSocket streaming on AWS Lambda and API Gateway.
 
 ## Overview
 
-Trebuche supports production-grade realtime streaming on AWS using:
+Trebuchet supports production-grade realtime streaming on AWS using:
 - **API Gateway WebSocket API** for persistent connections
 - **AWS Lambda** for serverless actor execution
 - **DynamoDB** for connection tracking and actor state
@@ -32,13 +32,13 @@ Lambda (WebSocket Handler)
 ## Prerequisites
 
 - AWS account with appropriate permissions
-- `trebuche` CLI installed
+- `Trebuchet` CLI installed
 - AWS credentials configured
 - Terraform installed (optional, CLI can generate Terraform)
 
 ## Configuration
 
-Create a `trebuche.yaml` configuration file:
+Create a `Trebuchet.yaml` configuration file:
 
 ```yaml
 name: my-streaming-app
@@ -81,10 +81,10 @@ Deploy your streaming actors to AWS:
 
 ```bash
 # Preview what will be deployed
-trebuche deploy --dry-run --verbose
+Trebuchet deploy --dry-run --verbose
 
 # Deploy to AWS
-trebuche deploy --provider aws --region us-east-1
+Trebuchet deploy --provider aws --region us-east-1
 
 # Output:
 # ✓ Lambda: arn:aws:lambda:us-east-1:123:function:my-app-websocket
@@ -100,9 +100,9 @@ The WebSocket Lambda handler manages connection lifecycle and message routing:
 
 ```swift
 import AWSLambdaRuntime
-import Trebuche
-import TrebucheCloud
-import TrebucheAWS
+import Trebuchet
+import TrebuchetCloud
+import TrebuchetAWS
 
 @main
 struct WebSocketHandler: SimpleLambdaHandler {
@@ -172,11 +172,11 @@ struct WebSocketHandler: SimpleLambdaHandler {
 
 ### Connection Storage and Sender Implementations
 
-TrebucheAWS provides production-ready implementations for WebSocket connection management:
+TrebuchetAWS provides production-ready implementations for WebSocket connection management:
 
-**Production Implementations** (included in TrebucheAWS):
+**Production Implementations** (included in TrebuchetAWS):
 ```swift
-import TrebucheAWS
+import TrebuchetAWS
 
 // DynamoDB-backed connection storage
 let storage = DynamoDBConnectionStorage(
@@ -337,7 +337,7 @@ The stream processor Lambda watches for state changes and broadcasts to clients:
 
 ```swift
 import AWSLambdaRuntime
-import TrebucheAWS
+import TrebuchetAWS
 
 @main
 struct StreamProcessor: SimpleLambdaHandler {
@@ -520,7 +520,7 @@ resource "aws_lambda_event_source_mapping" "dynamodb_stream" {
 Connect to your deployed WebSocket API:
 
 ```swift
-import Trebuche
+import Trebuchet
 
 // Production endpoint from deployment
 let endpoint = "wss://abc123.execute-api.us-east-1.amazonaws.com/production"
@@ -545,7 +545,7 @@ struct MyApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .trebuche(transport: .webSocket(
+                .Trebuchet(transport: .webSocket(
                     url: "wss://abc123.execute-api.us-east-1.amazonaws.com/production"
                 ))
         }

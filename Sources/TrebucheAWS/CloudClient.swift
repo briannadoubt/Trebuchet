@@ -1,12 +1,12 @@
 import Distributed
 import Foundation
-import Trebuche
-import TrebucheCloud
+import Trebuchet
+import TrebuchetCloud
 
 // MARK: - Cloud Client
 
 /// Client for resolving and calling actors across Lambda invocations
-public actor TrebucheCloudClient {
+public actor TrebuchetCloudClient {
     private let actorSystem: TrebuchetActorSystem
     private let registry: any ServiceRegistry
     private let transportFactory: TransportFactory
@@ -32,7 +32,7 @@ public actor TrebucheCloudClient {
         region: String,
         namespace: String,
         credentials: AWSCredentials = .default
-    ) -> TrebucheCloudClient {
+    ) -> TrebuchetCloudClient {
         let actorSystem = TrebuchetActorSystem()
         let registry = CloudMapRegistry(
             namespace: namespace,
@@ -40,7 +40,7 @@ public actor TrebucheCloudClient {
             credentials: credentials
         )
 
-        return TrebucheCloudClient(
+        return TrebuchetCloudClient(
             actorSystem: actorSystem,
             registry: registry
         ) { endpoint in
@@ -70,13 +70,13 @@ public actor TrebucheCloudClient {
         _ = try await getTransport(for: id, endpoint: endpoint)
 
         // Create remote actor ID
-        guard let trebucheEndpoint = endpoint.toEndpoint() else {
+        guard let TrebuchetEndpoint = endpoint.toEndpoint() else {
             // For Lambda endpoints, create a synthetic endpoint using the identifier as host
             let actorID = TrebuchetActorID(id: id, host: endpoint.identifier, port: 443)
             return try A.resolve(id: actorID, using: actorSystem)
         }
 
-        let actorID = TrebuchetActorID(id: id, host: trebucheEndpoint.host, port: trebucheEndpoint.port)
+        let actorID = TrebuchetActorID(id: id, host: TrebuchetEndpoint.host, port: TrebuchetEndpoint.port)
         return try A.resolve(id: actorID, using: actorSystem)
     }
 
@@ -93,8 +93,8 @@ public actor TrebucheCloudClient {
 
         var actors: [A] = []
         for endpoint in endpoints {
-            if let trebucheEndpoint = endpoint.toEndpoint() {
-                let actorID = TrebuchetActorID(id: id, host: trebucheEndpoint.host, port: trebucheEndpoint.port)
+            if let TrebuchetEndpoint = endpoint.toEndpoint() {
+                let actorID = TrebuchetActorID(id: id, host: TrebuchetEndpoint.host, port: TrebuchetEndpoint.port)
                 if let actor = try? A.resolve(id: actorID, using: actorSystem) {
                     actors.append(actor)
                 }
@@ -141,7 +141,7 @@ extension CloudGateway {
     public func makeClient(
         region: String,
         credentials: AWSCredentials = .default
-    ) -> TrebucheCloudClient? {
+    ) -> TrebuchetCloudClient? {
         // This would use the gateway's registry if available
         // For now, return nil if no registry is configured
         return nil
@@ -162,7 +162,7 @@ extension CloudGateway {
 
 /// Helper protocol for actors that can resolve other actors
 public protocol CloudActorResolver {
-    var cloudClient: TrebucheCloudClient { get }
+    var cloudClient: TrebuchetCloudClient { get }
 }
 
 extension CloudActorResolver {
@@ -184,7 +184,7 @@ public struct CloudLambdaContext: Sendable {
     public let memoryLimit: Int
     public let deadline: Date
     public let region: String
-    public let client: TrebucheCloudClient
+    public let client: TrebuchetCloudClient
 
     public var remainingTime: Duration {
         let remaining = deadline.timeIntervalSinceNow
@@ -197,7 +197,7 @@ public struct CloudLambdaContext: Sendable {
         memoryLimit: Int,
         deadline: Date,
         region: String,
-        client: TrebucheCloudClient
+        client: TrebuchetCloudClient
     ) {
         self.requestID = requestID
         self.functionName = functionName

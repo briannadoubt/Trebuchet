@@ -1,10 +1,10 @@
 # Deploying to AWS
 
-Deploy your distributed actors to AWS Lambda with the trebuche CLI.
+Deploy your distributed actors to AWS Lambda with the Trebuchet CLI.
 
 ## Overview
 
-Trebuche provides a streamlined deployment experience for AWS Lambda, similar to frameworks like Vercel or AWS Amplify. The CLI handles:
+Trebuchet provides a streamlined deployment experience for AWS Lambda, similar to frameworks like Vercel or AWS Amplify. The CLI handles:
 
 - Actor discovery in your codebase
 - Cross-compilation for Lambda (arm64)
@@ -31,10 +31,10 @@ terraform --version
 ### 1. Initialize Configuration
 
 ```bash
-trebuche init --name my-game-server --provider aws
+Trebuchet init --name my-game-server --provider aws
 ```
 
-This creates `trebuche.yaml`:
+This creates `Trebuchet.yaml`:
 
 ```yaml
 name: my-game-server
@@ -64,7 +64,7 @@ discovery:
 ### 2. Preview Deployment
 
 ```bash
-trebuche deploy --dry-run --verbose
+Trebuchet deploy --dry-run --verbose
 ```
 
 Output:
@@ -88,7 +88,7 @@ Dry run - would deploy:
 ### 3. Deploy
 
 ```bash
-trebuche deploy --provider aws --region us-east-1
+Trebuchet deploy --provider aws --region us-east-1
 ```
 
 Output:
@@ -127,7 +127,7 @@ The deployment creates:
 ### From External Clients
 
 ```swift
-import Trebuche
+import Trebuchet
 
 let client = TrebuchetClient(transport: .https(
     host: "abc123.execute-api.us-east-1.amazonaws.com"
@@ -141,9 +141,9 @@ let state = try await room.join(player: me)
 ### From Other Lambda Functions
 
 ```swift
-import TrebucheAWS
+import TrebuchetAWS
 
-let client = TrebucheCloudClient.aws(
+let client = TrebuchetCloudClient.aws(
     region: "us-east-1",
     namespace: "my-game-server"
 )
@@ -181,7 +181,7 @@ environments:
 Deploy to a specific environment:
 
 ```bash
-trebuche deploy --environment production
+Trebuchet deploy --environment production
 ```
 
 ## Managing Deployments
@@ -189,25 +189,25 @@ trebuche deploy --environment production
 ### Check Status
 
 ```bash
-trebuche status --verbose
+Trebuchet status --verbose
 ```
 
 ### Undeploy
 
 ```bash
-trebuche undeploy
+Trebuchet undeploy
 ```
 
 ## Terraform Customization
 
-The generated Terraform is in `.trebuche/terraform/`. You can customize it:
+The generated Terraform is in `.Trebuchet/terraform/`. You can customize it:
 
 ```bash
 # View generated Terraform
-cat .trebuche/terraform/main.tf
+cat .Trebuchet/terraform/main.tf
 
 # Apply with custom variables
-cd .trebuche/terraform
+cd .Trebuchet/terraform
 terraform apply -var="lambda_memory=2048"
 ```
 

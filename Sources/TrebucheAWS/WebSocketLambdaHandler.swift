@@ -1,6 +1,6 @@
 import Foundation
-import Trebuche
-import TrebucheCloud
+import Trebuchet
+import TrebuchetCloud
 
 // MARK: - WebSocket Event Models
 

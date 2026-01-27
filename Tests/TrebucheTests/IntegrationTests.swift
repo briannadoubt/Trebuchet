@@ -2,7 +2,7 @@ import Testing
 import Distributed
 import Foundation
 import NIOSSL
-@testable import Trebuche
+@testable import Trebuchet
 
 // MARK: - Test Actor
 

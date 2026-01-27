@@ -4,7 +4,7 @@ Stream state changes from distributed actors to clients in realtime with automat
 
 ## Overview
 
-Trebuche's streaming feature allows distributed actors to expose reactive state that automatically updates all connected clients in realtime. This eliminates manual polling and provides a seamless, reactive experience.
+Trebuchet's streaming feature allows distributed actors to expose reactive state that automatically updates all connected clients in realtime. This eliminates manual polling and provides a seamless, reactive experience.
 
 ## Quick Start
 

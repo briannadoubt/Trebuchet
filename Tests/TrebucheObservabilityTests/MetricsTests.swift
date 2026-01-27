@@ -3,7 +3,7 @@
 
 import Testing
 import Foundation
-@testable import TrebucheObservability
+@testable import TrebuchetObservability
 
 @Suite("Metrics Tests")
 struct MetricsTests {
@@ -259,11 +259,11 @@ struct MetricsTests {
     @Test("Standard metric names")
     func testStandardMetricNames() {
         // Verify standard metric names are defined
-        #expect(TrebucheMetrics.invocationsCount == "trebuche.invocations.count")
-        #expect(TrebucheMetrics.invocationsLatency == "trebuche.invocations.latency")
-        #expect(TrebucheMetrics.invocationsErrors == "trebuche.invocations.errors")
-        #expect(TrebucheMetrics.connectionsActive == "trebuche.connections.active")
-        #expect(TrebucheMetrics.stateOperationsCount == "trebuche.state.operations.count")
+        #expect(TrebuchetMetrics.invocationsCount == "Trebuchet.invocations.count")
+        #expect(TrebuchetMetrics.invocationsLatency == "Trebuchet.invocations.latency")
+        #expect(TrebuchetMetrics.invocationsErrors == "Trebuchet.invocations.errors")
+        #expect(TrebuchetMetrics.connectionsActive == "Trebuchet.connections.active")
+        #expect(TrebuchetMetrics.stateOperationsCount == "Trebuchet.state.operations.count")
     }
 
     // MARK: - CloudWatch Configuration Tests
@@ -271,13 +271,13 @@ struct MetricsTests {
     @Test("CloudWatch configuration")
     func testCloudWatchConfiguration() {
         let config = CloudWatchConfiguration(
-            namespace: "Trebuche/Production",
+            namespace: "Trebuchet/Production",
             region: "us-east-1",
             flushInterval: .seconds(60),
             maxBatchSize: 20
         )
 
-        #expect(config.namespace == "Trebuche/Production")
+        #expect(config.namespace == "Trebuchet/Production")
         #expect(config.region == "us-east-1")
         #expect(config.flushInterval == .seconds(60))
         #expect(config.maxBatchSize == 20)

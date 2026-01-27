@@ -2,8 +2,8 @@
 // Middleware protocol for CloudGateway
 
 import Foundation
-import Trebuche
-import TrebucheSecurity
+import Trebuchet
+import TrebuchetSecurity
 
 /// Type-erased principal wrapper
 public struct AnyPrincipal: Sendable {

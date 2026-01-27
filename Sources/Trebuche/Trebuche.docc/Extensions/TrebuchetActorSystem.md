@@ -1,4 +1,4 @@
-# ``Trebuche/TrebuchetActorSystem``
+# ``Trebuchet/TrebuchetActorSystem``
 
 ## Overview
 

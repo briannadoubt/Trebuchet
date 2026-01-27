@@ -6,7 +6,7 @@ Deploy your distributed actors to Azure Functions with Cosmos DB and Service Fab
 
 > Note: Azure support is planned for a future release. This document describes the intended architecture.
 
-Trebuche will support deployment to Microsoft Azure using:
+Trebuchet will support deployment to Microsoft Azure using:
 - **Azure Functions** for actor execution
 - **Cosmos DB** for actor state persistence
 - **Azure Service Fabric** or **Azure Service Bus** for actor discovery
@@ -49,7 +49,7 @@ actors:
 
 state:
   type: cosmosdb
-  database: trebuche
+  database: Trebuchet
   container: actor-state
 
 discovery:
@@ -61,7 +61,7 @@ discovery:
 
 ```bash
 # Deploy to Azure
-trebuche deploy --provider azure --region eastus
+Trebuchet deploy --provider azure --region eastus
 
 # Expected output
 Discovering actors...
@@ -74,7 +74,7 @@ Building for Azure Functions...
 Deploying to Azure...
   ✓ Function App: my-game-actors
   ✓ Function URL: https://my-game-actors.azurewebsites.net
-  ✓ Cosmos DB: trebuche/actor-state
+  ✓ Cosmos DB: Trebuchet/actor-state
   ✓ Service Fabric: my-cluster/my-game
 
 Ready!
@@ -88,7 +88,7 @@ Ready!
 // Future implementation
 let stateStore = CosmosDBStateStore(
     endpoint: "https://my-cosmos.documents.azure.com",
-    database: "trebuche",
+    database: "Trebuchet",
     container: "actor-state"
 )
 ```
@@ -147,7 +147,7 @@ defaults:
 
 ## Contributing
 
-Azure support contributions are welcome! See the TrebucheCloud protocols:
+Azure support contributions are welcome! See the TrebuchetCloud protocols:
 - ``CloudProvider``
 - ``ActorStateStore``
 - ``ServiceRegistry``

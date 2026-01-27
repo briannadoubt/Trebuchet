@@ -1,6 +1,6 @@
-/// TrebucheCloud - Cloud-native distributed actor framework
+/// TrebuchetCloud - Cloud-native distributed actor framework
 ///
-/// TrebucheCloud extends Trebuche with support for deploying distributed actors
+/// TrebuchetCloud extends Trebuchet with support for deploying distributed actors
 /// to serverless platforms like AWS Lambda, GCP Cloud Functions, and Azure Functions.
 ///
 /// ## Features
@@ -13,7 +13,7 @@
 /// ## Quick Start
 ///
 /// ```swift
-/// import TrebucheCloud
+/// import TrebuchetCloud
 ///
 /// // Create a cloud gateway for local development
 /// let gateway = CloudGateway.development(port: 8080)
@@ -29,10 +29,10 @@
 /// ## Cloud Deployment
 ///
 /// ```swift
-/// import TrebucheCloud
+/// import TrebuchetCloud
 ///
 /// // Create a cloud client with service discovery
-/// let cloud = TrebucheCloudClient(
+/// let cloud = TrebuchetCloudClient(
 ///     registry: AWSCloudMapRegistry(namespace: "my-app"),
 ///     provider: .aws
 /// )
@@ -42,7 +42,7 @@
 /// let count = try await counter.increment()
 /// ```
 
-@_exported import Trebuche
+@_exported import Trebuchet
 import Foundation
 
 // MARK: - Re-exports
@@ -52,10 +52,10 @@ public typealias CloudProviderProtocol = CloudProvider
 public typealias ServiceRegistryProtocol = ServiceRegistry
 public typealias ActorStateStoreProtocol = ActorStateStore
 
-// MARK: - TrebucheCloud Client
+// MARK: - TrebuchetCloud Client
 
 /// Client for interacting with cloud-deployed distributed actors.
-public actor TrebucheCloudClient {
+public actor TrebuchetCloudClient {
     private let registry: any ServiceRegistry
     private let providerType: CloudProviderType
     private let actorSystem: TrebuchetActorSystem
@@ -189,13 +189,13 @@ public enum ActorAvailability: Sendable {
 
 // MARK: - Convenience Extensions
 
-extension TrebucheCloudClient {
+extension TrebuchetCloudClient {
     /// Create a client for local development
     /// - Parameters:
     ///   - host: The host to connect to (default: localhost)
     ///   - port: The port to connect to (default: 8080)
     /// - Returns: A cloud client configured for local development
-    public static func local(host: String = "localhost", port: UInt16 = 8080) async -> TrebucheCloudClient {
+    public static func local(host: String = "localhost", port: UInt16 = 8080) async -> TrebuchetCloudClient {
         let endpoint = CloudEndpoint(
             provider: .local,
             region: "local",
@@ -203,7 +203,7 @@ extension TrebucheCloudClient {
             scheme: .http
         )
         let registry = LocalDevelopmentRegistry(defaultEndpoint: endpoint)
-        return TrebucheCloudClient(registry: registry, provider: .local)
+        return TrebuchetCloudClient(registry: registry, provider: .local)
     }
 }
 
@@ -270,8 +270,8 @@ public actor LocalDevelopmentRegistry: ServiceRegistry {
 
 // MARK: - Version
 
-/// TrebucheCloud version
-public enum TrebucheCloudVersion {
+/// TrebuchetCloud version
+public enum TrebuchetCloudVersion {
     public static let major = 0
     public static let minor = 1
     public static let patch = 0

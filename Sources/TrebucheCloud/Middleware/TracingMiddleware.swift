@@ -2,8 +2,8 @@
 // Distributed tracing middleware
 
 import Foundation
-import Trebuche
-import TrebucheObservability
+import Trebuchet
+import TrebuchetObservability
 
 /// Middleware that creates and exports spans for distributed tracing
 public struct TracingMiddleware: CloudMiddleware {

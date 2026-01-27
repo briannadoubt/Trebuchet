@@ -1,8 +1,8 @@
-# ``Trebuche/TrebuchetTransport``
+# ``Trebuchet/TrebuchetTransport``
 
 ## Overview
 
-`TrebuchetTransport` is the protocol for network transport implementations. Trebuche includes a WebSocket transport, but you can implement custom transports for different protocols.
+`TrebuchetTransport` is the protocol for network transport implementations. Trebuchet includes a WebSocket transport, but you can implement custom transports for different protocols.
 
 ## Built-in Transports
 

@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Trebuchet}",
+            "name": "Debug Trebuchet",
+            "target": "Trebuchet",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Trebuchet"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Trebuchet}",
+            "name": "Release Trebuchet",
+            "target": "Trebuchet",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Trebuchet"
+        }
+    ]
+}

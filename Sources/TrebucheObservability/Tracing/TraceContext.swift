@@ -1,5 +1,5 @@
 // TraceContext.swift
-// Re-exports TraceContext from core Trebuche module
+// Re-exports TraceContext from core Trebuchet module
 
 import Foundation
-@_exported import struct Trebuche.TraceContext
+@_exported import struct Trebuchet.TraceContext

@@ -6,7 +6,7 @@ import SwiftUI
 extension View {
     /// Provides a Trebuchet connection to this view and its descendants.
     ///
-    /// This is the primary way to add Trebuche connectivity to your SwiftUI app.
+    /// This is the primary way to add Trebuchet connectivity to your SwiftUI app.
     ///
     /// ```swift
     /// @main
@@ -14,7 +14,7 @@ extension View {
     ///     var body: some Scene {
     ///         WindowGroup {
     ///             ContentView()
-    ///                 .trebuche(transport: .webSocket(host: "api.example.com", port: 8080))
+    ///                 .Trebuchet(transport: .webSocket(host: "api.example.com", port: 8080))
     ///         }
     ///     }
     /// }
@@ -34,7 +34,7 @@ extension View {
     ///   - reconnectionPolicy: Policy for automatic reconnection. Defaults to `.default`.
     ///   - autoConnect: Whether to connect automatically. Defaults to `true`.
     /// - Returns: A view with the connection available in the environment.
-    public func trebuche(
+    public func Trebuchet(
         transport: TransportConfiguration,
         reconnectionPolicy: ReconnectionPolicy = .default,
         autoConnect: Bool = true
@@ -53,13 +53,13 @@ extension View {
     ///   - reconnectionPolicy: Policy for automatic reconnection. Defaults to `.default`.
     ///   - autoConnect: Whether to connect automatically. Defaults to `true`.
     /// - Returns: A view with the connection available in the environment.
-    @available(*, deprecated, renamed: "trebuche(transport:reconnectionPolicy:autoConnect:)")
+    @available(*, deprecated, renamed: "Trebuchet(transport:reconnectionPolicy:autoConnect:)")
     public func trebuchetClient(
         transport: TransportConfiguration,
         reconnectionPolicy: ReconnectionPolicy = .default,
         autoConnect: Bool = true
     ) -> some View {
-        trebuche(transport: transport, reconnectionPolicy: reconnectionPolicy, autoConnect: autoConnect)
+        Trebuchet(transport: transport, reconnectionPolicy: reconnectionPolicy, autoConnect: autoConnect)
     }
 
     /// Switches to a different named connection within the current manager.

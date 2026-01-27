@@ -6,7 +6,7 @@ Complete reference for AWS deployment configuration options.
 
 This article covers all configuration options available when deploying to AWS.
 
-## trebuche.yaml Reference
+## Trebuchet.yaml Reference
 
 ### Top-Level Configuration
 
@@ -84,13 +84,13 @@ export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
 export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 export AWS_REGION=us-east-1
 
-trebuche deploy
+Trebuchet deploy
 ```
 
 ```bash
 # Using a named profile
 export AWS_PROFILE=my-profile
-trebuche deploy
+Trebuchet deploy
 ```
 
 ## IAM Permissions

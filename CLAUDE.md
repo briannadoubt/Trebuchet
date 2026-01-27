@@ -9,52 +9,52 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 swift build
 
 # Build the CLI tool
-swift build --product trebuche
+swift build --product trebuchet
 
 # Run tests
 swift test
 
 # Run a specific test
-swift test --filter TrebucheTests.testName
+swift test --filter TrebuchetTests.testName
 
 # Run CLI tests
-swift test --filter TrebucheCLITests
+swift test --filter TrebuchetCLITests
 
 # Run AWS tests
-swift test --filter TrebucheAWSTests
+swift test --filter TrebuchetAWSTests
 ```
 
 ## CLI Commands
 
 ```bash
-# Initialize a new trebuche.yaml configuration
-trebuche init --name my-project --provider aws
+# Initialize a new trebuchet.yaml configuration
+trebuchet init --name my-project --provider aws
 
 # Deploy actors to AWS Lambda
-trebuche deploy --provider aws --region us-east-1
+trebuchet deploy --provider aws --region us-east-1
 
 # Deploy with dry-run to preview changes
-trebuche deploy --dry-run --verbose
+trebuchet deploy --dry-run --verbose
 
 # Check deployment status
-trebuche status
+trebuchet status
 
 # Remove deployed infrastructure
-trebuche undeploy
+trebuchet undeploy
 
 # Run actors locally for development
-trebuche dev --port 8080
+trebuchet dev --port 8080
 ```
 
 ## Architecture
 
-Trebuche is a Swift 6.2 location-transparent distributed actor framework that makes RPC stupid simple.
+Trebuchet is a Swift 6.2 location-transparent distributed actor framework that makes RPC stupid simple.
 
 ### Core Components
 
 ```
-Sources/Trebuche/
-├── Trebuche.swift              # Main entry, @Trebuchet macro declaration
+Sources/Trebuchet/
+├── Trebuchet.swift              # Main entry, @Trebuchet macro declaration
 ├── ActorSystem/
 │   ├── TrebuchetActorSystem.swift  # DistributedActorSystem implementation
 │   ├── TrebuchetActorID.swift      # Actor identification (local/remote)
@@ -78,11 +78,11 @@ Sources/Trebuche/
     ├── RemoteActorWrapper.swift    # @RemoteActor property wrapper
     └── ObservedActor.swift         # @ObservedActor for streaming state
 
-Sources/TrebucheMacros/
-└── TrebucheMacros.swift            # @Trebuchet and @StreamedState macros
+Sources/TrebuchetMacros/
+└── TrebuchetMacros.swift            # @Trebuchet and @StreamedState macros
 
-Sources/TrebucheCloud/
-├── TrebucheCloud.swift             # Module exports
+Sources/TrebuchetCloud/
+├── TrebuchetCloud.swift             # Module exports
 ├── Gateway/
 │   ├── CloudGateway.swift          # HTTP gateway for cloud environments
 │   └── HTTPTransport.swift         # HTTP-based transport
@@ -94,15 +94,15 @@ Sources/TrebucheCloud/
 └── State/
     └── ActorStateStore.swift       # ActorStateStore protocol, StatefulActor
 
-Sources/TrebucheAWS/
-├── TrebucheAWS.swift               # Module exports and documentation
+Sources/TrebuchetAWS/
+├── TrebuchetAWS.swift               # Module exports and documentation
 ├── AWSProvider.swift               # CloudProvider implementation for AWS Lambda
 ├── DynamoDBStateStore.swift        # ActorStateStore using DynamoDB
 ├── CloudMapRegistry.swift          # ServiceRegistry using AWS Cloud Map
 ├── LambdaTransport.swift           # Transport for Lambda invocations
 └── CloudClient.swift               # Client for actor-to-actor calls across Lambda
 
-Sources/TrebucheCLI/
+Sources/TrebuchetCLI/
 ├── main.swift                      # CLI entry point
 ├── Commands/
 │   ├── DeployCommand.swift         # Deploy actors to cloud
@@ -111,7 +111,7 @@ Sources/TrebucheCLI/
 │   ├── DevCommand.swift            # Local development server
 │   └── InitCommand.swift           # Initialize configuration
 ├── Config/
-│   ├── TrebucheConfig.swift        # Configuration model (trebuche.yaml)
+│   ├── TrebuchetConfig.swift        # Configuration model (trebuchet.yaml)
 │   └── ConfigLoader.swift          # YAML parsing and resolution
 ├── Discovery/
 │   ├── ActorMetadata.swift         # Actor/method metadata types
@@ -150,7 +150,7 @@ Sources/TrebucheCLI/
 - **@ObservedActor**: Property wrapper for streaming state with automatic view updates
 - **ConnectionState**: Connection lifecycle state enum
 
-#### Cloud Types (TrebucheCloud)
+#### Cloud Types (TrebuchetCloud)
 
 - **CloudGateway**: HTTP gateway for hosting actors in cloud environments
 - **CloudProvider**: Protocol for cloud provider implementations (AWS, GCP, Azure)
@@ -159,18 +159,18 @@ Sources/TrebucheCLI/
 - **CloudEndpoint**: Represents cloud-native endpoints (Lambda ARNs, etc.)
 - **StatefulActor**: Protocol for actors with persistent state
 
-#### AWS Types (TrebucheAWS)
+#### AWS Types (TrebuchetAWS)
 
 - **AWSProvider**: CloudProvider implementation for AWS Lambda
 - **DynamoDBStateStore**: ActorStateStore using AWS DynamoDB
 - **CloudMapRegistry**: ServiceRegistry using AWS Cloud Map
 - **LambdaInvokeTransport**: Transport for direct Lambda invocations
-- **TrebucheCloudClient**: Client for actor-to-actor calls across Lambda
+- **TrebuchetCloudClient**: Client for actor-to-actor calls across Lambda
 - **LambdaEventAdapter**: Converts API Gateway events to/from InvocationEnvelope
 
-#### CLI Types (TrebucheCLI)
+#### CLI Types (TrebuchetCLI)
 
-- **TrebucheConfig**: Configuration model parsed from trebuche.yaml
+- **TrebuchetConfig**: Configuration model parsed from trebuchet.yaml
 - **ActorDiscovery**: SwiftSyntax-based scanner for @Trebuchet actors
 - **ActorMetadata**: Metadata about discovered actors and their methods
 - **DockerBuilder**: Builds Swift projects for Lambda (arm64)
@@ -201,13 +201,13 @@ try await room.join(player: me)
 ### SwiftUI Usage Pattern
 
 ```swift
-// App setup with .trebuche() modifier
+// App setup with .trebuchet() modifier
 @main
 struct GameApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .trebuche(transport: .webSocket(host: "game.example.com", port: 8080))
+                .trebuchet(transport: .webSocket(host: "game.example.com", port: 8080))
         }
     }
 }
@@ -230,7 +230,7 @@ struct LobbyView: View {
 ### Cloud Deployment Pattern
 
 ```yaml
-# trebuche.yaml
+# trebuchet.yaml
 name: my-game-server
 version: "1"
 
@@ -257,7 +257,7 @@ discovery:
 
 ```bash
 # Deploy to AWS
-$ trebuche deploy --provider aws
+$ trebuchet deploy --provider aws
 
 Discovering actors...
   ✓ GameRoom
@@ -278,7 +278,7 @@ Ready! Actors can discover each other automatically.
 ### Lambda Bootstrap Pattern
 
 ```swift
-// Auto-generated by trebuche CLI
+// Auto-generated by trebuchet CLI
 @main
 struct ActorLambdaHandler: LambdaHandler {
     let gateway: CloudGateway
@@ -309,7 +309,7 @@ struct ActorLambdaHandler: LambdaHandler {
 
 ```swift
 // From within an actor running in Lambda
-let client = TrebucheCloudClient.aws(region: "us-east-1", namespace: "my-game")
+let client = TrebuchetCloudClient.aws(region: "us-east-1", namespace: "my-game")
 let lobby = try await client.resolve(Lobby.self, id: "lobby")
 let players = try await lobby.getPlayers()  // Invokes another Lambda
 ```
@@ -329,7 +329,7 @@ let players = try await lobby.getPlayers()  // Invokes another Lambda
 Tests use Swift Testing framework (`import Testing`). Run with `swift test`.
 
 Test suites:
-- `TrebucheTests`: Core actor system, serialization, client-server
-- `TrebucheCloudTests`: Cloud gateway, providers, state stores, registries
-- `TrebucheAWSTests`: AWS-specific implementations
-- `TrebucheCLITests`: CLI configuration, discovery, build system
+- `TrebuchetTests`: Core actor system, serialization, client-server
+- `TrebuchetCloudTests`: Cloud gateway, providers, state stores, registries
+- `TrebuchetAWSTests`: AWS-specific implementations
+- `TrebuchetCLITests`: CLI configuration, discovery, build system

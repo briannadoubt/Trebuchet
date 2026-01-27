@@ -1,8 +1,8 @@
-# Trebuche Production Readiness - Implementation Status
+# Trebuchet Production Readiness - Implementation Status
 
 ## Overview
 
-This document tracks the implementation of the production readiness plan for Trebuche. The plan consists of 4 phases delivered over 14 weeks, adding production-grade observability, security, resilience, and performance features.
+This document tracks the implementation of the production readiness plan for Trebuchet. The plan consists of 4 phases delivered over 14 weeks, adding production-grade observability, security, resilience, and performance features.
 
 ## Phase 1: Security & Observability (Weeks 1-3)
 
@@ -11,17 +11,17 @@ This document tracks the implementation of the production readiness plan for Tre
 #### 1.1 Structured Logging - **COMPLETE**
 
 **New Files Created:**
-- ✅ `Sources/TrebucheObservability/TrebucheObservability.swift` - Module entry point
-- ✅ `Sources/TrebucheObservability/Logging/LogLevel.swift` - Log severity levels
-- ✅ `Sources/TrebucheObservability/Logging/LogContext.swift` - Structured context
-- ✅ `Sources/TrebucheObservability/Logging/LogFormatter.swift` - Formatter protocol
-- ✅ `Sources/TrebucheObservability/Logging/TrebucheLogger.swift` - Main logger implementation
-- ✅ `Sources/TrebucheObservability/Logging/Formatters/ConsoleFormatter.swift` - Human-readable output
-- ✅ `Sources/TrebucheObservability/Logging/Formatters/JSONFormatter.swift` - Structured JSON output
+- ✅ `Sources/TrebuchetObservability/TrebuchetObservability.swift` - Module entry point
+- ✅ `Sources/TrebuchetObservability/Logging/LogLevel.swift` - Log severity levels
+- ✅ `Sources/TrebuchetObservability/Logging/LogContext.swift` - Structured context
+- ✅ `Sources/TrebuchetObservability/Logging/LogFormatter.swift` - Formatter protocol
+- ✅ `Sources/TrebuchetObservability/Logging/TrebuchetLogger.swift` - Main logger implementation
+- ✅ `Sources/TrebuchetObservability/Logging/Formatters/ConsoleFormatter.swift` - Human-readable output
+- ✅ `Sources/TrebuchetObservability/Logging/Formatters/JSONFormatter.swift` - Structured JSON output
 
 **Modified Files:**
-- ✅ `Package.swift` - Added TrebucheObservability module
-- ✅ `Sources/TrebucheCloud/Gateway/CloudGateway.swift` - Integrated logging
+- ✅ `Package.swift` - Added TrebuchetObservability module
+- ✅ `Sources/TrebuchetCloud/Gateway/CloudGateway.swift` - Integrated logging
 
 **Features Implemented:**
 - ✅ Log levels: debug, info, warning, error, critical
@@ -33,7 +33,7 @@ This document tracks the implementation of the production readiness plan for Tre
 - ✅ Development and production configuration presets
 
 **Tests:**
-- ✅ `Tests/TrebucheObservabilityTests/LoggingTests.swift` - 14 tests, all passing
+- ✅ `Tests/TrebuchetObservabilityTests/LoggingTests.swift` - 14 tests, all passing
   - Log level comparison and filtering
   - Metadata attachment and inclusion control
   - Sensitive data redaction (case-insensitive)
@@ -43,12 +43,12 @@ This document tracks the implementation of the production readiness plan for Tre
   - Convenience methods
 
 **Documentation:**
-- ✅ `Sources/TrebucheObservability/TrebucheObservability.docc/Logging.md`
+- ✅ `Sources/TrebuchetObservability/TrebuchetObservability.docc/Logging.md`
 
 **Example Usage:**
 ```swift
 // Create a logger
-let logger = TrebucheLogger(
+let logger = TrebuchetLogger(
     label: "my-component",
     configuration: .default
 )
@@ -84,14 +84,14 @@ The CloudGateway now logs:
 #### 1.2 Metrics Collection - **COMPLETE** (Task #5)
 
 **New Files Created:**
-- ✅ `Sources/TrebucheObservability/Metrics/MetricsCollector.swift` - Protocol and standard metrics
-- ✅ `Sources/TrebucheObservability/Metrics/Counter.swift` - Counter and Gauge implementations
-- ✅ `Sources/TrebucheObservability/Metrics/Histogram.swift` - Histogram with percentile calculation
-- ✅ `Sources/TrebucheObservability/Metrics/InMemoryCollector.swift` - In-memory collector for testing
-- ✅ `Sources/TrebucheObservability/Metrics/CloudWatchReporter.swift` - AWS CloudWatch integration
+- ✅ `Sources/TrebuchetObservability/Metrics/MetricsCollector.swift` - Protocol and standard metrics
+- ✅ `Sources/TrebuchetObservability/Metrics/Counter.swift` - Counter and Gauge implementations
+- ✅ `Sources/TrebuchetObservability/Metrics/Histogram.swift` - Histogram with percentile calculation
+- ✅ `Sources/TrebuchetObservability/Metrics/InMemoryCollector.swift` - In-memory collector for testing
+- ✅ `Sources/TrebuchetObservability/Metrics/CloudWatchReporter.swift` - AWS CloudWatch integration
 
 **Modified Files:**
-- ✅ `Sources/TrebucheCloud/Gateway/CloudGateway.swift` - Instrumented with metrics
+- ✅ `Sources/TrebuchetCloud/Gateway/CloudGateway.swift` - Instrumented with metrics
 
 **Features Implemented:**
 - ✅ MetricsCollector protocol with async interface
@@ -101,10 +101,10 @@ The CloudGateway now logs:
 - ✅ Tag-based multi-dimensional metrics
 - ✅ InMemoryCollector for development/testing
 - ✅ CloudWatch integration (batching, periodic flushing)
-- ✅ Standard metric names (TrebucheMetrics)
+- ✅ Standard metric names (TrebuchetMetrics)
 
 **Tests:**
-- ✅ `Tests/TrebucheObservabilityTests/MetricsTests.swift` - 20 tests, all passing
+- ✅ `Tests/TrebuchetObservabilityTests/MetricsTests.swift` - 20 tests, all passing
   - Counter increments and tags
   - Gauge set/increment/decrement
   - Histogram recording and percentile calculation
@@ -113,14 +113,14 @@ The CloudGateway now logs:
   - Convenience methods
 
 **Documentation:**
-- ✅ `Sources/TrebucheObservability/TrebucheObservability.docc/Metrics.md`
+- ✅ `Sources/TrebuchetObservability/TrebuchetObservability.docc/Metrics.md`
 
 **CloudGateway Metrics:**
 The CloudGateway now automatically tracks:
-- `trebuche.invocations.count` (tags: actor_type, target, status)
-- `trebuche.invocations.latency` (tags: actor_type, target)
-- `trebuche.invocations.errors` (tags: reason)
-- `trebuche.actors.active`
+- `Trebuchet.invocations.count` (tags: actor_type, target, status)
+- `Trebuchet.invocations.latency` (tags: actor_type, target)
+- `Trebuchet.invocations.errors` (tags: reason)
+- `Trebuchet.actors.active`
 
 **Example Usage:**
 ```swift
@@ -136,14 +136,14 @@ let gateway = CloudGateway(configuration: .init(
 #### 1.3 Distributed Tracing - **COMPLETE** (Task #6)
 
 **New Files Created:**
-- ✅ `Sources/Trebuche/ActorSystem/TraceContext.swift` - Core trace context type
-- ✅ `Sources/TrebucheObservability/Tracing/TraceContext.swift` - Re-export
-- ✅ `Sources/TrebucheObservability/Tracing/Span.swift` - Span types (Span, SpanKind, SpanStatus, SpanEvent)
-- ✅ `Sources/TrebucheObservability/Tracing/SpanExporter.swift` - Exporter protocol and implementations
+- ✅ `Sources/Trebuchet/ActorSystem/TraceContext.swift` - Core trace context type
+- ✅ `Sources/TrebuchetObservability/Tracing/TraceContext.swift` - Re-export
+- ✅ `Sources/TrebuchetObservability/Tracing/Span.swift` - Span types (Span, SpanKind, SpanStatus, SpanEvent)
+- ✅ `Sources/TrebuchetObservability/Tracing/SpanExporter.swift` - Exporter protocol and implementations
 
 **Modified Files:**
-- ✅ `Sources/Trebuche/ActorSystem/Serialization.swift` - Added traceContext to InvocationEnvelope
-- ✅ `Sources/TrebucheCloud/Gateway/CloudGateway.swift` - Trace context propagation and logging
+- ✅ `Sources/Trebuchet/ActorSystem/Serialization.swift` - Added traceContext to InvocationEnvelope
+- ✅ `Sources/TrebuchetCloud/Gateway/CloudGateway.swift` - Trace context propagation and logging
 
 **Features Implemented:**
 - ✅ TraceContext (traceID, spanID, parentSpanID)
@@ -157,7 +157,7 @@ let gateway = CloudGateway(configuration: .init(
 - ✅ CloudGateway integration (logs include traceID/spanID)
 
 **Tests:**
-- ✅ `Tests/TrebucheObservabilityTests/TracingTests.swift` - 15 tests, all passing
+- ✅ `Tests/TrebuchetObservabilityTests/TracingTests.swift` - 15 tests, all passing
   - TraceContext creation and child relationships
   - Span lifecycle (creation, attributes, events, end)
   - Span kinds and statuses
@@ -165,7 +165,7 @@ let gateway = CloudGateway(configuration: .init(
   - Encoding/decoding roundtrips
 
 **Documentation:**
-- ✅ `Sources/TrebucheObservability/TrebucheObservability.docc/DistributedTracing.md`
+- ✅ `Sources/TrebuchetObservability/TrebuchetObservability.docc/DistributedTracing.md`
 
 **Example Usage:**
 ```swift
@@ -187,7 +187,7 @@ span.end(status: .ok)
 #### 1.4 Authentication & Authorization - **PENDING** (Tasks #7, #8)
 
 **Plan:**
-- Create TrebucheSecurity module
+- Create TrebuchetSecurity module
 - Implement AuthenticationProvider protocol
 - Add JWTAuthenticator and APIKeyAuthenticator
 - Implement AuthorizationPolicy and RoleBasedPolicy
@@ -208,7 +208,7 @@ span.end(status: .ok)
 **Plan:**
 - Integrate all Phase 1 components into middleware chain
 - Write comprehensive integration tests
-- Update TrebucheDemo to showcase observability and security features
+- Update TrebuchetDemo to showcase observability and security features
 - Deploy to AWS and verify metrics/traces/logs/auth
 - Run load test: 1000 req/s for 1 minute with <100ms p95 latency
 
@@ -238,7 +238,7 @@ span.end(status: .ok)
 
 ## Key Accomplishments
 
-1. **Module Architecture**: Successfully created modular architecture with TrebucheObservability as standalone module
+1. **Module Architecture**: Successfully created modular architecture with TrebuchetObservability as standalone module
 2. **Logging Foundation**: Production-grade structured logging with sensitive data redaction
 3. **Metrics Collection**: Full metrics system with counters, gauges, histograms, and CloudWatch integration
 4. **Distributed Tracing**: Trace context propagation through actor invocations with span tracking
@@ -285,8 +285,8 @@ span.end(status: .ok)
 ## Usage Example
 
 ```swift
-import TrebucheCloud
-import TrebucheObservability
+import TrebuchetCloud
+import TrebuchetObservability
 
 // Configure gateway with logging
 let gateway = CloudGateway(configuration: .init(
@@ -310,7 +310,7 @@ try await gateway.run()
 ### Resolved:
 - ✅ Module architecture: Separate modules for Observability, Security, Resilience
 - ✅ Logging output: Actor-based synchronous logger with pluggable handlers
-- ✅ Dependency structure: TrebucheObservability depends only on core Trebuche module
+- ✅ Dependency structure: TrebuchetObservability depends only on core Trebuchet module
 
 ### Pending:
 - Should middleware be async or sync?

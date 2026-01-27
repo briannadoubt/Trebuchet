@@ -1,17 +1,17 @@
-# Getting Started with Trebuche
+# Getting Started with Trebuchet
 
 Learn how to create distributed actors that communicate across network boundaries.
 
 ## Overview
 
-Trebuche is a distributed actor framework that enables location-transparent RPC for Swift. Your actors work the same whether they're local or remote – Trebuche handles the networking transparently.
+Trebuchet is a distributed actor framework that enables location-transparent RPC for Swift. Your actors work the same whether they're local or remote – Trebuchet handles the networking transparently.
 
 ## Creating Your First Distributed Actor
 
 Use the `@Trebuchet` macro to mark an actor for distributed communication:
 
 ```swift
-import Trebuche
+import Trebuchet
 
 @Trebuchet
 distributed actor Counter {
@@ -35,7 +35,7 @@ The `@Trebuchet` macro automatically adds `typealias ActorSystem = TrebuchetActo
 Expose your actors on a server:
 
 ```swift
-import Trebuche
+import Trebuchet
 
 let server = TrebuchetServer(transport: .webSocket(port: 8080))
 let counter = Counter(actorSystem: server.actorSystem)
@@ -50,7 +50,7 @@ try await server.run()
 Resolve and call remote actors:
 
 ```swift
-import Trebuche
+import Trebuchet
 
 let client = TrebuchetClient(transport: .webSocket(host: "localhost", port: 8080))
 try await client.connect()
@@ -62,18 +62,18 @@ print("Counter is now: \(newValue)")
 
 ## Using with SwiftUI
 
-Trebuche provides SwiftUI integration for reactive actor connections:
+Trebuchet provides SwiftUI integration for reactive actor connections:
 
 ```swift
 import SwiftUI
-import Trebuche
+import Trebuchet
 
 @main
 struct MyApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .trebuche(transport: .webSocket(host: "api.example.com", port: 8080))
+                .Trebuchet(transport: .webSocket(host: "api.example.com", port: 8080))
         }
     }
 }
@@ -99,5 +99,5 @@ struct CounterView: View {
 ## Next Steps
 
 - Learn about <doc:DefiningActors> for best practices
-- Explore cloud deployment with ``TrebucheCloud`` and ``TrebucheAWS``
-- Use the `trebuche` CLI for serverless deployment
+- Explore cloud deployment with ``TrebuchetCloud`` and ``TrebuchetAWS``
+- Use the `Trebuchet` CLI for serverless deployment

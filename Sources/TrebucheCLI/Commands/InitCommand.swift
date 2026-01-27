@@ -4,7 +4,7 @@ import Foundation
 struct InitCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "init",
-        abstract: "Initialize a new Trebuche configuration"
+        abstract: "Initialize a new Trebuchet configuration"
     )
 
     @Option(name: .shortAndLong, help: "Project name")
@@ -23,10 +23,10 @@ struct InitCommand: AsyncParsableCommand {
         let terminal = Terminal()
         let cwd = FileManager.default.currentDirectoryPath
 
-        let configPath = "\(cwd)/trebuche.yaml"
+        let configPath = "\(cwd)/Trebuchet.yaml"
 
         if FileManager.default.fileExists(atPath: configPath) && !force {
-            terminal.print("trebuche.yaml already exists. Use --force to overwrite.", style: .error)
+            terminal.print("Trebuchet.yaml already exists. Use --force to overwrite.", style: .error)
             throw ExitCode.failure
         }
 
@@ -34,7 +34,7 @@ struct InitCommand: AsyncParsableCommand {
         let projectName = name ?? URL(fileURLWithPath: cwd).lastPathComponent
 
         terminal.print("")
-        terminal.print("Initializing Trebuche configuration...", style: .header)
+        terminal.print("Initializing Trebuchet configuration...", style: .header)
         terminal.print("")
 
         // Discover existing actors
@@ -42,7 +42,7 @@ struct InitCommand: AsyncParsableCommand {
         let actors = try discovery.discover(in: cwd)
 
         // Generate configuration
-        var config = TrebucheConfig(
+        var config = TrebuchetConfig(
             name: projectName,
             defaults: DefaultSettings(
                 provider: provider,
@@ -65,7 +65,7 @@ struct InitCommand: AsyncParsableCommand {
         let yamlContent = generateYAML(config: config, actors: actors)
         try yamlContent.write(toFile: configPath, atomically: true, encoding: .utf8)
 
-        terminal.print("✓ Created trebuche.yaml", style: .success)
+        terminal.print("✓ Created Trebuchet.yaml", style: .success)
         terminal.print("")
 
         if !actors.isEmpty {
@@ -77,12 +77,12 @@ struct InitCommand: AsyncParsableCommand {
         }
 
         terminal.print("Next steps:", style: .header)
-        terminal.print("  1. Edit trebuche.yaml to customize settings", style: .dim)
-        terminal.print("  2. Run 'trebuche deploy --dry-run' to preview", style: .dim)
-        terminal.print("  3. Run 'trebuche deploy' to deploy", style: .dim)
+        terminal.print("  1. Edit Trebuchet.yaml to customize settings", style: .dim)
+        terminal.print("  2. Run 'Trebuchet deploy --dry-run' to preview", style: .dim)
+        terminal.print("  3. Run 'Trebuchet deploy' to deploy", style: .dim)
     }
 
-    private func generateYAML(config: TrebucheConfig, actors: [ActorMetadata]) -> String {
+    private func generateYAML(config: TrebuchetConfig, actors: [ActorMetadata]) -> String {
         var yaml = """
         name: \(config.name)
         version: "1"

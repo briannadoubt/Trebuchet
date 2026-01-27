@@ -2,9 +2,9 @@ import ArgumentParser
 import Foundation
 
 @main
-struct TrebucheCLI: AsyncParsableCommand {
+struct TrebuchetCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "trebuche",
+        commandName: "Trebuchet",
         abstract: "Deploy Swift distributed actors to the cloud",
         version: "0.1.0",
         subcommands: [

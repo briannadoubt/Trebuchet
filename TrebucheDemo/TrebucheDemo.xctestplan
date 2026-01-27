@@ -11,26 +11,26 @@
   "defaultOptions" : {
     "performanceAntipatternCheckerEnabled" : true,
     "targetForVariableExpansion" : {
-      "containerPath" : "container:TrebucheDemo.xcodeproj",
+      "containerPath" : "container:TrebuchetDemo.xcodeproj",
       "identifier" : "03E7DEE82F20BA59004233F5",
-      "name" : "TrebucheDemo"
+      "name" : "TrebuchetDemo"
     }
   },
   "testTargets" : [
     {
       "parallelizable" : true,
       "target" : {
-        "containerPath" : "container:TrebucheDemo.xcodeproj",
+        "containerPath" : "container:TrebuchetDemo.xcodeproj",
         "identifier" : "03E7DEF52F20BA5B004233F5",
-        "name" : "TrebucheDemoTests"
+        "name" : "TrebuchetDemoTests"
       }
     },
     {
       "parallelizable" : true,
       "target" : {
-        "containerPath" : "container:TrebucheDemo.xcodeproj",
+        "containerPath" : "container:TrebuchetDemo.xcodeproj",
         "identifier" : "03E7DEFF2F20BA5B004233F5",
-        "name" : "TrebucheDemoUITests"
+        "name" : "TrebuchetDemoUITests"
       }
     }
   ],

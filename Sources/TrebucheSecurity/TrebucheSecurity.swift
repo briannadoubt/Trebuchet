@@ -1,5 +1,5 @@
-// TrebucheSecurity.swift
-// Production-grade security for Trebuche distributed actors
+// TrebuchetSecurity.swift
+// Production-grade security for Trebuchet distributed actors
 //
 // This module provides comprehensive security features including:
 // - Authentication (JWT, API keys)
@@ -21,14 +21,14 @@
 @_exported import struct Foundation.UUID
 @_exported import struct Foundation.Date
 
-/// TrebucheSecurity provides production-grade security for distributed actors.
+/// TrebuchetSecurity provides production-grade security for distributed actors.
 ///
 /// This module includes:
 /// - **Authentication**: JWT and API key validation
 /// - **Authorization**: Role-based access control (RBAC)
 /// - **Rate Limiting**: Token bucket and sliding window algorithms
 /// - **Validation**: Request size limits and malformed envelope detection
-public enum TrebucheSecurity {
+public enum TrebuchetSecurity {
     /// Current version of the security module
     public static let version = "1.1.0"
 }

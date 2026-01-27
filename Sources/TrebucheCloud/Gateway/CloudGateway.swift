@@ -1,10 +1,10 @@
 import Distributed
 import Foundation
 import NIO
-import Trebuche
-@_exported import struct Trebuche.TraceContext
-import TrebucheObservability
-import TrebucheSecurity
+import Trebuchet
+@_exported import struct Trebuchet.TraceContext
+import TrebuchetObservability
+import TrebuchetSecurity
 
 // MARK: - Cloud Gateway
 
@@ -19,7 +19,7 @@ public actor CloudGateway {
     private let registry: (any ServiceRegistry)?
     private var exposedActors: [String: any DistributedActor] = [:]
     private var running = false
-    private let logger: TrebucheLogger
+    private let logger: TrebuchetLogger
     private let metrics: (any MetricsCollector)?
     private let middlewareChain: MiddlewareChain
 
@@ -68,7 +68,7 @@ public actor CloudGateway {
         self.transport = HTTPTransport()
         self.stateStore = configuration.stateStore
         self.registry = configuration.registry
-        self.logger = TrebucheLogger(
+        self.logger = TrebuchetLogger(
             label: "CloudGateway",
             configuration: configuration.loggingConfiguration
         )
@@ -101,7 +101,7 @@ public actor CloudGateway {
         // Update metrics
         if let metrics {
             await metrics.recordGauge(
-                TrebucheMetrics.actorsActive,
+                TrebuchetMetrics.actorsActive,
                 value: Double(exposedActors.count),
                 tags: [:]
             )
@@ -220,7 +220,7 @@ public actor CloudGateway {
                 // Record error metric
                 if let metrics {
                     await metrics.incrementCounter(
-                        TrebucheMetrics.invocationsErrors,
+                        TrebuchetMetrics.invocationsErrors,
                         tags: ["reason": "actor_not_found"]
                     )
                 }
@@ -255,7 +255,7 @@ public actor CloudGateway {
             if let metrics {
                 let actorType = String(describing: type(of: actor))
                 await metrics.incrementCounter(
-                    TrebucheMetrics.invocationsCount,
+                    TrebuchetMetrics.invocationsCount,
                     tags: [
                         "actor_type": actorType,
                         "target": envelope.targetIdentifier,
@@ -263,7 +263,7 @@ public actor CloudGateway {
                     ]
                 )
                 await metrics.recordHistogramMilliseconds(
-                    TrebucheMetrics.invocationsLatency,
+                    TrebuchetMetrics.invocationsLatency,
                     milliseconds: duration * 1000,
                     tags: [
                         "actor_type": actorType,
@@ -293,7 +293,7 @@ public actor CloudGateway {
 
             if let metrics {
                 await metrics.incrementCounter(
-                    TrebucheMetrics.invocationsErrors,
+                    TrebuchetMetrics.invocationsErrors,
                     tags: ["reason": "validation_error"]
                 )
             }
@@ -316,7 +316,7 @@ public actor CloudGateway {
 
             if let metrics {
                 await metrics.incrementCounter(
-                    TrebucheMetrics.invocationsErrors,
+                    TrebuchetMetrics.invocationsErrors,
                     tags: ["reason": "authentication_error"]
                 )
             }
@@ -339,7 +339,7 @@ public actor CloudGateway {
 
             if let metrics {
                 await metrics.incrementCounter(
-                    TrebucheMetrics.invocationsErrors,
+                    TrebuchetMetrics.invocationsErrors,
                     tags: ["reason": "authorization_error"]
                 )
             }
@@ -362,7 +362,7 @@ public actor CloudGateway {
 
             if let metrics {
                 await metrics.incrementCounter(
-                    TrebucheMetrics.invocationsErrors,
+                    TrebuchetMetrics.invocationsErrors,
                     tags: ["reason": "rate_limit_exceeded"]
                 )
             }
@@ -386,7 +386,7 @@ public actor CloudGateway {
             // Record error metric
             if let metrics {
                 await metrics.incrementCounter(
-                    TrebucheMetrics.invocationsErrors,
+                    TrebuchetMetrics.invocationsErrors,
                     tags: ["reason": "handler_error"]
                 )
             }

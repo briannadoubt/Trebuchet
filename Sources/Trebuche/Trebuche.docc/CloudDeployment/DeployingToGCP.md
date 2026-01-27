@@ -6,7 +6,7 @@ Deploy your distributed actors to Google Cloud Functions with Firestore and Serv
 
 > Note: GCP support is planned for a future release. This document describes the intended architecture.
 
-Trebuche will support deployment to Google Cloud Platform using:
+Trebuchet will support deployment to Google Cloud Platform using:
 - **Cloud Functions** (Gen 2) for actor execution
 - **Firestore** for actor state persistence
 - **Service Directory** for actor discovery
@@ -60,7 +60,7 @@ discovery:
 
 ```bash
 # Deploy to GCP
-trebuche deploy --provider gcp --region us-central1
+Trebuchet deploy --provider gcp --region us-central1
 
 # Expected output
 Discovering actors...
@@ -135,7 +135,7 @@ Firestore pricing:
 
 ## Contributing
 
-GCP support contributions are welcome! See the TrebucheCloud protocols:
+GCP support contributions are welcome! See the TrebuchetCloud protocols:
 - ``CloudProvider``
 - ``ActorStateStore``
 - ``ServiceRegistry``

@@ -1,10 +1,10 @@
-# TrebucheCloud Module
+# TrebuchetCloud Module
 
 Cloud-native abstractions for deploying distributed actors to serverless environments.
 
 ## Overview
 
-TrebucheCloud provides the protocols and abstractions needed to deploy Trebuche actors to cloud platforms like AWS Lambda, Google Cloud Functions, and Azure Functions.
+TrebuchetCloud provides the protocols and abstractions needed to deploy Trebuchet actors to cloud platforms like AWS Lambda, Google Cloud Functions, and Azure Functions.
 
 The module defines three key protocols:
 - **CloudProvider**: Abstracts cloud platform deployment and invocation

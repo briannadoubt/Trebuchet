@@ -1,8 +1,8 @@
 import Foundation
 
-/// # TrebuchePostgreSQL
+/// # TrebuchetPostgreSQL
 ///
-/// PostgreSQL integration for Trebuche distributed actors.
+/// PostgreSQL integration for Trebuchet distributed actors.
 ///
 /// This module provides:
 /// - **PostgreSQLStateStore**: Actor state persistence using PostgreSQL
@@ -24,7 +24,7 @@ import Foundation
 /// ## Quick Start
 ///
 /// ```swift
-/// import TrebuchePostgreSQL
+/// import TrebuchetPostgreSQL
 ///
 /// // Initialize state store
 /// let stateStore = try await PostgreSQLStateStore(
@@ -60,5 +60,5 @@ import Foundation
 /// - ``PostgreSQLStreamAdapter``
 /// - ``StateChangeNotification``
 ///
-@_exported import Trebuche
-@_exported import TrebucheCloud
+@_exported import Trebuchet
+@_exported import TrebuchetCloud

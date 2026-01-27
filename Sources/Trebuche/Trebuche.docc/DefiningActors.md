@@ -1,14 +1,14 @@
 # Defining Distributed Actors
 
-Best practices for creating distributed actors with Trebuche.
+Best practices for creating distributed actors with Trebuchet.
 
 ## Overview
 
-Distributed actors in Trebuche follow Swift's distributed actor model with some additional considerations for network communication.
+Distributed actors in Trebuchet follow Swift's distributed actor model with some additional considerations for network communication.
 
 ## The @Trebuchet Macro
 
-The simplest way to create a Trebuche actor is with the `@Trebuchet` macro:
+The simplest way to create a Trebuchet actor is with the `@Trebuchet` macro:
 
 ```swift
 @Trebuchet
@@ -89,9 +89,9 @@ struct CartState: Codable, Sendable {
 Use comments to configure actor deployment:
 
 ```swift
-// @trebuche:memory=1024
-// @trebuche:timeout=60
-// @trebuche:isolated=true
+// @Trebuchet:memory=1024
+// @Trebuchet:timeout=60
+// @Trebuchet:isolated=true
 @Trebuchet
 distributed actor HeavyProcessor {
     distributed func process(data: Data) -> ProcessedResult

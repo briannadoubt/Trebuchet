@@ -21,8 +21,8 @@ struct UndeployCommand: AsyncParsableCommand {
         let cwd = FileManager.default.currentDirectoryPath
 
         // Load deployment info
-        let deploymentPath = deployment ?? "\(cwd)/.trebuche/deployment.json"
-        let terraformDir = "\(cwd)/.trebuche/terraform"
+        let deploymentPath = deployment ?? "\(cwd)/.Trebuchet/deployment.json"
+        let terraformDir = "\(cwd)/.Trebuchet/terraform"
 
         guard FileManager.default.fileExists(atPath: deploymentPath) else {
             terminal.print("No deployment found.", style: .warning)

@@ -1,7 +1,7 @@
 import Distributed
 import Foundation
-import Trebuche
-import TrebucheCloud
+import Trebuchet
+import TrebuchetCloud
 
 // MARK: - AWS Provider
 
@@ -53,7 +53,7 @@ public struct AWSProvider: CloudProvider, Sendable {
     }
 
     public func listDeployments() async throws -> [AWSDeployment] {
-        // Would use AWS SDK to list Lambda functions with trebuche tags
+        // Would use AWS SDK to list Lambda functions with Trebuchet tags
         []
     }
 

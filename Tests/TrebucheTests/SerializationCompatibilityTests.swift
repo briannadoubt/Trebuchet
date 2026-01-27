@@ -3,7 +3,7 @@
 
 import Testing
 import Foundation
-@testable import Trebuche
+@testable import Trebuchet
 
 @Suite("Serialization Compatibility Tests")
 struct SerializationCompatibilityTests {

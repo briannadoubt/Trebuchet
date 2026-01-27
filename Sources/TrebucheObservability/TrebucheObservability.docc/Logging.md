@@ -1,10 +1,10 @@
 # Logging
 
-Structured logging for Trebuche distributed actors.
+Structured logging for Trebuchet distributed actors.
 
 ## Overview
 
-The TrebucheObservability module provides production-grade structured logging with support for:
+The TrebuchetObservability module provides production-grade structured logging with support for:
 
 - Multiple log levels (debug, info, warning, error, critical)
 - Structured metadata attachment
@@ -18,9 +18,9 @@ The TrebucheObservability module provides production-grade structured logging wi
 Create a logger and start logging:
 
 ```swift
-import TrebucheObservability
+import TrebuchetObservability
 
-let logger = TrebucheLogger(label: "my-component")
+let logger = TrebuchetLogger(label: "my-component")
 
 await logger.info("Server started", metadata: [
     "port": "8080",
@@ -34,7 +34,7 @@ Logs are filtered by severity level:
 
 ```swift
 let config = LoggingConfiguration(level: .warning)
-let logger = TrebucheLogger(label: "app", configuration: config)
+let logger = TrebuchetLogger(label: "app", configuration: config)
 
 await logger.debug("Debug message")    // Filtered out
 await logger.info("Info message")      // Filtered out
@@ -60,7 +60,7 @@ Automatically redact sensitive fields:
 
 ```swift
 let config = LoggingConfiguration(redactSensitiveData: true)
-let logger = TrebucheLogger(label: "auth", configuration: config)
+let logger = TrebuchetLogger(label: "auth", configuration: config)
 
 await logger.info("Authentication", metadata: [
     "username": "alice",
@@ -88,7 +88,7 @@ await logger.info("Request completed", correlationID: correlationID)
 Structured JSON output for log aggregation systems:
 
 ```swift
-let logger = TrebucheLogger(
+let logger = TrebuchetLogger(
     label: "api",
     formatter: JSONFormatter(prettyPrint: true)
 )
@@ -102,7 +102,7 @@ await logger.info("API call", metadata: ["endpoint": "/users"])
 Human-readable output for development:
 
 ```swift
-let logger = TrebucheLogger(
+let logger = TrebuchetLogger(
     label: "app",
     formatter: ConsoleFormatter(colorEnabled: true)
 )
@@ -118,7 +118,7 @@ await logger.info("Server running", metadata: ["port": "8080"])
 Debug logging with no redaction:
 
 ```swift
-let logger = TrebucheLogger(
+let logger = TrebuchetLogger(
     label: "app",
     configuration: .development
 )
@@ -129,7 +129,7 @@ let logger = TrebucheLogger(
 Info-level logging with sensitive data redaction:
 
 ```swift
-let logger = TrebucheLogger(
+let logger = TrebuchetLogger(
     label: "app",
     configuration: .default
 )
@@ -140,7 +140,7 @@ let logger = TrebucheLogger(
 Direct logs to custom destinations:
 
 ```swift
-let logger = TrebucheLogger(
+let logger = TrebuchetLogger(
     label: "app",
     output: { logMessage in
         // Write to file, send to logging service, etc.
@@ -151,7 +151,7 @@ let logger = TrebucheLogger(
 
 ## See Also
 
-- ``TrebucheLogger``
+- ``TrebuchetLogger``
 - ``LoggingConfiguration``
 - ``LogLevel``
 - ``LogFormatter``

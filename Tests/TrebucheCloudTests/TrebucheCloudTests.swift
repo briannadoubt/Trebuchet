@@ -1,7 +1,7 @@
 import Testing
 import Foundation
-@testable import TrebucheCloud
-@testable import Trebuche
+@testable import TrebuchetCloud
+@testable import Trebuchet
 
 // MARK: - Cloud Endpoint Tests
 
@@ -34,7 +34,7 @@ struct CloudEndpointTests {
         #expect(endpoint.identifier == "actor-service.production.svc.cluster.local:8080")
     }
 
-    @Test("HTTP endpoint converts to Trebuche Endpoint")
+    @Test("HTTP endpoint converts to Trebuchet Endpoint")
     func httpEndpointConversion() {
         let cloudEndpoint = CloudEndpoint(
             provider: .local,
@@ -50,7 +50,7 @@ struct CloudEndpointTests {
         #expect(endpoint?.port == 8080)
     }
 
-    @Test("Lambda endpoint does not convert to Trebuche Endpoint")
+    @Test("Lambda endpoint does not convert to Trebuchet Endpoint")
     func lambdaEndpointNoConversion() {
         let endpoint = CloudEndpoint.awsLambda(
             functionArn: "arn:aws:lambda:us-east-1:123456789:function:test",
@@ -75,11 +75,11 @@ struct CloudEndpointTests {
         #expect(endpoint.identifier == "https://us-central1-my-project.cloudfunctions.net/my-function")
         #expect(endpoint.metadata["generation"] == "1")
 
-        // Should convert to a valid Trebuche Endpoint
-        let trebucheEndpoint = endpoint.toEndpoint()
-        #expect(trebucheEndpoint != nil)
-        #expect(trebucheEndpoint?.host == "us-central1-my-project.cloudfunctions.net")
-        #expect(trebucheEndpoint?.port == 443)
+        // Should convert to a valid Trebuchet Endpoint
+        let TrebuchetEndpoint = endpoint.toEndpoint()
+        #expect(TrebuchetEndpoint != nil)
+        #expect(TrebuchetEndpoint?.host == "us-central1-my-project.cloudfunctions.net")
+        #expect(TrebuchetEndpoint?.port == 443)
 
         // Should have the correct path
         #expect(endpoint.path == "/my-function")
@@ -108,9 +108,9 @@ struct CloudEndpointTests {
             scheme: .https
         )
 
-        let trebucheEndpoint = endpoint.toEndpoint()
-        #expect(trebucheEndpoint?.host == "example.cloudfunctions.net")
-        #expect(trebucheEndpoint?.port == 443)
+        let TrebuchetEndpoint = endpoint.toEndpoint()
+        #expect(TrebuchetEndpoint?.host == "example.cloudfunctions.net")
+        #expect(TrebuchetEndpoint?.port == 443)
         #expect(endpoint.path == "/myfunction")
     }
 }
@@ -439,7 +439,7 @@ struct LocalDeploymentTests {
         #expect(deployment.provider == .local)
         #expect(deployment.identifier == "localhost:9000")
         #expect(deployment.endpoint.scheme == .http)
-        #expect(deployment.trebucheEndpoint.host == "localhost")
-        #expect(deployment.trebucheEndpoint.port == 9000)
+        #expect(deployment.TrebuchetEndpoint.host == "localhost")
+        #expect(deployment.TrebuchetEndpoint.port == 9000)
     }
 }

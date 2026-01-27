@@ -19,19 +19,19 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(path: "../.."), // Trebuche
+        .package(path: "../.."), // Trebuchet
     ],
     targets: [
         // Shared code: models and actors
         .target(
             name: "Shared",
-            dependencies: ["Trebuche"],
+            dependencies: ["Trebuchet"],
         ),
         // Server executable
         .executableTarget(
             name: "Server",
             dependencies: [
-                "Trebuche",
+                "Trebuchet",
                 "Shared"
             ],
         ),

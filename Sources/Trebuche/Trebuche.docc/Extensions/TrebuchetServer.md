@@ -1,4 +1,4 @@
-# ``Trebuche/TrebuchetServer``
+# ``Trebuchet/TrebuchetServer``
 
 ## Overview
 

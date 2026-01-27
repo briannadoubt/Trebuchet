@@ -10,15 +10,15 @@
 
 import Foundation
 
-// Simulating the Trebuche imports (you'd actually import these)
-// import Trebuche
-// import TrebucheCloud
+// Simulating the Trebuchet imports (you'd actually import these)
+// import Trebuchet
+// import TrebuchetCloud
 
 print("""
 🚀 Local Distributed Actor Demo
 ================================
 
-This example shows how Trebuche actors can run distributed
+This example shows how Trebuchet actors can run distributed
 across multiple "nodes" (different ports) on localhost:
 
   Node 1 (port 9000): GameLobby actor
@@ -32,14 +32,14 @@ To run the actual implementation:
 1. Build the project:
    swift build
 
-2. Run the TrebucheDemo:
-   swift run TrebucheDemo
+2. Run the TrebuchetDemo:
+   swift run TrebuchetDemo
 
 3. Or create your own:
 
 ```swift
-import Trebuche
-import TrebucheCloud
+import Trebuchet
+import TrebuchetCloud
 
 @Trebuchet
 distributed actor MyActor {

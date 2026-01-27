@@ -19,7 +19,7 @@ public struct CloudWatchConfiguration: Sendable {
 
     /// Creates a new CloudWatch configuration
     /// - Parameters:
-    ///   - namespace: CloudWatch namespace (e.g., "Trebuche/Production")
+    ///   - namespace: CloudWatch namespace (e.g., "Trebuchet/Production")
     ///   - region: AWS region (e.g., "us-east-1")
     ///   - flushInterval: How often to flush metrics (default: 60 seconds)
     ///   - maxBatchSize: Maximum metrics per batch (default: 20, CloudWatch limit)

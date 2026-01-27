@@ -1,8 +1,8 @@
-# ``Trebuche/TrebuchetActorID``
+# ``Trebuchet/TrebuchetActorID``
 
 ## Overview
 
-Every distributed actor in Trebuche has a unique `TrebuchetActorID`. This ID contains all the information needed to locate and communicate with the actor.
+Every distributed actor in Trebuchet has a unique `TrebuchetActorID`. This ID contains all the information needed to locate and communicate with the actor.
 
 ## Local vs Remote Actors
 

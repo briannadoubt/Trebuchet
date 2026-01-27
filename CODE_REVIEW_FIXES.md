@@ -21,7 +21,7 @@ This document summarizes all fixes made in response to the comprehensive code re
 
 **Issue**: Channel names in LISTEN/UNLISTEN statements vulnerable to SQL injection
 
-**Location**: `Sources/TrebuchePostgreSQL/PostgreSQLStreamAdapter.swift:150, 173`
+**Location**: `Sources/TrebuchetPostgreSQL/PostgreSQLStreamAdapter.swift:150, 173`
 
 **Fix Applied**:
 - Added `isValidIdentifier()` validation function
@@ -81,7 +81,7 @@ private static func isValidIdentifier(_ identifier: String) -> Bool {
 - NOTIFY broadcast
 - Concurrent access/connection pooling
 
-**File**: `Tests/TrebuchePostgreSQLTests/TrebuchePostgreSQLTests.swift` (expanded from 62 to 256 lines)
+**File**: `Tests/TrebuchetPostgreSQLTests/TrebuchetPostgreSQLTests.swift` (expanded from 62 to 256 lines)
 
 ---
 
@@ -89,7 +89,7 @@ private static func isValidIdentifier(_ identifier: String) -> Bool {
 
 **Issue**: Connection might not close if operation throws
 
-**Location**: `Sources/TrebuchePostgreSQL/PostgreSQLStateStore.swift:276`
+**Location**: `Sources/TrebuchetPostgreSQL/PostgreSQLStateStore.swift:276`
 
 **Original Code**:
 ```swift
@@ -130,7 +130,7 @@ private func withConnection<T>(_ operation: ...) async throws -> T {
 
 **Issue**: Synchronous JSON deserialization on every filter check
 
-**Location**: `Sources/Trebuche/ActorSystem/StreamFilter.swift`
+**Location**: `Sources/Trebuchet/ActorSystem/StreamFilter.swift`
 
 **Problem**: High-frequency streams (100+ updates/sec) deserialize JSON twice:
 1. Once for filter check
@@ -177,8 +177,8 @@ if filter.matches(data, decoded: decoded) {
 **DynamoDBConnectionStorage**:
 - Added optional `metrics` parameter to constructor
 - Instrumented `getConnections()` with example metrics:
-  - `trebuche.dynamodb.operation.latency` (histogram, ms)
-  - `trebuche.dynamodb.operation.count` (counter, success/error)
+  - `Trebuchet.dynamodb.operation.latency` (histogram, ms)
+  - `Trebuchet.dynamodb.operation.count` (counter, success/error)
 - Pattern can be replicated to other DynamoDB operations
 
 **Example Code**:
@@ -225,7 +225,7 @@ do {
 
 **Issue**: TTL hardcoded to 24 hours, inflexible for different environments
 
-**Location**: `Sources/TrebucheAWS/DynamoDBConnectionStorage.swift`
+**Location**: `Sources/TrebuchetAWS/DynamoDBConnectionStorage.swift`
 
 **Fix Applied**:
 
@@ -278,8 +278,8 @@ let prodStorage = DynamoDBConnectionStorage(
 **Finding**: No force unwraps found in codebase ✅
 
 **Files Checked**:
-- `Sources/TrebuchePostgreSQL/PostgreSQLStateStore.swift`
-- `Sources/TrebuchePostgreSQL/PostgreSQLStreamAdapter.swift`
+- `Sources/TrebuchetPostgreSQL/PostgreSQLStateStore.swift`
+- `Sources/TrebuchetPostgreSQL/PostgreSQLStreamAdapter.swift`
 - All PostgreSQL module files
 
 **Result**: Code already uses proper error handling. No changes needed.
@@ -290,7 +290,7 @@ let prodStorage = DynamoDBConnectionStorage(
 
 **Issue**: Query operations read entire items instead of just needed attributes
 
-**Location**: `Sources/TrebucheAWS/DynamoDBConnectionStorage.swift:getConnections()`
+**Location**: `Sources/TrebuchetAWS/DynamoDBConnectionStorage.swift:getConnections()`
 
 **Fix Applied**: Added `projectionExpression` to reduce data read
 
@@ -329,7 +329,7 @@ let request = DynamoDBQueryRequest(
 
 **Issue**: Default 100-item buffer size lacks rationale
 
-**Location**: `Sources/Trebuche/Server/TrebuchetServer.swift:505`
+**Location**: `Sources/Trebuchet/Server/TrebuchetServer.swift:505`
 
 **Fix Applied**: Comprehensive documentation added to `ServerStreamBuffer`
 
@@ -364,7 +364,7 @@ let buffer = ServerStreamBuffer(
 
 **Issue**: `.default` credentials behavior undocumented
 
-**Location**: `Sources/TrebucheAWS/DynamoDBConnectionStorage.swift`
+**Location**: `Sources/TrebuchetAWS/DynamoDBConnectionStorage.swift`
 
 **Fix Applied**: Added comprehensive credential resolution documentation
 
@@ -411,18 +411,18 @@ The `.default` credentials follow standard AWS credential resolution:
 ## Files Modified
 
 ### Security Fixes
-1. `Sources/TrebuchePostgreSQL/PostgreSQLStreamAdapter.swift` - SQL injection prevention
-2. `Sources/TrebuchePostgreSQL/PostgreSQLStateStore.swift` - Connection leak fix, error enum
+1. `Sources/TrebuchetPostgreSQL/PostgreSQLStreamAdapter.swift` - SQL injection prevention
+2. `Sources/TrebuchetPostgreSQL/PostgreSQLStateStore.swift` - Connection leak fix, error enum
 
 ### Performance Optimizations
-3. `Sources/Trebuche/ActorSystem/StreamFilter.swift` - Async-friendly filtering
-4. `Sources/TrebucheAWS/DynamoDBConnectionStorage.swift` - Projection expression, metrics, TTL
+3. `Sources/Trebuchet/ActorSystem/StreamFilter.swift` - Async-friendly filtering
+4. `Sources/TrebuchetAWS/DynamoDBConnectionStorage.swift` - Projection expression, metrics, TTL
 
 ### Documentation Enhancements
-5. `Sources/Trebuche/Server/TrebuchetServer.swift` - Buffer size rationale
+5. `Sources/Trebuchet/Server/TrebuchetServer.swift` - Buffer size rationale
 
 ### Testing
-6. `Tests/TrebuchePostgreSQLTests/TrebuchePostgreSQLTests.swift` - Comprehensive test suite
+6. `Tests/TrebuchetPostgreSQLTests/TrebuchetPostgreSQLTests.swift` - Comprehensive test suite
 
 ---
 
@@ -480,7 +480,7 @@ swift test  # 255/255 passing
 swift test --filter PostgreSQL  # 11/11 passing
 
 # Check for force unwraps
-grep -r "try!" Sources/TrebuchePostgreSQL  # None found
+grep -r "try!" Sources/TrebuchetPostgreSQL  # None found
 ```
 
 ---

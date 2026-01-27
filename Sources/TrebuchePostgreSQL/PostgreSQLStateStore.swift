@@ -1,7 +1,7 @@
 import Foundation
 import PostgresNIO
-import Trebuche
-import TrebucheCloud
+import Trebuchet
+import TrebuchetCloud
 import NIOCore
 import NIOPosix
 import Logging
@@ -77,7 +77,7 @@ public actor PostgreSQLStateStore: ActorStateStore {
     ) async throws {
         self.eventLoopGroup = eventLoopGroup ?? MultiThreadedEventLoopGroup(numberOfThreads: 1)
         self.tableName = tableName
-        self.logger = Logger(label: "com.trebuche.postgresql")
+        self.logger = Logger(label: "com.Trebuchet.postgresql")
 
         self.configuration = PostgresConnection.Configuration(
             host: host,

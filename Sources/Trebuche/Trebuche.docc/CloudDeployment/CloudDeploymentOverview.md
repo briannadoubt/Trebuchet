@@ -1,10 +1,10 @@
 # Cloud Deployment Overview
 
-Learn how Trebuche enables serverless deployment of distributed actors.
+Learn how Trebuchet enables serverless deployment of distributed actors.
 
 ## Overview
 
-TrebucheCloud provides the abstractions needed to deploy Swift distributed actors to serverless platforms. Instead of running a persistent server, your actors execute on-demand in response to invocations.
+TrebuchetCloud provides the abstractions needed to deploy Swift distributed actors to serverless platforms. Instead of running a persistent server, your actors execute on-demand in response to invocations.
 
 ## Architecture
 

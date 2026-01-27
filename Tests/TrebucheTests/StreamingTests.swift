@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Trebuche
+@testable import Trebuchet
 
 // MARK: - Test Types
 

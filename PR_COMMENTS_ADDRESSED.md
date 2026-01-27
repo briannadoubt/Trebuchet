@@ -19,7 +19,7 @@ All 8 PR comments have been successfully addressed. Tests increased from 238 to 
 **Fix**: Added comprehensive security documentation and runtime warning
 
 **Files Modified**:
-- `Sources/TrebucheSecurity/Authentication/JWTAuthenticator.swift`
+- `Sources/TrebuchetSecurity/Authentication/JWTAuthenticator.swift`
 
 **Changes**:
 ```swift
@@ -57,7 +57,7 @@ public init(configuration: Configuration) {
 **Fix**: Changed to explicit error handling with stderr logging
 
 **Files Modified**:
-- `Sources/TrebucheCloud/Middleware/TracingMiddleware.swift`
+- `Sources/TrebuchetCloud/Middleware/TracingMiddleware.swift`
 
 **Changes**:
 ```swift
@@ -109,7 +109,7 @@ private func exportSpan(_ span: Span) async {
 **Fix**: Changed default to use global anonymous key
 
 **Files Modified**:
-- `Sources/TrebucheCloud/Middleware/RateLimitingMiddleware.swift`
+- `Sources/TrebuchetCloud/Middleware/RateLimitingMiddleware.swift`
 
 **Changes**:
 ```swift
@@ -135,8 +135,8 @@ keyExtractor: @escaping @Sendable (InvocationEnvelope, MiddlewareContext) -> Str
 **Fix**: Added explicit auto-cleanup methods (cannot auto-start in actor init due to Swift concurrency)
 
 **Files Modified**:
-- `Sources/TrebucheSecurity/RateLimiting/TokenBucketLimiter.swift`
-- `Sources/TrebucheSecurity/RateLimiting/SlidingWindowLimiter.swift`
+- `Sources/TrebuchetSecurity/RateLimiting/TokenBucketLimiter.swift`
+- `Sources/TrebuchetSecurity/RateLimiting/SlidingWindowLimiter.swift`
 
 **Changes**:
 ```swift
@@ -176,7 +176,7 @@ deinit {
 **Fix**: Added reservoir sampling to bound memory while maintaining statistical properties
 
 **Files Modified**:
-- `Sources/TrebucheObservability/Metrics/Histogram.swift`
+- `Sources/TrebuchetObservability/Metrics/Histogram.swift`
 
 **Changes**:
 ```swift
@@ -217,25 +217,25 @@ public func record(_ value: Double, tags: [String: String] = [:]) {
 **Fix**: Added specific catch blocks for each error type with appropriate logging levels
 
 **Files Modified**:
-- `Sources/TrebucheCloud/Gateway/CloudGateway.swift`
+- `Sources/TrebuchetCloud/Gateway/CloudGateway.swift`
 
 **Changes**:
 ```swift
 } catch let error as ValidationError {
     await logger.warning("Request validation failed", metadata: [...])
-    await metrics.incrementCounter(TrebucheMetrics.invocationsErrors, tags: ["reason": "validation_error"])
+    await metrics.incrementCounter(TrebuchetMetrics.invocationsErrors, tags: ["reason": "validation_error"])
 } catch let error as AuthenticationError {
     await logger.warning("Authentication failed", metadata: [...])
-    await metrics.incrementCounter(TrebucheMetrics.invocationsErrors, tags: ["reason": "authentication_error"])
+    await metrics.incrementCounter(TrebuchetMetrics.invocationsErrors, tags: ["reason": "authentication_error"])
 } catch let error as AuthorizationError {
     await logger.warning("Authorization failed", metadata: [...])
-    await metrics.incrementCounter(TrebucheMetrics.invocationsErrors, tags: ["reason": "authorization_error"])
+    await metrics.incrementCounter(TrebuchetMetrics.invocationsErrors, tags: ["reason": "authorization_error"])
 } catch let error as RateLimitError {
     await logger.warning("Rate limit exceeded", metadata: [...])
-    await metrics.incrementCounter(TrebucheMetrics.invocationsErrors, tags: ["reason": "rate_limit_exceeded"])
+    await metrics.incrementCounter(TrebuchetMetrics.invocationsErrors, tags: ["reason": "rate_limit_exceeded"])
 } catch {
     await logger.error("Actor invocation failed", metadata: [...])
-    await metrics.incrementCounter(TrebucheMetrics.invocationsErrors, tags: ["reason": "handler_error"])
+    await metrics.incrementCounter(TrebuchetMetrics.invocationsErrors, tags: ["reason": "handler_error"])
 }
 ```
 
@@ -253,7 +253,7 @@ public func record(_ value: Double, tags: [String: String] = [:]) {
 **Fix**: Added comprehensive warning section with examples
 
 **Files Modified**:
-- `Sources/TrebucheObservability/TrebucheObservability.docc/Metrics.md`
+- `Sources/TrebuchetObservability/TrebuchetObservability.docc/Metrics.md`
 
 **Changes**:
 ```markdown
@@ -306,8 +306,8 @@ Test run with 247 tests in 39 suites passed after 0.232 seconds.
 ## Compilation Warnings
 
 Minor warnings present (not blocking):
-- `Sources/TrebucheAWS/CloudMapRegistry.swift`: Unused execute() results (2 warnings)
-- `Tests/TrebucheCloudTests/MiddlewareIntegrationTests.swift`: Unnecessary `try` expressions (3 warnings)
+- `Sources/TrebuchetAWS/CloudMapRegistry.swift`: Unused execute() results (2 warnings)
+- `Tests/TrebuchetCloudTests/MiddlewareIntegrationTests.swift`: Unnecessary `try` expressions (3 warnings)
 
 These are cosmetic and don't affect functionality.
 

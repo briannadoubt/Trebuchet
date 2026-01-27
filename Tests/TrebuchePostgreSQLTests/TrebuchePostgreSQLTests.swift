@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import TrebuchePostgreSQL
+@testable import TrebuchetPostgreSQL
 
 @Suite("PostgreSQL State Store Tests")
 struct PostgreSQLStateStoreTests {
@@ -250,7 +250,7 @@ struct PostgreSQLIntegrationTests {
     func testSaveAndLoad() async throws {
         let store = try await PostgreSQLStateStore(
             host: "localhost",
-            database: "test_trebuche",
+            database: "test_Trebuchet",
             username: "test",
             password: "test"
         )
@@ -271,7 +271,7 @@ struct PostgreSQLIntegrationTests {
     func testSequenceIncrement() async throws {
         let store = try await PostgreSQLStateStore(
             host: "localhost",
-            database: "test_trebuche",
+            database: "test_Trebuchet",
             username: "test",
             password: "test"
         )
@@ -293,7 +293,7 @@ struct PostgreSQLIntegrationTests {
     func testDelete() async throws {
         let store = try await PostgreSQLStateStore(
             host: "localhost",
-            database: "test_trebuche",
+            database: "test_Trebuchet",
             username: "test",
             password: "test"
         )
@@ -313,7 +313,7 @@ struct PostgreSQLIntegrationTests {
     func testExists() async throws {
         let store = try await PostgreSQLStateStore(
             host: "localhost",
-            database: "test_trebuche",
+            database: "test_Trebuchet",
             username: "test",
             password: "test"
         )
@@ -335,7 +335,7 @@ struct PostgreSQLIntegrationTests {
     func testNotifyBroadcast() async throws {
         let adapter = try await PostgreSQLStreamAdapter(
             host: "localhost",
-            database: "test_trebuche",
+            database: "test_Trebuchet",
             username: "test",
             password: "test",
             channel: "test_notifications"
@@ -359,7 +359,7 @@ struct PostgreSQLIntegrationTests {
     func testConcurrentAccess() async throws {
         let store = try await PostgreSQLStateStore(
             host: "localhost",
-            database: "test_trebuche",
+            database: "test_Trebuchet",
             username: "test",
             password: "test"
         )

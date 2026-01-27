@@ -1,4 +1,4 @@
-# ``Trebuche/RemoteActor``
+# ``Trebuchet/RemoteActor``
 
 A property wrapper for automatically resolving and managing remote actors.
 

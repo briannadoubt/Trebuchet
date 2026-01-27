@@ -1,5 +1,5 @@
 import Foundation
-import Trebuche
+import Trebuchet
 
 // MARK: - Service Registry Protocol
 
@@ -225,7 +225,7 @@ public struct CloudEndpoint: Sendable, Codable, Hashable {
         )
     }
 
-    /// Convert to a traditional Trebuche Endpoint if possible
+    /// Convert to a traditional Trebuchet Endpoint if possible
     public func toEndpoint() -> Endpoint? {
         // Only HTTP-based schemes can be converted
         switch scheme {

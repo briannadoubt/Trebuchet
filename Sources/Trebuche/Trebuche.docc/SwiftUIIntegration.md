@@ -1,25 +1,25 @@
 # SwiftUI Integration
 
-Build reactive SwiftUI apps with Trebuche's observable connection management.
+Build reactive SwiftUI apps with Trebuchet's observable connection management.
 
 ## Overview
 
-Trebuche provides first-class SwiftUI support with observable connection state, automatic reconnection, and multiple patterns for accessing remote actors in your views.
+Trebuchet provides first-class SwiftUI support with observable connection state, automatic reconnection, and multiple patterns for accessing remote actors in your views.
 
 ## Setting Up the Connection
 
-The easiest way to integrate Trebuche is using the `.trebuche()` modifier at your app's root:
+The easiest way to integrate Trebuchet is using the `.Trebuchet()` modifier at your app's root:
 
 ```swift
 import SwiftUI
-import Trebuche
+import Trebuchet
 
 @main
 struct MyApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .trebuche(transport: .webSocket(host: "api.example.com", port: 8080))
+                .Trebuchet(transport: .webSocket(host: "api.example.com", port: 8080))
         }
     }
 }
@@ -137,17 +137,17 @@ var body: some View {
 
 ## View Modifiers
 
-Trebuche provides several view modifiers for common patterns:
+Trebuchet provides several view modifiers for common patterns:
 
 ### Scoped Connections
 
-Use `.trebuche()` to create a connection scoped to a specific view:
+Use `.Trebuchet()` to create a connection scoped to a specific view:
 
 ```swift
 struct MatchmakingSheet: View {
     var body: some View {
         MatchmakingContent()
-            .trebuche(transport: .webSocket(host: "matchmaking.example.com", port: 8080))
+            .Trebuchet(transport: .webSocket(host: "matchmaking.example.com", port: 8080))
     }
 }
 ```
@@ -253,14 +253,14 @@ Customize reconnection behavior with ``ReconnectionPolicy``:
 ```swift
 // Aggressive reconnection for real-time apps
 ContentView()
-    .trebuche(
+    .Trebuchet(
         transport: .webSocket(host: "realtime.example.com", port: 8080),
         reconnectionPolicy: .aggressive
     )
 
 // Disable auto-reconnection
 ContentView()
-    .trebuche(
+    .Trebuchet(
         transport: .webSocket(host: "api.example.com", port: 8080),
         reconnectionPolicy: .disabled
     )
@@ -328,7 +328,7 @@ struct ContentView: View {
 
 ### View Modifiers
 
-- ``SwiftUICore/View/trebuche(transport:reconnectionPolicy:autoConnect:)``
+- ``SwiftUICore/View/Trebuchet(transport:reconnectionPolicy:autoConnect:)``
 - ``SwiftUICore/View/trebuchetConnection(name:)``
 - ``SwiftUICore/View/whenDisconnected(placeholder:)``
 - ``SwiftUICore/View/whenConnectionState(_:placeholder:)``

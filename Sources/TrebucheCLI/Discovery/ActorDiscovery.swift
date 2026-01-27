@@ -219,15 +219,15 @@ final class ActorVisitor: SyntaxVisitor {
     private func extractAnnotations(_ node: ActorDeclSyntax) -> [String: String] {
         var annotations: [String: String] = [:]
 
-        // Look for special comments like // @trebuche:memory=1024
+        // Look for special comments like // @Trebuchet:memory=1024
         let trivia = node.leadingTrivia.description
         let lines = trivia.split(separator: "\n")
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("// @trebuche:") || trimmed.hasPrefix("/// @trebuche:") {
-                let content = trimmed.replacingOccurrences(of: "// @trebuche:", with: "")
-                    .replacingOccurrences(of: "/// @trebuche:", with: "")
+            if trimmed.hasPrefix("// @Trebuchet:") || trimmed.hasPrefix("/// @Trebuchet:") {
+                let content = trimmed.replacingOccurrences(of: "// @Trebuchet:", with: "")
+                    .replacingOccurrences(of: "/// @Trebuchet:", with: "")
                 let parts = content.split(separator: "=", maxSplits: 1)
                 if parts.count == 2 {
                     let key = String(parts[0]).trimmingCharacters(in: .whitespaces)

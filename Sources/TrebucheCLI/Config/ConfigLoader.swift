@@ -19,7 +19,7 @@ public enum ConfigError: Error, CustomStringConvertible {
     }
 }
 
-/// Loads and validates Trebuche configuration files
+/// Loads and validates Trebuchet configuration files
 public struct ConfigLoader {
     private let fileManager: FileManager
 
@@ -28,12 +28,12 @@ public struct ConfigLoader {
     }
 
     /// Load configuration from a directory
-    /// - Parameter directory: The directory to search for trebuche.yaml
+    /// - Parameter directory: The directory to search for Trebuchet.yaml
     /// - Returns: Parsed configuration
-    public func load(from directory: String) throws -> TrebucheConfig {
+    public func load(from directory: String) throws -> TrebuchetConfig {
         let configPath = findConfigFile(in: directory)
         guard let path = configPath else {
-            throw ConfigError.fileNotFound("trebuche.yaml not found in \(directory)")
+            throw ConfigError.fileNotFound("Trebuchet.yaml not found in \(directory)")
         }
         return try load(file: path)
     }
@@ -41,7 +41,7 @@ public struct ConfigLoader {
     /// Load configuration from a specific file
     /// - Parameter path: Path to the configuration file
     /// - Returns: Parsed configuration
-    public func load(file path: String) throws -> TrebucheConfig {
+    public func load(file path: String) throws -> TrebuchetConfig {
         guard fileManager.fileExists(atPath: path) else {
             throw ConfigError.fileNotFound(path)
         }
@@ -57,10 +57,10 @@ public struct ConfigLoader {
     /// Parse YAML configuration string
     /// - Parameter yaml: The YAML string to parse
     /// - Returns: Parsed configuration
-    public func parse(yaml: String) throws -> TrebucheConfig {
+    public func parse(yaml: String) throws -> TrebuchetConfig {
         do {
             let decoder = YAMLDecoder()
-            return try decoder.decode(TrebucheConfig.self, from: yaml)
+            return try decoder.decode(TrebuchetConfig.self, from: yaml)
         } catch {
             throw ConfigError.parseError(error.localizedDescription)
         }
@@ -73,7 +73,7 @@ public struct ConfigLoader {
     ///   - discoveredActors: List of discovered actor names
     /// - Returns: Fully resolved configuration
     public func resolve(
-        config: TrebucheConfig,
+        config: TrebuchetConfig,
         environment: String? = nil,
         discoveredActors: [ActorMetadata]
     ) throws -> ResolvedConfig {
@@ -133,7 +133,7 @@ public struct ConfigLoader {
 
     /// Find the configuration file in a directory
     private func findConfigFile(in directory: String) -> String? {
-        let names = ["trebuche.yaml", "trebuche.yml", "Trebuchefile"]
+        let names = ["Trebuchet.yaml", "Trebuchet.yml", "Trebuchetfile"]
         for name in names {
             let path = (directory as NSString).appendingPathComponent(name)
             if fileManager.fileExists(atPath: path) {

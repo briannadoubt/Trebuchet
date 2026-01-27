@@ -3,7 +3,7 @@
 
 import Testing
 import Foundation
-@testable import TrebucheSecurity
+@testable import TrebuchetSecurity
 
 @Suite("Request Validation Tests")
 struct ValidationTests {

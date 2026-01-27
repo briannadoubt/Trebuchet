@@ -1,4 +1,4 @@
-# ``Trebuche/TrebuchetConnectionManager``
+# ``Trebuchet/TrebuchetConnectionManager``
 
 Manages multiple named connections for multi-server scenarios.
 

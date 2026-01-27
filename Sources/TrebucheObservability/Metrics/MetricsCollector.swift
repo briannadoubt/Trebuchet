@@ -42,23 +42,23 @@ extension MetricsCollector {
     }
 }
 
-/// Standard metric names for Trebuche
-public enum TrebucheMetrics {
+/// Standard metric names for Trebuchet
+public enum TrebuchetMetrics {
     // Invocation metrics
-    public static let invocationsCount = "trebuche.invocations.count"
-    public static let invocationsLatency = "trebuche.invocations.latency"
-    public static let invocationsErrors = "trebuche.invocations.errors"
+    public static let invocationsCount = "Trebuchet.invocations.count"
+    public static let invocationsLatency = "Trebuchet.invocations.latency"
+    public static let invocationsErrors = "Trebuchet.invocations.errors"
 
     // Connection metrics
-    public static let connectionsActive = "trebuche.connections.active"
-    public static let connectionsTotal = "trebuche.connections.total"
+    public static let connectionsActive = "Trebuchet.connections.active"
+    public static let connectionsTotal = "Trebuchet.connections.total"
 
     // State metrics
-    public static let stateOperationsCount = "trebuche.state.operations.count"
-    public static let stateOperationsLatency = "trebuche.state.operations.latency"
-    public static let stateSize = "trebuche.state.size"
+    public static let stateOperationsCount = "Trebuchet.state.operations.count"
+    public static let stateOperationsLatency = "Trebuchet.state.operations.latency"
+    public static let stateSize = "Trebuchet.state.size"
 
     // System metrics
-    public static let memoryUsed = "trebuche.memory.used"
-    public static let actorsActive = "trebuche.actors.active"
+    public static let memoryUsed = "Trebuchet.memory.used"
+    public static let actorsActive = "Trebuchet.actors.active"
 }

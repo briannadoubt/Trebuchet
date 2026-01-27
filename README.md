@@ -1,12 +1,12 @@
-# Trebuche
+# Trebuchet
 
 Location-transparent distributed actors for Swift. Make RPC stupid simple.
 
-[![Documentation](https://img.shields.io/badge/docs-DocC-blue)](https://briannadoubt.github.io/Trebuche/documentation/trebuche/)
+[![Documentation](https://img.shields.io/badge/docs-DocC-blue)](https://briannadoubt.github.io/Trebuchet/documentation/Trebuchet/)
 
 ## Overview
 
-Trebuche is a Swift 6.2 distributed actor framework that lets you define actors once and use them seamlessly whether they're local or remote.
+Trebuchet is a Swift 6.2 distributed actor framework that lets you define actors once and use them seamlessly whether they're local or remote.
 
 ```swift
 @Trebuchet
@@ -19,11 +19,11 @@ distributed actor GameRoom {
 
 ### Library
 
-Add Trebuche to your `Package.swift`:
+Add Trebuchet to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/briannadoubt/Trebuche.git", from: "1.0.0")
+    .package(url: "https://github.com/briannadoubt/Trebuchet.git", from: "1.0.0")
 ]
 ```
 
@@ -32,23 +32,23 @@ Then add it to your target:
 ```swift
 .target(
     name: "MyApp",
-    dependencies: ["Trebuche"]
+    dependencies: ["Trebuchet"]
 )
 ```
 
 ### CLI Tool
 
-Install the `trebuche` CLI for cloud deployment:
+Install the `Trebuchet` CLI for cloud deployment:
 
 ```bash
 # Using Mint (recommended)
-mint install briannadoubt/Trebuche
+mint install briannadoubt/Trebuchet
 
 # Or build from source
-git clone https://github.com/briannadoubt/Trebuche.git
-cd Trebuche
+git clone https://github.com/briannadoubt/Trebuchet.git
+cd Trebuchet
 swift build -c release
-cp .build/release/trebuche /usr/local/bin/
+cp .build/release/Trebuchet /usr/local/bin/
 ```
 
 ## Quick Start
@@ -56,7 +56,7 @@ cp .build/release/trebuche /usr/local/bin/
 ### Server
 
 ```swift
-import Trebuche
+import Trebuchet
 
 let server = TrebuchetServer(transport: .webSocket(port: 8080))
 let room = GameRoom(actorSystem: server.actorSystem)
@@ -67,7 +67,7 @@ try await server.run()
 ### Client
 
 ```swift
-import Trebuche
+import Trebuchet
 
 let client = TrebuchetClient(transport: .webSocket(host: "localhost", port: 8080))
 try await client.connect()
@@ -82,13 +82,13 @@ Deploy your actors to AWS Lambda with a single command:
 
 ```bash
 # Initialize configuration
-trebuche init --name my-game-server --provider aws
+Trebuchet init --name my-game-server --provider aws
 
 # Preview deployment
-trebuche deploy --dry-run
+Trebuchet deploy --dry-run
 
 # Deploy to AWS
-trebuche deploy --provider aws --region us-east-1
+Trebuchet deploy --provider aws --region us-east-1
 ```
 
 The CLI discovers your `@Trebuchet` actors, generates Terraform, and deploys to:
@@ -96,11 +96,11 @@ The CLI discovers your `@Trebuchet` actors, generates Terraform, and deploys to:
 - **DynamoDB** for state persistence
 - **CloudMap** for service discovery
 
-See the [Cloud Deployment Guide](https://briannadoubt.github.io/Trebuche/documentation/trebuche/clouddeploymentoverview) for details.
+See the [Cloud Deployment Guide](https://briannadoubt.github.io/Trebuchet/documentation/Trebuchet/clouddeploymentoverview) for details.
 
 ## Documentation
 
-Full documentation is available at **[briannadoubt.github.io/Trebuche](https://briannadoubt.github.io/Trebuche/documentation/trebuche/)**.
+Full documentation is available at **[briannadoubt.github.io/Trebuchet](https://briannadoubt.github.io/Trebuchet/documentation/Trebuchet/)**.
 
 ## Requirements
 

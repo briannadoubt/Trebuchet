@@ -1,4 +1,4 @@
-# ``Trebuche/ConnectionState``
+# ``Trebuchet/ConnectionState``
 
 Represents the current state of a Trebuchet connection.
 

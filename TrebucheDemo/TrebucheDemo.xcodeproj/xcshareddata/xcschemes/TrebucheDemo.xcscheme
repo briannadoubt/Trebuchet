@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "03E7DEE82F20BA59004233F5"
-               BuildableName = "TrebucheDemo.app"
-               BlueprintName = "TrebucheDemo"
-               ReferencedContainer = "container:TrebucheDemo.xcodeproj">
+               BuildableName = "TrebuchetDemo.app"
+               BlueprintName = "TrebuchetDemo"
+               ReferencedContainer = "container:TrebuchetDemo.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -30,7 +30,7 @@
       shouldUseLaunchSchemeArgsEnv = "YES">
       <TestPlans>
          <TestPlanReference
-            reference = "container:TrebucheDemo.xctestplan"
+            reference = "container:TrebuchetDemo.xctestplan"
             default = "YES">
          </TestPlanReference>
       </TestPlans>
@@ -41,9 +41,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "03E7DEF52F20BA5B004233F5"
-               BuildableName = "TrebucheDemoTests.xctest"
-               BlueprintName = "TrebucheDemoTests"
-               ReferencedContainer = "container:TrebucheDemo.xcodeproj">
+               BuildableName = "TrebuchetDemoTests.xctest"
+               BlueprintName = "TrebuchetDemoTests"
+               ReferencedContainer = "container:TrebuchetDemo.xcodeproj">
             </BuildableReference>
          </TestableReference>
          <TestableReference
@@ -52,9 +52,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "03E7DEFF2F20BA5B004233F5"
-               BuildableName = "TrebucheDemoUITests.xctest"
-               BlueprintName = "TrebucheDemoUITests"
-               ReferencedContainer = "container:TrebucheDemo.xcodeproj">
+               BuildableName = "TrebuchetDemoUITests.xctest"
+               BlueprintName = "TrebuchetDemoUITests"
+               ReferencedContainer = "container:TrebuchetDemo.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -74,9 +74,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "03E7DEE82F20BA59004233F5"
-            BuildableName = "TrebucheDemo.app"
-            BlueprintName = "TrebucheDemo"
-            ReferencedContainer = "container:TrebucheDemo.xcodeproj">
+            BuildableName = "TrebuchetDemo.app"
+            BlueprintName = "TrebuchetDemo"
+            ReferencedContainer = "container:TrebuchetDemo.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -91,9 +91,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "03E7DEE82F20BA59004233F5"
-            BuildableName = "TrebucheDemo.app"
-            BlueprintName = "TrebucheDemo"
-            ReferencedContainer = "container:TrebucheDemo.xcodeproj">
+            BuildableName = "TrebuchetDemo.app"
+            BlueprintName = "TrebuchetDemo"
+            ReferencedContainer = "container:TrebuchetDemo.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

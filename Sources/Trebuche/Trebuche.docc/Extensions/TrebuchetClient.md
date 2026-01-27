@@ -1,4 +1,4 @@
-# ``Trebuche/TrebuchetClient``
+# ``Trebuchet/TrebuchetClient``
 
 ## Overview
 

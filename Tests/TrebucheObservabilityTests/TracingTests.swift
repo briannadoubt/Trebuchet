@@ -3,8 +3,8 @@
 
 import Testing
 import Foundation
-import Trebuche
-@testable import TrebucheObservability
+import Trebuchet
+@testable import TrebuchetObservability
 
 @Suite("Tracing Tests")
 struct TracingTests {

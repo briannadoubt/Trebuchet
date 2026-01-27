@@ -1,8 +1,8 @@
 import Testing
 import Foundation
-@testable import Trebuche
-@testable import TrebucheCloud
-@testable import TrebucheAWS
+@testable import Trebuchet
+@testable import TrebuchetCloud
+@testable import TrebuchetAWS
 
 @Suite("WebSocket Tests")
 struct WebSocketTests {

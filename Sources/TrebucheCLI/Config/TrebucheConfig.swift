@@ -1,7 +1,7 @@
 import Foundation
 
-/// Configuration for a Trebuche deployment
-public struct TrebucheConfig: Codable, Sendable {
+/// Configuration for a Trebuchet deployment
+public struct TrebuchetConfig: Codable, Sendable {
     /// Project name
     public var name: String
 

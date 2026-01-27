@@ -18,11 +18,11 @@ struct StatusCommand: AsyncParsableCommand {
         let cwd = FileManager.default.currentDirectoryPath
 
         // Load deployment info
-        let deploymentPath = deployment ?? "\(cwd)/.trebuche/deployment.json"
+        let deploymentPath = deployment ?? "\(cwd)/.Trebuchet/deployment.json"
 
         guard FileManager.default.fileExists(atPath: deploymentPath) else {
             terminal.print("No deployment found.", style: .warning)
-            terminal.print("Run 'trebuche deploy' first.", style: .dim)
+            terminal.print("Run 'Trebuchet deploy' first.", style: .dim)
             throw ExitCode.failure
         }
 

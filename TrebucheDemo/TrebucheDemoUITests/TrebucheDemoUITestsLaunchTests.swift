@@ -1,13 +1,13 @@
 //
-//  TrebucheDemoUITestsLaunchTests.swift
-//  TrebucheDemoUITests
+//  TrebuchetDemoUITestsLaunchTests.swift
+//  TrebuchetDemoUITests
 //
 //  Created by Brianna Zamora on 1/20/26.
 //
 
 import XCTest
 
-final class TrebucheDemoUITestsLaunchTests: XCTestCase {
+final class TrebuchetDemoUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

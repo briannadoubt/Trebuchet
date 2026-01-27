@@ -15,7 +15,7 @@ struct GenerateServerCommand: AsyncParsableCommand {
         abstract: "Generate a server package from your actors"
     )
 
-    @Option(name: .long, help: "Path to trebuche.yaml")
+    @Option(name: .long, help: "Path to Trebuchet.yaml")
     var config: String?
 
     @Option(name: .long, help: "Output directory for generated server")
@@ -34,16 +34,16 @@ struct GenerateServerCommand: AsyncParsableCommand {
         // Load configuration
         terminal.print("Loading configuration...", style: .dim)
         let configLoader = ConfigLoader()
-        let trebucheConfig: TrebucheConfig
+        let TrebuchetConfig: TrebuchetConfig
 
         do {
             if let configPath = config {
-                trebucheConfig = try configLoader.load(file: configPath)
+                TrebuchetConfig = try configLoader.load(file: configPath)
             } else {
-                trebucheConfig = try configLoader.load(from: cwd)
+                TrebuchetConfig = try configLoader.load(from: cwd)
             }
         } catch ConfigError.fileNotFound {
-            terminal.print("No trebuche.yaml found. Run 'trebuche init' to create one.", style: .error)
+            terminal.print("No Trebuchet.yaml found. Run 'Trebuchet init' to create one.", style: .error)
             throw ExitCode.failure
         }
 
@@ -72,7 +72,7 @@ struct GenerateServerCommand: AsyncParsableCommand {
         terminal.print("")
 
         // Determine output directory
-        let outputDir = output ?? "\(cwd)/.trebuche/server"
+        let outputDir = output ?? "\(cwd)/.Trebuchet/server"
 
         // Check if server already exists
         if FileManager.default.fileExists(atPath: outputDir) && !force {
@@ -86,7 +86,7 @@ struct GenerateServerCommand: AsyncParsableCommand {
 
         let generator = ServerGenerator(terminal: terminal)
         try generator.generate(
-            config: trebucheConfig,
+            config: TrebuchetConfig,
             actors: actors,
             projectPath: cwd,
             outputPath: outputDir,
@@ -97,7 +97,7 @@ struct GenerateServerCommand: AsyncParsableCommand {
         terminal.print("✓ Server package generated at \(outputDir)", style: .success)
         terminal.print("")
         terminal.print("To deploy:", style: .dim)
-        terminal.print("  trebuche deploy", style: .dim)
+        terminal.print("  Trebuchet deploy", style: .dim)
         terminal.print("")
         terminal.print("To run locally:", style: .dim)
         terminal.print("  cd \(outputDir)", style: .dim)

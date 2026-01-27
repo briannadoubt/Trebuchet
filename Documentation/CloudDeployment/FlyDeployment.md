@@ -1,6 +1,6 @@
 # Deploying to Fly.io
 
-Deploy your Trebuche actors to Fly.io for a simple, cost-effective production deployment.
+Deploy your Trebuchet actors to Fly.io for a simple, cost-effective production deployment.
 
 ## Why Fly.io?
 
@@ -27,7 +27,7 @@ fly auth login
 
 ## Quick Start
 
-### 1. Create `trebuche.yaml`
+### 1. Create `Trebuchet.yaml`
 
 ```yaml
 name: my-game-server
@@ -48,7 +48,7 @@ actors:
 ### 2. Deploy
 
 ```bash
-trebuche deploy --provider fly
+Trebuchet deploy --provider fly
 
 # Output:
 # Discovering actors...
@@ -105,7 +105,7 @@ state:
 Deploy:
 
 ```bash
-trebuche deploy --provider fly
+Trebuchet deploy --provider fly
 
 # The CLI will:
 # 1. Create a PostgreSQL database
@@ -137,7 +137,7 @@ Choose the region closest to your users.
 
 ### Vertical Scaling (More Memory)
 
-Update `trebuche.yaml`:
+Update `Trebuchet.yaml`:
 
 ```yaml
 defaults:
@@ -147,7 +147,7 @@ defaults:
 Redeploy:
 
 ```bash
-trebuche deploy --provider fly
+Trebuchet deploy --provider fly
 ```
 
 ### Horizontal Scaling (More Instances)
@@ -268,7 +268,7 @@ fly releases rollback --app my-game-server
 Remove everything:
 
 ```bash
-trebuche undeploy
+Trebuchet undeploy
 
 # Or manually
 fly apps destroy my-game-server
@@ -277,7 +277,7 @@ fly apps destroy my-game-server
 ## Example: Complete Setup
 
 ```yaml
-# trebuche.yaml
+# Trebuchet.yaml
 name: distributed-game
 version: "1"
 
@@ -317,7 +317,7 @@ security:
 Deploy:
 
 ```bash
-trebuche deploy --provider fly
+Trebuchet deploy --provider fly
 ```
 
 Result:
@@ -332,7 +332,7 @@ Result:
 
 | Feature | Fly.io | AWS Lambda |
 |---------|--------|------------|
-| **Deployment** | `trebuche deploy` | `trebuche deploy` |
+| **Deployment** | `Trebuchet deploy` | `Trebuchet deploy` |
 | **Cost** | $3-10/month | $15-50/month |
 | **Cold starts** | None (always warm) | 100-500ms |
 | **WebSocket** | Native | Via API Gateway |

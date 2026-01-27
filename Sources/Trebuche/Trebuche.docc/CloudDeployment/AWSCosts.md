@@ -1,6 +1,6 @@
-# AWS Cost Analysis for Trebuche Streaming
+# AWS Cost Analysis for Trebuchet Streaming
 
-This document provides detailed cost estimates for running Trebuche's realtime streaming infrastructure on AWS Lambda with WebSocket API Gateway.
+This document provides detailed cost estimates for running Trebuchet's realtime streaming infrastructure on AWS Lambda with WebSocket API Gateway.
 
 ## Quick Summary
 
@@ -521,7 +521,7 @@ Savings: ~20% on Lambda costs = ~$15/month
 
 **Setup:**
 ```yaml
-# trebuche.yaml
+# Trebuchet.yaml
 actors:
   GameRoom:
     architecture: arm64  # vs x64
@@ -615,7 +615,7 @@ Applying optimizations **#1, #3, #5, #6**:
 
 | Solution | 10K Users/Month | Notes |
 |----------|----------------|-------|
-| **Trebuche (AWS)** | **$840** | Full control, scales infinitely |
+| **Trebuchet (AWS)** | **$840** | Full control, scales infinitely |
 | Pusher | $500-$2,500 | Concurrent connection limits |
 | Ably | $800-$2,000 | Pay per connection + message |
 | PubNub | $1,000-$3,000 | Complex pricing tiers |
@@ -629,9 +629,9 @@ Applying optimizations **#1, #3, #5, #6**:
 | Socket.IO (EC2) | ~$300 | HIGH - Manual scaling, HA setup |
 | Centrifugo (EC2) | ~$250 | MEDIUM - Easier than Socket.IO |
 | Phoenix (Elixir) | ~$400 | MEDIUM - Excellent performance |
-| **Trebuche (Lambda)** | **$840** | **LOW - Fully managed, auto-scale** |
+| **Trebuchet (Lambda)** | **$840** | **LOW - Fully managed, auto-scale** |
 
-**Trebuche Trade-off:**
+**Trebuchet Trade-off:**
 - **Higher AWS costs** than bare metal EC2/containers
 - **Much lower operational costs** (no DevOps, auto-scaling, HA built-in)
 - **Better for small teams** - focus on product, not infrastructure
@@ -689,8 +689,8 @@ Free Tier Total: ~$0.94 (65% reduction!)
 
 ```hcl
 # Terraform
-resource "aws_budgets_budget" "trebuche_monthly" {
-  name         = "trebuche-streaming-monthly"
+resource "aws_budgets_budget" "Trebuchet_monthly" {
+  name         = "Trebuchet-streaming-monthly"
   budget_type  = "COST"
   limit_amount = "1000"
   limit_unit   = "USD"
@@ -732,7 +732,7 @@ AWS/ApiGateway:
 ```bash
 # Enable AWS Cost Anomaly Detection
 aws ce create-anomaly-monitor \
-  --monitor-name trebuche-streaming \
+  --monitor-name Trebuchet-streaming \
   --monitor-type DIMENSIONAL \
   --monitor-dimension SERVICE
 ```
@@ -815,7 +815,7 @@ Monthly Cost = (
 ### Online Tools
 
 - **AWS Pricing Calculator:** https://calculator.aws
-- **Trebuche Cost Estimator:** (TODO: Build this!)
+- **Trebuchet Cost Estimator:** (TODO: Build this!)
 
 ---
 
@@ -825,7 +825,7 @@ Monthly Cost = (
 
 ```hcl
 tags = {
-  Project     = "trebuche-streaming"
+  Project     = "Trebuchet-streaming"
   Environment = "production"
   Component   = "websocket-gateway"
   Owner       = "platform-team"
@@ -897,7 +897,7 @@ def emergency_shutdown(event, context):
 
 ## Conclusion
 
-**Trebuche on AWS Lambda provides:**
+**Trebuchet on AWS Lambda provides:**
 - ✅ Predictable, linear scaling costs
 - ✅ No operational overhead
 - ✅ Pay-per-use pricing (only pay for what you use)
@@ -916,7 +916,7 @@ def emergency_shutdown(event, context):
 - [API Gateway Pricing](https://aws.amazon.com/api-gateway/pricing/)
 - [DynamoDB Pricing](https://aws.amazon.com/dynamodb/pricing/)
 - [AWS Cost Optimization Guide](https://aws.amazon.com/pricing/cost-optimization/)
-- [Trebuche Documentation](../../../README.md)
+- [Trebuchet Documentation](../../../README.md)
 
 ---
 

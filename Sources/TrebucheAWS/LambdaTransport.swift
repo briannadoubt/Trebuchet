@@ -2,8 +2,8 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
-import Trebuche
-import TrebucheCloud
+import Trebuchet
+import TrebuchetCloud
 
 // MARK: - Lambda Invoke Transport
 
@@ -118,7 +118,7 @@ public final class LambdaInvokeTransport: TrebuchetTransport, @unchecked Sendabl
 
 // MARK: - Lambda Event Adapter
 
-/// Adapts between Lambda events and Trebuche invocation format
+/// Adapts between Lambda events and Trebuchet invocation format
 public enum LambdaEventAdapter {
     /// Convert an API Gateway event to an invocation envelope
     public static func fromAPIGateway(_ event: APIGatewayV2Request) throws -> InvocationEnvelope {

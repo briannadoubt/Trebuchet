@@ -3,7 +3,7 @@
 
 import Testing
 import Foundation
-@testable import TrebucheObservability
+@testable import TrebuchetObservability
 
 /// Thread-safe message collector for testing
 final class MessageCollector: @unchecked Sendable {
@@ -45,7 +45,7 @@ struct LoggingTests {
     @Test("Log level filtering")
     func testLogLevelFiltering() async {
         let collector = MessageCollector()
-        let logger = TrebucheLogger(
+        let logger = TrebuchetLogger(
             label: "test",
             configuration: .init(level: .warning),
             output: { collector.append($0) }
@@ -67,7 +67,7 @@ struct LoggingTests {
     @Test("Metadata attachment")
     func testMetadataAttachment() async {
         let collector = MessageCollector()
-        let logger = TrebucheLogger(
+        let logger = TrebuchetLogger(
             label: "test",
             formatter: JSONFormatter(),
             output: { collector.append($0) }
@@ -85,7 +85,7 @@ struct LoggingTests {
     @Test("Metadata inclusion control")
     func testMetadataInclusionControl() async {
         let collector = MessageCollector()
-        let logger = TrebucheLogger(
+        let logger = TrebuchetLogger(
             label: "test",
             configuration: .init(includeMetadata: false),
             formatter: JSONFormatter(),
@@ -105,7 +105,7 @@ struct LoggingTests {
     @Test("Sensitive data redaction")
     func testSensitiveDataRedaction() async {
         let collector = MessageCollector()
-        let logger = TrebucheLogger(
+        let logger = TrebuchetLogger(
             label: "test",
             configuration: .init(redactSensitiveData: true),
             formatter: JSONFormatter(),
@@ -131,7 +131,7 @@ struct LoggingTests {
     @Test("Case-insensitive redaction")
     func testCaseInsensitiveRedaction() async {
         let collector = MessageCollector()
-        let logger = TrebucheLogger(
+        let logger = TrebuchetLogger(
             label: "test",
             configuration: .init(redactSensitiveData: true),
             formatter: JSONFormatter(),
@@ -156,7 +156,7 @@ struct LoggingTests {
     @Test("Redaction can be disabled")
     func testRedactionDisabled() async {
         let collector = MessageCollector()
-        let logger = TrebucheLogger(
+        let logger = TrebuchetLogger(
             label: "test",
             configuration: .init(redactSensitiveData: false),
             formatter: JSONFormatter(),
@@ -176,7 +176,7 @@ struct LoggingTests {
     @Test("Correlation ID propagation")
     func testCorrelationIDPropagation() async {
         let collector = MessageCollector()
-        let logger = TrebucheLogger(
+        let logger = TrebuchetLogger(
             label: "test",
             formatter: JSONFormatter(),
             output: { collector.append($0) }
@@ -196,7 +196,7 @@ struct LoggingTests {
     @Test("JSON formatter output structure")
     func testJSONFormatterOutput() async {
         let collector = MessageCollector()
-        let logger = TrebucheLogger(
+        let logger = TrebuchetLogger(
             label: "test-logger",
             formatter: JSONFormatter(),
             output: { collector.append($0) }
@@ -219,7 +219,7 @@ struct LoggingTests {
     @Test("Console formatter output")
     func testConsoleFormatterOutput() async {
         let collector = MessageCollector()
-        let logger = TrebucheLogger(
+        let logger = TrebuchetLogger(
             label: "test-logger",
             formatter: ConsoleFormatter(),
             output: { collector.append($0) }
@@ -272,7 +272,7 @@ struct LoggingTests {
     @Test("Convenience log methods")
     func testConvenienceMethods() async {
         let collector = MessageCollector()
-        let logger = TrebucheLogger(
+        let logger = TrebuchetLogger(
             label: "test",
             configuration: .init(level: .debug),
             formatter: JSONFormatter(),

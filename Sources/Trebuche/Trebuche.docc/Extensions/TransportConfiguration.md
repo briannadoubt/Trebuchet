@@ -1,8 +1,8 @@
-# ``Trebuche/TransportConfiguration``
+# ``Trebuchet/TransportConfiguration``
 
 ## Overview
 
-`TransportConfiguration` specifies how Trebuche communicates over the network. It's used when creating servers and clients.
+`TransportConfiguration` specifies how Trebuchet communicates over the network. It's used when creating servers and clients.
 
 ## WebSocket Transport
 

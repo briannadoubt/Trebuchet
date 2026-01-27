@@ -1,7 +1,7 @@
 import Foundation
 import PostgresNIO
-import Trebuche
-import TrebucheCloud
+import Trebuchet
+import TrebuchetCloud
 import NIOCore
 import NIOPosix
 import Logging
@@ -123,7 +123,7 @@ public actor PostgreSQLStreamAdapter {
 
         self.eventLoopGroup = eventLoopGroup ?? MultiThreadedEventLoopGroup(numberOfThreads: 1)
         self.channel = channel
-        self.logger = Logger(label: "com.trebuche.postgresql.stream")
+        self.logger = Logger(label: "com.Trebuchet.postgresql.stream")
 
         self.configuration = PostgresConnection.Configuration(
             host: host,

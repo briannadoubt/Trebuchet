@@ -2,8 +2,8 @@
 // Authorization middleware
 
 import Foundation
-import Trebuche
-import TrebucheSecurity
+import Trebuchet
+import TrebuchetSecurity
 
 /// Middleware that authorizes requests
 public struct AuthorizationMiddleware: CloudMiddleware {

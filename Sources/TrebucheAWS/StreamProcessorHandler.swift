@@ -1,6 +1,6 @@
 import Foundation
-import Trebuche
-import TrebucheCloud
+import Trebuchet
+import TrebuchetCloud
 
 // MARK: - Stream Processor Handler
 
@@ -22,7 +22,7 @@ import TrebucheCloud
 ///
 /// ```hcl
 /// resource "aws_lambda_function" "stream_processor" {
-///   function_name = "trebuche-stream-processor"
+///   function_name = "Trebuchet-stream-processor"
 ///   handler       = "bootstrap"
 ///   runtime       = "provided.al2"
 ///
@@ -204,7 +204,7 @@ extension StreamProcessorHandler {
 /// Save this as `Sources/StreamProcessor/main.swift`:
 ///
 /// ```swift
-/// import TrebucheAWS
+/// import TrebuchetAWS
 ///
 /// @main
 /// struct StreamProcessorBootstrap {

@@ -2,8 +2,8 @@
 // Request validation middleware
 
 import Foundation
-import Trebuche
-import TrebucheSecurity
+import Trebuchet
+import TrebuchetSecurity
 
 /// Middleware that validates requests
 public struct ValidationMiddleware: CloudMiddleware {

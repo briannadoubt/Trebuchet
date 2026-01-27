@@ -16,7 +16,7 @@ struct DeployCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Environment name (production, staging)")
     var environment: String?
 
-    @Option(name: .long, help: "Path to trebuche.yaml")
+    @Option(name: .long, help: "Path to Trebuchet.yaml")
     var config: String?
 
     @Flag(name: .long, help: "Show what would be deployed without deploying")
@@ -32,16 +32,16 @@ struct DeployCommand: AsyncParsableCommand {
         // Load configuration
         terminal.print("Loading configuration...", style: .dim)
         let configLoader = ConfigLoader()
-        let trebucheConfig: TrebucheConfig
+        let TrebuchetConfig: TrebuchetConfig
 
         do {
             if let configPath = config {
-                trebucheConfig = try configLoader.load(file: configPath)
+                TrebuchetConfig = try configLoader.load(file: configPath)
             } else {
-                trebucheConfig = try configLoader.load(from: cwd)
+                TrebuchetConfig = try configLoader.load(from: cwd)
             }
         } catch ConfigError.fileNotFound {
-            terminal.print("No trebuche.yaml found. Run 'trebuche init' to create one.", style: .error)
+            terminal.print("No Trebuchet.yaml found. Run 'Trebuchet init' to create one.", style: .error)
             throw ExitCode.failure
         }
 
@@ -68,11 +68,11 @@ struct DeployCommand: AsyncParsableCommand {
         }
 
         // Resolve configuration
-        let resolvedProvider = provider ?? trebucheConfig.defaults.provider
-        let resolvedRegion = region ?? trebucheConfig.defaults.region
+        let resolvedProvider = provider ?? TrebuchetConfig.defaults.provider
+        let resolvedRegion = region ?? TrebuchetConfig.defaults.region
 
         let resolvedConfig = try configLoader.resolve(
-            config: trebucheConfig,
+            config: TrebuchetConfig,
             environment: environment,
             discoveredActors: actors
         )
@@ -174,7 +174,7 @@ struct DeployCommand: AsyncParsableCommand {
             deployedAt: Date()
         )
 
-        try saveFlyDeploymentInfo(deploymentInfo, to: "\(projectPath)/.trebuche/deployment.json")
+        try saveFlyDeploymentInfo(deploymentInfo, to: "\(projectPath)/.Trebuchet/deployment.json")
     }
 
     // MARK: - AWS Deployment
@@ -208,7 +208,7 @@ struct DeployCommand: AsyncParsableCommand {
         let terraformDir = try terraformGenerator.generate(
             config: config,
             actors: actors,
-            outputDir: "\(projectPath)/.trebuche/terraform"
+            outputDir: "\(projectPath)/.Trebuchet/terraform"
         )
 
         terminal.print("  ✓ Terraform generated at \(terraformDir)", style: .success)
@@ -247,7 +247,7 @@ struct DeployCommand: AsyncParsableCommand {
             deployedAt: Date()
         )
 
-        try saveDeploymentInfo(deploymentInfo, to: "\(projectPath)/.trebuche/deployment.json")
+        try saveDeploymentInfo(deploymentInfo, to: "\(projectPath)/.Trebuchet/deployment.json")
     }
 
     private func saveDeploymentInfo(_ info: DeploymentInfo, to path: String) throws {

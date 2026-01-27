@@ -1,13 +1,13 @@
 import Testing
 import Foundation
-@testable import TrebucheCLI
+@testable import TrebuchetCLI
 
 @Suite("Configuration Tests")
 struct ConfigurationTests {
 
-    @Test("TrebucheConfig initialization")
+    @Test("TrebuchetConfig initialization")
     func configInit() {
-        let config = TrebucheConfig(
+        let config = TrebuchetConfig(
             name: "test-project",
             defaults: DefaultSettings(
                 provider: "aws",

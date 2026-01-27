@@ -318,8 +318,8 @@ public actor PostgreSQLStreamAdapterStub: PostgreSQLStreamAdapterProtocol {
 /// ### 1. Create Database and Table
 ///
 /// ```bash
-/// createdb trebuche_actors
-/// psql trebuche_actors
+/// createdb Trebuchet_actors
+/// psql Trebuchet_actors
 /// ```
 ///
 /// ```sql

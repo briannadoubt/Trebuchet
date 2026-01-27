@@ -2,7 +2,7 @@
 
 ## Overview
 
-Phase 1 of the Trebuche Production Readiness Plan is now 100% complete. This phase added comprehensive security and observability features to make Trebuche production-ready.
+Phase 1 of the Trebuchet Production Readiness Plan is now 100% complete. This phase added comprehensive security and observability features to make Trebuchet production-ready.
 
 **Status**: All 10 tasks completed, 238 tests passing
 
@@ -10,14 +10,14 @@ Phase 1 of the Trebuche Production Readiness Plan is now 100% complete. This pha
 
 ### 1. Structured Logging ✅
 
-**New Module**: `TrebucheObservability`
+**New Module**: `TrebuchetObservability`
 
 **Files Created**:
-- `Sources/TrebucheObservability/Logging/LogLevel.swift` - Priority-based log levels
-- `Sources/TrebucheObservability/Logging/LogContext.swift` - Structured context with metadata
-- `Sources/TrebucheObservability/Logging/TrebucheLogger.swift` - Actor-based logger
-- `Sources/TrebucheObservability/Logging/Formatters/JSONFormatter.swift` - Machine-readable output
-- `Sources/TrebucheObservability/Logging/Formatters/ConsoleFormatter.swift` - Human-readable output
+- `Sources/TrebuchetObservability/Logging/LogLevel.swift` - Priority-based log levels
+- `Sources/TrebuchetObservability/Logging/LogContext.swift` - Structured context with metadata
+- `Sources/TrebuchetObservability/Logging/TrebuchetLogger.swift` - Actor-based logger
+- `Sources/TrebuchetObservability/Logging/Formatters/JSONFormatter.swift` - Machine-readable output
+- `Sources/TrebuchetObservability/Logging/Formatters/ConsoleFormatter.swift` - Human-readable output
 
 **Key Features**:
 - Level-based filtering (debug, info, warning, error, critical)
@@ -34,12 +34,12 @@ Phase 1 of the Trebuche Production Readiness Plan is now 100% complete. This pha
 ### 2. Metrics Collection ✅
 
 **Files Created**:
-- `Sources/TrebucheObservability/Metrics/MetricsCollector.swift` - Protocol and standard metrics
-- `Sources/TrebucheObservability/Metrics/Counter.swift` - Cumulative counters
-- `Sources/TrebucheObservability/Metrics/Gauge.swift` - Point-in-time values
-- `Sources/TrebucheObservability/Metrics/Histogram.swift` - Distribution tracking with percentiles
-- `Sources/TrebucheObservability/Metrics/InMemoryCollector.swift` - Testing/development backend
-- `Sources/TrebucheObservability/Metrics/CloudWatchReporter.swift` - AWS CloudWatch integration
+- `Sources/TrebuchetObservability/Metrics/MetricsCollector.swift` - Protocol and standard metrics
+- `Sources/TrebuchetObservability/Metrics/Counter.swift` - Cumulative counters
+- `Sources/TrebuchetObservability/Metrics/Gauge.swift` - Point-in-time values
+- `Sources/TrebuchetObservability/Metrics/Histogram.swift` - Distribution tracking with percentiles
+- `Sources/TrebuchetObservability/Metrics/InMemoryCollector.swift` - Testing/development backend
+- `Sources/TrebuchetObservability/Metrics/CloudWatchReporter.swift` - AWS CloudWatch integration
 
 **Key Features**:
 - Counter metrics (incrementing only)
@@ -56,9 +56,9 @@ Phase 1 of the Trebuche Production Readiness Plan is now 100% complete. This pha
 ### 3. Distributed Tracing ✅
 
 **Files Created**:
-- `Sources/Trebuche/ActorSystem/TraceContext.swift` - W3C Trace Context implementation
-- `Sources/TrebucheObservability/Tracing/Span.swift` - Span lifecycle management
-- `Sources/TrebucheObservability/Tracing/SpanExporter.swift` - Exporter protocol and implementations
+- `Sources/Trebuchet/ActorSystem/TraceContext.swift` - W3C Trace Context implementation
+- `Sources/TrebuchetObservability/Tracing/Span.swift` - Span lifecycle management
+- `Sources/TrebuchetObservability/Tracing/SpanExporter.swift` - Exporter protocol and implementations
 
 **Key Features**:
 - TraceContext with traceID, spanID, parentSpanID
@@ -80,15 +80,15 @@ Phase 1 of the Trebuche Production Readiness Plan is now 100% complete. This pha
 
 ### 4. Authentication & Authorization ✅
 
-**New Module**: `TrebucheSecurity`
+**New Module**: `TrebuchetSecurity`
 
 **Files Created**:
-- `Sources/TrebucheSecurity/Authentication/Credentials.swift` - Credential types and Principal
-- `Sources/TrebucheSecurity/Authentication/AuthenticationProvider.swift` - Provider protocol
-- `Sources/TrebucheSecurity/Authentication/JWTAuthenticator.swift` - JWT validation
-- `Sources/TrebucheSecurity/Authentication/APIKeyAuthenticator.swift` - API key management
-- `Sources/TrebucheSecurity/Authorization/AuthorizationPolicy.swift` - Policy protocol
-- `Sources/TrebucheSecurity/Authorization/RoleBasedPolicy.swift` - RBAC implementation
+- `Sources/TrebuchetSecurity/Authentication/Credentials.swift` - Credential types and Principal
+- `Sources/TrebuchetSecurity/Authentication/AuthenticationProvider.swift` - Provider protocol
+- `Sources/TrebuchetSecurity/Authentication/JWTAuthenticator.swift` - JWT validation
+- `Sources/TrebuchetSecurity/Authentication/APIKeyAuthenticator.swift` - API key management
+- `Sources/TrebuchetSecurity/Authorization/AuthorizationPolicy.swift` - Policy protocol
+- `Sources/TrebuchetSecurity/Authorization/RoleBasedPolicy.swift` - RBAC implementation
 
 **Key Features**:
 
@@ -112,10 +112,10 @@ Phase 1 of the Trebuche Production Readiness Plan is now 100% complete. This pha
 ### 5. Rate Limiting & Request Validation ✅
 
 **Files Created**:
-- `Sources/TrebucheSecurity/RateLimiting/RateLimiter.swift` - Protocol and types
-- `Sources/TrebucheSecurity/RateLimiting/TokenBucketLimiter.swift` - Burst-friendly algorithm
-- `Sources/TrebucheSecurity/RateLimiting/SlidingWindowLimiter.swift` - Precise window limits
-- `Sources/TrebucheSecurity/Validation/RequestValidator.swift` - Payload and envelope validation
+- `Sources/TrebuchetSecurity/RateLimiting/RateLimiter.swift` - Protocol and types
+- `Sources/TrebuchetSecurity/RateLimiting/TokenBucketLimiter.swift` - Burst-friendly algorithm
+- `Sources/TrebuchetSecurity/RateLimiting/SlidingWindowLimiter.swift` - Precise window limits
+- `Sources/TrebuchetSecurity/Validation/RequestValidator.swift` - Payload and envelope validation
 
 **Key Features**:
 
@@ -143,12 +143,12 @@ Phase 1 of the Trebuche Production Readiness Plan is now 100% complete. This pha
 ### 6. Middleware Architecture ✅
 
 **Files Created**:
-- `Sources/TrebucheCloud/Middleware/CloudMiddleware.swift` - Protocol and chain executor
-- `Sources/TrebucheCloud/Middleware/TracingMiddleware.swift` - Distributed tracing
-- `Sources/TrebucheCloud/Middleware/AuthenticationMiddleware.swift` - Authentication enforcement
-- `Sources/TrebucheCloud/Middleware/AuthorizationMiddleware.swift` - Authorization enforcement
-- `Sources/TrebucheCloud/Middleware/RateLimitingMiddleware.swift` - Rate limit enforcement
-- `Sources/TrebucheCloud/Middleware/ValidationMiddleware.swift` - Request validation
+- `Sources/TrebuchetCloud/Middleware/CloudMiddleware.swift` - Protocol and chain executor
+- `Sources/TrebuchetCloud/Middleware/TracingMiddleware.swift` - Distributed tracing
+- `Sources/TrebuchetCloud/Middleware/AuthenticationMiddleware.swift` - Authentication enforcement
+- `Sources/TrebuchetCloud/Middleware/AuthorizationMiddleware.swift` - Authorization enforcement
+- `Sources/TrebuchetCloud/Middleware/RateLimitingMiddleware.swift` - Rate limit enforcement
+- `Sources/TrebuchetCloud/Middleware/ValidationMiddleware.swift` - Request validation
 
 **Key Features**:
 - CloudMiddleware protocol for request/response processing
@@ -191,13 +191,13 @@ Phase 1 of the Trebuche Production Readiness Plan is now 100% complete. This pha
 ## Documentation
 
 ### Module Documentation (DocC)
-- `TrebucheObservability.docc/Logging.md` - Structured logging guide
-- `TrebucheObservability.docc/Metrics.md` - Metrics collection guide
-- `TrebucheObservability.docc/DistributedTracing.md` - Tracing guide
-- `TrebucheSecurity.docc/Authentication.md` - Authentication guide
-- `TrebucheSecurity.docc/Authorization.md` - Authorization guide
-- `TrebucheSecurity.docc/RateLimiting.md` - Rate limiting guide
-- `TrebucheSecurity.docc/RequestValidation.md` - Validation guide
+- `TrebuchetObservability.docc/Logging.md` - Structured logging guide
+- `TrebuchetObservability.docc/Metrics.md` - Metrics collection guide
+- `TrebuchetObservability.docc/DistributedTracing.md` - Tracing guide
+- `TrebuchetSecurity.docc/Authentication.md` - Authentication guide
+- `TrebuchetSecurity.docc/Authorization.md` - Authorization guide
+- `TrebuchetSecurity.docc/RateLimiting.md` - Rate limiting guide
+- `TrebuchetSecurity.docc/RequestValidation.md` - Validation guide
 
 All documentation includes:
 - Concept explanations
@@ -211,9 +211,9 @@ All documentation includes:
 ### Basic CloudGateway with All Features
 
 ```swift
-import TrebucheCloud
-import TrebucheObservability
-import TrebucheSecurity
+import TrebuchetCloud
+import TrebuchetObservability
+import TrebuchetSecurity
 
 // Configure authentication
 let auth = APIKeyAuthenticator()
@@ -269,12 +269,12 @@ try await gateway.run()
 ## Architecture Changes
 
 ### New Modules
-1. **TrebucheObservability** - Depends only on Trebuche core
-2. **TrebucheSecurity** - Depends on Trebuche + TrebucheObservability
+1. **TrebuchetObservability** - Depends only on Trebuchet core
+2. **TrebuchetSecurity** - Depends on Trebuchet + TrebuchetObservability
 
 ### Modified Modules
-1. **Trebuche** - Added TraceContext type, extended InvocationEnvelope
-2. **TrebucheCloud** - Added middleware support, depends on TrebucheSecurity
+1. **Trebuchet** - Added TraceContext type, extended InvocationEnvelope
+2. **TrebuchetCloud** - Added middleware support, depends on TrebuchetSecurity
 
 ### Key Design Decisions
 
@@ -314,7 +314,7 @@ See the full plan in `/Users/bri/.claude/plans/ancient-snuggling-bunny.md`
 
 ## Summary
 
-Phase 1 successfully transformed Trebuche into a production-ready framework with:
+Phase 1 successfully transformed Trebuchet into a production-ready framework with:
 - ✅ Comprehensive observability (logging, metrics, tracing)
 - ✅ Robust security (authentication, authorization, rate limiting, validation)
 - ✅ Flexible middleware architecture

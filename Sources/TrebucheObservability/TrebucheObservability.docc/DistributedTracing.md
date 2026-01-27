@@ -1,10 +1,10 @@
 # Distributed Tracing
 
-Distributed tracing for tracking requests across Trebuche actors.
+Distributed tracing for tracking requests across Trebuchet actors.
 
 ## Overview
 
-TrebucheObservability provides distributed tracing capabilities to track requests as they flow through your distributed actor system. Traces help you:
+TrebuchetObservability provides distributed tracing capabilities to track requests as they flow through your distributed actor system. Traces help you:
 
 - Understand request flow across actors
 - Identify performance bottlenecks
@@ -16,8 +16,8 @@ TrebucheObservability provides distributed tracing capabilities to track request
 Create and propagate trace contexts:
 
 ```swift
-import Trebuche
-import TrebucheObservability
+import Trebuchet
+import TrebuchetObservability
 
 // Create a root trace context
 let traceContext = TraceContext()
@@ -218,7 +218,7 @@ Use trace IDs as correlation IDs in logs:
 
 ```swift
 let traceContext = TraceContext()
-let logger = TrebucheLogger(label: "app")
+let logger = TrebuchetLogger(label: "app")
 
 await logger.info(
     "Processing request",

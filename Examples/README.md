@@ -8,12 +8,12 @@ Run two separate terminals:
 
 **Terminal 1 - Server Node:**
 ```bash
-swift run TrebucheDemo server --port 9000
+swift run TrebuchetDemo server --port 9000
 ```
 
 **Terminal 2 - Client Node:**
 ```bash
-swift run TrebucheDemo client --host localhost --port 9000
+swift run TrebuchetDemo client --host localhost --port 9000
 ```
 
 ### 2. Multi-Node with LocalProvider
@@ -33,10 +33,10 @@ These tests spin up:
 
 **Start PostgreSQL:**
 ```bash
-docker run --name trebuche-postgres \
-  -e POSTGRES_PASSWORD=trebuche \
-  -e POSTGRES_USER=trebuche \
-  -e POSTGRES_DB=trebuche \
+docker run --name Trebuchet-postgres \
+  -e POSTGRES_PASSWORD=Trebuchet \
+  -e POSTGRES_USER=Trebuchet \
+  -e POSTGRES_DB=Trebuchet \
   -p 5432:5432 \
   -d postgres:16-alpine
 ```
@@ -44,10 +44,10 @@ docker run --name trebuche-postgres \
 **Run multiple instances sharing state:**
 ```bash
 # Terminal 1
-PORT=9000 POSTGRES_HOST=localhost swift run TrebucheDemo
+PORT=9000 POSTGRES_HOST=localhost swift run TrebuchetDemo
 
 # Terminal 2  
-PORT=9001 POSTGRES_HOST=localhost swift run TrebucheDemo
+PORT=9001 POSTGRES_HOST=localhost swift run TrebuchetDemo
 
 # Both share state via PostgreSQL!
 ```

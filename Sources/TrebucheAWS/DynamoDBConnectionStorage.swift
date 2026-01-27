@@ -2,9 +2,9 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
-import Trebuche
-import TrebucheCloud
-import TrebucheObservability
+import Trebuchet
+import TrebuchetCloud
+import TrebuchetObservability
 
 // MARK: - DynamoDB Connection Storage
 
@@ -172,7 +172,7 @@ public actor DynamoDBConnectionStorage: ConnectionStorage {
             if let metrics = metrics {
                 let duration = Date().timeIntervalSince(startTime)
                 await metrics.recordHistogramMilliseconds(
-                    "trebuche.dynamodb.operation.latency",
+                    "Trebuchet.dynamodb.operation.latency",
                     milliseconds: duration * 1000,
                     tags: [
                         "operation": "Query",
@@ -181,7 +181,7 @@ public actor DynamoDBConnectionStorage: ConnectionStorage {
                     ]
                 )
                 await metrics.incrementCounter(
-                    "trebuche.dynamodb.operation.count",
+                    "Trebuchet.dynamodb.operation.count",
                     tags: [
                         "operation": "Query",
                         "status": "success"
@@ -194,7 +194,7 @@ public actor DynamoDBConnectionStorage: ConnectionStorage {
             // Record error metrics
             if let metrics = metrics {
                 await metrics.incrementCounter(
-                    "trebuche.dynamodb.operation.count",
+                    "Trebuchet.dynamodb.operation.count",
                     tags: [
                         "operation": "Query",
                         "status": "error"

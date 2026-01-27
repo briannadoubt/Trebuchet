@@ -1,11 +1,11 @@
 import Testing
 import Foundation
-@testable import TrebucheAWS
-@testable import TrebucheCloud
-@testable import Trebuche
+@testable import TrebuchetAWS
+@testable import TrebuchetCloud
+@testable import Trebuchet
 
-@Suite("TrebucheAWS Tests")
-struct TrebucheAWSTests {
+@Suite("TrebuchetAWS Tests")
+struct TrebuchetAWSTests {
 
     @Test("AWSProvider type is correct")
     func awsProviderType() {

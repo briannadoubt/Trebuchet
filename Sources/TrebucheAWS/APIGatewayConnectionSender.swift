@@ -2,8 +2,8 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
-import Trebuche
-import TrebucheCloud
+import Trebuchet
+import TrebuchetCloud
 import Crypto
 
 // MARK: - API Gateway Connection Sender

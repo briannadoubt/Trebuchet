@@ -4,7 +4,7 @@ Stream resumption, filtering, delta encoding, and cloud integration for producti
 
 ## Overview
 
-Trebuche provides advanced streaming capabilities for production use cases including graceful reconnection, bandwidth optimization, persistent state, and cloud deployment support.
+Trebuchet provides advanced streaming capabilities for production use cases including graceful reconnection, bandwidth optimization, persistent state, and cloud deployment support.
 
 ## Stream Resumption & Reconnection
 
@@ -248,8 +248,8 @@ Seamlessly integrate persistent state with realtime streaming for serverless dep
 Combines persistent state storage with automatic streaming updates:
 
 ```swift
-import Trebuche
-import TrebucheCloud
+import Trebuchet
+import TrebuchetCloud
 
 @Trebuchet
 public distributed actor TodoList: StatefulStreamingActor {
@@ -409,15 +409,15 @@ Implementation includes:
 
 #### Usage
 
-The TrebuchePostgreSQL module provides production-ready PostgreSQL integration:
+The TrebuchetPostgreSQL module provides production-ready PostgreSQL integration:
 
 ```swift
-import TrebuchePostgreSQL
+import TrebuchetPostgreSQL
 
 // State Store for actor persistence
 let stateStore = try await PostgreSQLStateStore(
     host: "localhost",
-    database: "trebuche",
+    database: "Trebuchet",
     username: "postgres",
     password: "password"
 )
@@ -448,7 +448,7 @@ distributed actor GameRoom: StatefulStreamingActor {
 // Stream Adapter for multi-instance synchronization
 let adapter = try await PostgreSQLStreamAdapter(
     host: "localhost",
-    database: "trebuche",
+    database: "Trebuchet",
     username: "postgres"
 )
 
@@ -501,7 +501,7 @@ FOR EACH ROW
 EXECUTE FUNCTION notify_actor_state_change();
 ```
 
-See `Sources/TrebuchePostgreSQL/` for complete implementation.
+See `Sources/TrebuchetPostgreSQL/` for complete implementation.
 
 ### Use Cases
 
