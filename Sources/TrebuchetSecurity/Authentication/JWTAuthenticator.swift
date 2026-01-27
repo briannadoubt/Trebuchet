@@ -49,7 +49,10 @@ import _CryptoExtras
 /// ```
 public struct JWTAuthenticator: AuthenticationProvider {
     /// Signing key types for JWT validation
-    public enum SigningKey: Sendable {
+    ///
+    /// Note: Uses @unchecked Sendable because swift-crypto's P256 and RSA key types
+    /// are immutable and thread-safe, but don't yet conform to Sendable.
+    public enum SigningKey: @unchecked Sendable {
         /// Symmetric key for HS256 (HMAC-SHA256)
         case hs256(secret: String)
 
