@@ -28,12 +28,20 @@ import Foundation
 ///
 /// // Initialize state store
 /// let stateStore = try await PostgreSQLStateStore(
-///     connectionString: "postgresql://localhost/mydb"
+///     host: "localhost",
+///     port: 5432,
+///     database: "mydb",
+///     username: "postgres",
+///     password: "password"
 /// )
 ///
 /// // Initialize stream adapter for multi-instance sync
 /// let streamAdapter = try await PostgreSQLStreamAdapter(
-///     connectionString: "postgresql://localhost/mydb",
+///     host: "localhost",
+///     port: 5432,
+///     database: "mydb",
+///     username: "postgres",
+///     password: "password",
 ///     channel: "actor_state_changes"
 /// )
 ///

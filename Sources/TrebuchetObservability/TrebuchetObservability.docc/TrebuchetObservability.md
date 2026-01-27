@@ -77,9 +77,9 @@ let logger = TrebuchetLogger(
     label: "game-server",
     configuration: .init(
         level: .info,
-        formatter: .json,
-        redactedKeys: ["password", "token", "secret"]
-    )
+        sensitiveKeys: ["password", "token", "secret"]
+    ),
+    formatter: JSONFormatter()
 )
 
 // Configure metrics
@@ -95,8 +95,7 @@ let gateway = CloudGateway(configuration: .init(
     ],
     loggingConfiguration: .init(
         level: .info,
-        formatter: .json,
-        redactedKeys: ["password", "token", "secret"]
+        sensitiveKeys: ["password", "token", "secret"]
     ),
     metricsCollector: metrics,
     stateStore: stateStore,
@@ -214,8 +213,7 @@ let tracingMiddleware = TracingMiddleware(exporter: spanExporter)
 let gateway = CloudGateway(configuration: .init(
     middlewares: [tracingMiddleware],
     loggingConfiguration: .init(
-        level: .info,
-        formatter: .json
+        level: .info
     ),
     metricsCollector: metrics,
     stateStore: stateStore,
@@ -342,7 +340,7 @@ Automatically redact sensitive data:
 let logger = TrebuchetLogger(
     label: "auth",
     configuration: .init(
-        redactedKeys: [
+        sensitiveKeys: [
             "password",
             "token",
             "secret",
