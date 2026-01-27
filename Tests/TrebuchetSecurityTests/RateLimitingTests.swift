@@ -30,9 +30,11 @@ struct RateLimitingTests {
 
     @Test("TokenBucketLimiter refills tokens")
     func testTokenBucketRefill() async throws {
+        let clock = MockClock()
         let limiter = TokenBucketLimiter(
             requestsPerSecond: 10,
-            burstSize: 10
+            burstSize: 10,
+            clock: clock
         )
 
         // Consume all tokens
@@ -40,23 +42,29 @@ struct RateLimitingTests {
             _ = try await limiter.checkLimit(key: "user1")
         }
 
+        // Verify bucket is empty
+        let emptyTokens = await limiter.tokens(for: "user1")
+        #expect(emptyTokens == 0.0)
+
         // Next request should be denied
         let deniedResult = try await limiter.checkLimit(key: "user1")
         #expect(!deniedResult.allowed)
 
-        // Wait 200ms (should refill 2 tokens at 10/sec)
-        try await Task.sleep(for: .milliseconds(200))
+        // Advance time by 200ms (should refill exactly 2 tokens at 10/sec)
+        clock.advance(by: 0.2)
 
-        // Should allow 2 more requests
-        let result1 = try await limiter.checkLimit(key: "user1")
-        #expect(result1.allowed)
+        // Check tokens refilled (should be approximately 2, allowing for floating point precision)
+        let refilledTokens = await limiter.tokens(for: "user1")
+        #expect(abs(refilledTokens - 2.0) < 0.001)
 
-        let result2 = try await limiter.checkLimit(key: "user1")
-        #expect(result2.allowed)
+        // Consume exactly 2 tokens in one request
+        let result = try await limiter.checkLimit(key: "user1", cost: 2)
+        #expect(result.allowed)
+        #expect(result.remaining == 0)
 
-        // Third should be denied
-        let result3 = try await limiter.checkLimit(key: "user1")
-        #expect(!result3.allowed)
+        // Next request should be denied since we consumed all refilled tokens
+        let finalResult = try await limiter.checkLimit(key: "user1")
+        #expect(!finalResult.allowed)
     }
 
     @Test("TokenBucketLimiter per-key isolation")

@@ -64,12 +64,14 @@ public actor TokenBucketLimiter: RateLimiter {
     }
 
     private let configuration: Configuration
+    private let clock: Clock
     private var buckets: [String: Bucket] = [:]
     private var cleanupTask: Task<Void, Never>?
 
     /// Creates a token bucket limiter
     /// - Parameters:
     ///   - configuration: Bucket configuration
+    ///   - clock: Clock for time operations (default: SystemClock)
     ///   - autoCleanup: Enable automatic cleanup of old buckets (default: false)
     ///   - cleanupInterval: Interval between cleanup runs (default: 1 hour)
     ///
@@ -77,10 +79,12 @@ public actor TokenBucketLimiter: RateLimiter {
     /// Call `startAutoCleanup()` after initialization if you want automatic cleanup.
     public init(
         configuration: Configuration,
+        clock: Clock = SystemClock(),
         autoCleanup: Bool = false,
         cleanupInterval: Duration = .seconds(3600)
     ) {
         self.configuration = configuration
+        self.clock = clock
         // Cannot start task in actor init due to isolation
         // Users should call startAutoCleanup() if needed
     }
@@ -89,14 +93,17 @@ public actor TokenBucketLimiter: RateLimiter {
     /// - Parameters:
     ///   - requestsPerSecond: Target rate
     ///   - burstSize: Maximum burst
+    ///   - clock: Clock for time operations (default: SystemClock)
     public init(
         requestsPerSecond: Int,
-        burstSize: Int? = nil
+        burstSize: Int? = nil,
+        clock: Clock = SystemClock()
     ) {
         self.configuration = .fromRate(
             requestsPerSecond: requestsPerSecond,
             burstSize: burstSize
         )
+        self.clock = clock
     }
 
     /// Starts automatic cleanup task
@@ -122,7 +129,7 @@ public actor TokenBucketLimiter: RateLimiter {
     }
 
     public func checkLimit(key: String, cost: Int) async throws -> RateLimitResult {
-        let now = Date()
+        let now = clock.now()
 
         // Get or create bucket
         var bucket = buckets[key] ?? Bucket(
@@ -161,7 +168,7 @@ public actor TokenBucketLimiter: RateLimiter {
 
     /// Clean up old buckets
     public func cleanup(olderThan: TimeInterval = 3600) async {
-        let now = Date()
+        let now = clock.now()
         let cutoff = now.addingTimeInterval(-olderThan)
 
         buckets = buckets.filter { _, bucket in
@@ -177,7 +184,7 @@ public actor TokenBucketLimiter: RateLimiter {
             return configuration.capacity
         }
 
-        let now = Date()
+        let now = clock.now()
         bucket.refill(
             capacity: configuration.capacity,
             refillRate: configuration.refillRate,
