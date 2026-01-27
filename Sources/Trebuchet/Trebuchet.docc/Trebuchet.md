@@ -76,8 +76,13 @@ try await room.join(player: me)
 - <doc:CloudDeployment/AWSCosts>
 - <doc:DeployingToGCP>
 - <doc:DeployingToAzure>
+- <doc:CloudDeployment/FlyDeployment>
+- <doc:CloudDeployment/PostgreSQLConfiguration>
 
 ### Module Reference
 
 - <doc:TrebuchetCloud>
 - <doc:TrebuchetAWS>
+- <doc:TrebuchetObservability>
+- <doc:TrebuchetSecurity>
+- <doc:TrebuchetPostgreSQL>

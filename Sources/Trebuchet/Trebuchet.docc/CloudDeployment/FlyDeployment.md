@@ -342,7 +342,7 @@ Result:
 
 ## Next Steps
 
-- [Configure PostgreSQL State](PostgreSQLStateStore.md)
-- [Add Authentication](../Security/Authentication.md)
-- [Enable Metrics](../Observability/Metrics.md)
-- [Multi-Region Deployment](MultiRegion.md)
+- <doc:PostgreSQLConfiguration> - Configure PostgreSQL for state persistence
+- See TrebuchetSecurity module for authentication (JWT and API keys)
+- See TrebuchetObservability module for metrics and monitoring
+- <doc:AWSWebSocketStreaming> - Multi-region deployment patterns

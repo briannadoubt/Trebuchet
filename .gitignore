@@ -1,9 +1,38 @@
+# macOS
 .DS_Store
-/.build
-/Packages
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.resolved
 xcuserdata/
 DerivedData/
+
+# Build artifacts
+*.build/
+.build-*
+build/
+*.xcodeproj/
+*.xcworkspace/
+
+# Xcode
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+
+# SwiftPM
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+
+# Authentication
 .netrc
+
+# Local subdirectory builds
 /TrebucheDemo/Shared/.build
