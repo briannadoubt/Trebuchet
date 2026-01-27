@@ -327,7 +327,7 @@ Security events integrate with TrebuchetObservability:
 import TrebuchetObservability
 
 // Log security events
-logger.security("Authentication succeeded", metadata: [
+logger.info("Authentication succeeded", metadata: [
     "principal": principal.id,
     "method": "api-key"
 ])
@@ -392,7 +392,7 @@ let validator = RequestValidator(configuration: .lenient)
 Log all security decisions:
 
 ```swift
-logger.security("Authorization decision", metadata: [
+logger.info("Authorization decision", metadata: [
     "principal": principal.id,
     "action": "\(action.actorType).\(action.method)",
     "resource": resource.id,

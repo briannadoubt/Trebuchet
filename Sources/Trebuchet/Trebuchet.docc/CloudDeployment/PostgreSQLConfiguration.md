@@ -296,8 +296,9 @@ let gateway = CloudGateway(configuration: .init(
 Task {
     let notifications = try await streamAdapter.start()
     for await change in notifications {
-        // Reload affected actors
-        await gateway.reloadActor(id: change.actorID)
+        // Handle state change notification
+        // You can use this to invalidate caches, notify clients, etc.
+        print("Actor \(change.actorID) updated to sequence \(change.sequenceNumber)")
     }
 }
 ```

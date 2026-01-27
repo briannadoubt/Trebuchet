@@ -462,7 +462,7 @@ TrebuchetObservability is designed for production performance:
 
 - <doc:Metrics>
 - ``MetricsCollector``
-- ``InMemoryCollector``
+- ``InMemoryMetricsCollector``
 - ``CloudWatchReporter``
 - ``Counter``
 - ``Histogram``
