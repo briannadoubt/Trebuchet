@@ -390,3 +390,22 @@ Test suites:
 - `TrebuchetSecurityTests`: Authentication, authorization, rate limiting, validation
 - `TrebuchetObservabilityTests`: Logging, metrics, distributed tracing
 - `TrebuchetPostgreSQLTests`: PostgreSQL state store and stream adapter
+
+## Release Process
+
+This project uses semantic versioning WITHOUT the 'v' prefix.
+
+### Creating a Release
+
+```bash
+# Tag format: MAJOR.MINOR.PATCH (no 'v' prefix)
+git tag -a 0.2.3 -m "Release message here"
+git push origin 0.2.3
+```
+
+### Version Pattern
+
+- Use: `0.2.3`, `1.0.0`, `2.1.4`
+- Don't use: `v0.2.3`, `v1.0.0`, `v2.1.4`
+
+IMPORTANT: Always use semantic versioning without the 'v' prefix when creating tags.
