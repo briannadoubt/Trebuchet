@@ -14,7 +14,7 @@ public struct InitCommand: AsyncParsableCommand {
     public var provider: String = "fly"
 
     @Option(name: .shortAndLong, help: "Default region")
-    public var region: String = "iad"
+    public var region: String?
 
     @Flag(name: .long, help: "Overwrite existing configuration")
     public var force: Bool = false
@@ -35,6 +35,9 @@ public struct InitCommand: AsyncParsableCommand {
         // Normalize provider: fly.io -> fly
         let normalizedProvider = provider.lowercased() == "fly.io" ? "fly" : provider
 
+        // Set default region based on provider if not specified
+        let defaultRegion = region ?? (normalizedProvider == "fly" ? "iad" : "us-east-1")
+
         // Determine project name from directory if not provided
         let projectName = name ?? URL(fileURLWithPath: cwd).lastPathComponent
 
@@ -51,7 +54,7 @@ public struct InitCommand: AsyncParsableCommand {
             name: projectName,
             defaults: DefaultSettings(
                 provider: normalizedProvider,
-                region: region
+                region: defaultRegion
             )
         )
 
