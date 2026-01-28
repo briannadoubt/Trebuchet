@@ -67,7 +67,8 @@ public struct InitCommand: AsyncParsableCommand {
 
         // Add state and discovery config based on provider
         if normalizedProvider == "fly" {
-            config.state = StateConfig(type: "postgresql")
+            // Use memory for free tier - users can upgrade to postgresql if they have a paid account
+            config.state = StateConfig(type: "memory")
             config.discovery = DiscoveryConfig(type: "dns", namespace: projectName)
         } else {
             config.state = StateConfig(type: "dynamodb")
@@ -141,6 +142,14 @@ public struct InitCommand: AsyncParsableCommand {
 
         state:
           type: \(config.state?.type ?? "dynamodb")
+        """
+
+        // Add helpful comment for Fly.io about upgrading to postgresql
+        if config.defaults.provider == "fly" && config.state?.type == "memory" {
+            yaml += "  # For persistent state, upgrade to: type: postgresql (requires paid Fly.io account)\n"
+        }
+
+        yaml += """
 
         discovery:
           type: \(config.discovery?.type ?? "cloudmap")

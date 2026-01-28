@@ -56,6 +56,63 @@ public actor PostgreSQLStateStore: ActorStateStore {
     private let tableName: String
     private let logger: Logger
 
+    /// Initialize with DATABASE_URL connection string
+    ///
+    /// Parses a PostgreSQL connection string in the format:
+    /// `postgresql://[user[:password]@][host][:port][/database][?options]`
+    ///
+    /// - Parameters:
+    ///   - connectionString: PostgreSQL connection URL
+    ///   - tableName: Table name for actor states (default: "actor_states")
+    ///   - eventLoopGroup: NIO event loop group (creates default if not provided)
+    public init(
+        connectionString: String,
+        tableName: String = "actor_states",
+        eventLoopGroup: EventLoopGroup? = nil
+    ) async throws {
+        // Parse connection string
+        guard let components = URLComponents(string: connectionString),
+              let scheme = components.scheme,
+              ["postgresql", "postgres"].contains(scheme) else {
+            throw PostgreSQLError.invalidConnectionString
+        }
+
+        guard let host = components.host else {
+            throw PostgreSQLError.invalidConnectionString
+        }
+
+        let port = components.port ?? 5432
+        let username = components.user ?? NSUserName()
+        let password = components.password
+        let database = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+        guard !database.isEmpty else {
+            throw PostgreSQLError.invalidConnectionString
+        }
+
+        self.eventLoopGroup = eventLoopGroup ?? MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        self.tableName = tableName
+        self.logger = Logger(label: "com.trebuchet.postgresql")
+
+        self.configuration = PostgresConnection.Configuration(
+            host: host,
+            port: port,
+            username: username,
+            password: password,
+            database: database,
+            tls: .disable
+        )
+
+        self.encoder = JSONEncoder()
+        self.encoder.dateEncodingStrategy = .iso8601
+
+        self.decoder = JSONDecoder()
+        self.decoder.dateDecodingStrategy = .iso8601
+
+        // Verify connection
+        try await withConnection { _ in }
+    }
+
     /// Initialize with connection parameters
     ///
     /// - Parameters:

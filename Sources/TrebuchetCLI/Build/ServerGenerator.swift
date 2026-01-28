@@ -133,6 +133,7 @@ public struct ServerGenerator {
 
         var targetDependencies = """
                 "Trebuchet",
+                .product(name: "TrebuchetCloud", package: "Trebuchet"),
                 .product(name: "\(projectName)", package: "\(projectName)")
         """
 
@@ -181,6 +182,7 @@ public struct ServerGenerator {
         // DO NOT EDIT - Regenerate with: trebuchet generate server --force
 
         import Trebuchet
+        import TrebuchetCloud
         import \(projectName)
         import Foundation
         """
@@ -198,8 +200,8 @@ public struct ServerGenerator {
             actorSetup += """
 
                 // \(actor.name)
-                let \(actorVarName) = \(actor.name)(actorSystem: server.actorSystem)
-                await server.expose(\(actorVarName), as: "\(actorID)")
+                let \(actorVarName) = \(actor.name)(actorSystem: gateway.system)
+                try await gateway.expose(\(actorVarName), as: "\(actorID)")
                 terminal.print("  ✓ \(actor.name) exposed as '\(actorID)'", style: .dim)
 
             """
@@ -211,15 +213,22 @@ public struct ServerGenerator {
             stateStoreSetup = """
 
                 // PostgreSQL state store
-                let stateStore: PostgreSQLStateStore?
+                let stateStore: (any ActorStateStore)?
                 if let dbUrl = ProcessInfo.processInfo.environment["DATABASE_URL"] {
                     terminal.print("Connecting to PostgreSQL...", style: .dim)
                     stateStore = try await PostgreSQLStateStore(connectionString: dbUrl)
                     terminal.print("  ✓ PostgreSQL connected", style: .success)
                 } else {
-                    terminal.print("⚠️  DATABASE_URL not set, running without state persistence", style: .warning)
-                    stateStore = nil
+                    terminal.print("⚠️  DATABASE_URL not set, using in-memory state", style: .warning)
+                    stateStore = InMemoryStateStore()
                 }
+
+            """
+        } else {
+            stateStoreSetup = """
+
+                // In-memory state store
+                let stateStore: (any ActorStateStore)? = InMemoryStateStore()
 
             """
         }
@@ -231,24 +240,30 @@ public struct ServerGenerator {
         struct TrebuchetAutoServer {
             static func main() async throws {
                 let terminal = Terminal()
+                let host = ProcessInfo.processInfo.environment["HOST"] ?? "0.0.0.0"
                 let port = UInt16(ProcessInfo.processInfo.environment["PORT"] ?? "8080")!
 
                 terminal.print("")
                 terminal.print("🚀 Trebuchet Auto-Generated Server", style: .header)
                 terminal.print("")
         \(stateStoreSetup)
-                terminal.print("Starting server on port \\(port)...", style: .dim)
+                terminal.print("Starting CloudGateway on \\(host):\\(port)...", style: .dim)
 
-                let server = TrebuchetServer(transport: .webSocket(port: port))
+                let gateway = CloudGateway(configuration: .init(
+                    host: host,
+                    port: port,
+                    stateStore: stateStore
+                ))
 
                 // Expose all discovered actors
         \(actorSetup)
                 terminal.print("")
-                terminal.print("✓ Server running on port \\(port)", style: .success)
-                terminal.print("  WebSocket: ws://localhost:\\(port)", style: .dim)
+                terminal.print("✓ CloudGateway running", style: .success)
+                terminal.print("  HTTP: http://\\(host):\\(port)", style: .dim)
+                terminal.print("  Health: http://\\(host):\\(port)/health", style: .dim)
                 terminal.print("")
 
-                try await server.run()
+                try await gateway.run()
             }
         }
 

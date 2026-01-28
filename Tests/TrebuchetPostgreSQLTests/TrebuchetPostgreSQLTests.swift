@@ -18,6 +18,61 @@ struct PostgreSQLStateStoreTests {
         //
         // Placeholder test - actual initialization requires PostgreSQL
     }
+
+    @Test("PostgreSQLStateStore parses DATABASE_URL format")
+    func testDatabaseURLParsing() async throws {
+        // Test various valid connection string formats
+        let validURLs = [
+            "postgresql://user:pass@localhost:5432/mydb",
+            "postgresql://user@localhost/mydb",
+            "postgresql://localhost/mydb",
+            "postgres://user:pass@host.example.com:5433/production"
+        ]
+
+        for url in validURLs {
+            // Connection will fail (no actual database), but parsing should succeed
+            do {
+                _ = try await PostgreSQLStateStore(connectionString: url)
+                // If we get here without parsing error, that's unexpected
+                // (should fail on connection attempt)
+            } catch let error as PostgreSQLError {
+                // Should NOT be invalidConnectionString - that's a parsing error
+                if case .invalidConnectionString = error {
+                    #expect(Bool(false), "Failed to parse valid URL: \(url)")
+                }
+                // Connection errors are expected and fine
+            } catch {
+                // Other connection errors are fine
+            }
+        }
+    }
+
+    @Test("PostgreSQLStateStore rejects invalid DATABASE_URL")
+    func testInvalidDatabaseURL() async throws {
+        let invalidURLs = [
+            "not-a-url",
+            "postgresql://",  // No host or database
+            "postgresql://localhost",  // No database
+            "http://localhost/db",  // Wrong scheme
+            ""
+        ]
+
+        for url in invalidURLs {
+            do {
+                _ = try await PostgreSQLStateStore(connectionString: url)
+                #expect(Bool(false), "Should reject invalid URL: \(url)")
+            } catch let error as PostgreSQLError {
+                if case .invalidConnectionString = error {
+                    // Expected
+                } else {
+                    #expect(Bool(false), "Expected invalidConnectionString for '\(url)', got \(error)")
+                }
+            } catch {
+                // Connection errors before validation are wrong
+                #expect(Bool(false), "Should fail validation before connection for: \(url)")
+            }
+        }
+    }
 }
 
 @Suite("PostgreSQL Stream Adapter Tests")

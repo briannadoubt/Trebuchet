@@ -28,6 +28,34 @@ public struct FlyDeployer {
         // Check if flyctl is installed
         try checkFlyctl()
 
+        // Validate state type
+        if let stateType = config.stateType {
+            guard ["memory", "postgresql", "postgres"].contains(stateType) else {
+                throw FlyError.invalidStateType(stateType)
+            }
+        }
+
+        // Generate server package with state store support
+        terminal.print("Generating server package...", style: .dim)
+
+        // Create TrebuchetConfig from ResolvedConfig for generator
+        let trebuchetConfig = TrebuchetConfig(
+            name: config.projectName,
+            defaults: DefaultSettings(
+                provider: config.provider,
+                region: config.region
+            ),
+            state: config.stateType.map { StateConfig(type: $0) }
+        )
+
+        let serverGen = FlyServerGenerator(terminal: terminal)
+        try serverGen.generate(
+            config: trebuchetConfig,
+            actors: actors,
+            projectPath: projectPath
+        )
+        terminal.print("  ✓ Server package generated", style: .success)
+
         // Generate fly.toml
         terminal.print("Generating Fly.io configuration...", style: .dim)
         let flyToml = generateFlyToml(config: config, appName: appName, region: region)
@@ -64,10 +92,19 @@ public struct FlyDeployer {
         // Set up PostgreSQL if needed
         var databaseUrl: String?
         if config.stateType == "postgresql" || config.stateType == "postgres" {
-            terminal.print("Setting up PostgreSQL...", style: .header)
-            databaseUrl = try await setupPostgreSQL(appName: resolvedAppName, verbose: verbose)
-            terminal.print("  ✓ PostgreSQL configured", style: .success)
+            terminal.print("⚠️  PostgreSQL on Fly.io requires a paid account", style: .warning)
+            terminal.print("   If you have a free account, consider using in-memory state or an external database", style: .dim)
             terminal.print("")
+            terminal.print("Setting up PostgreSQL...", style: .header)
+            do {
+                databaseUrl = try await setupPostgreSQL(appName: resolvedAppName, verbose: verbose)
+                terminal.print("  ✓ PostgreSQL configured", style: .success)
+                terminal.print("")
+            } catch {
+                terminal.print("  ⚠️  PostgreSQL setup failed (may require paid account)", style: .warning)
+                terminal.print("     Continuing without database - actors will use in-memory state", style: .dim)
+                terminal.print("")
+            }
         }
 
         // Deploy
@@ -152,11 +189,40 @@ public struct FlyDeployer {
     }
 
     private func createApp(_ appName: String, region: String?, verbose: Bool) async throws {
-        var args = ["apps", "create", appName]
-        if let region = region {
-            args.append(contentsOf: ["--region", region])
-        }
+        // Note: flyctl apps create doesn't accept --region flag
+        // Region is specified in fly.toml and used during deployment
+
+        // Get user's personal org to create the app in
+        let org = try await getCurrentOrg()
+        let args = ["apps", "create", appName, "--org", org]
         try await runFly(args, in: ".", verbose: verbose)
+    }
+
+    private func getCurrentOrg() async throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["flyctl", "orgs", "list", "--json"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            throw FlyError.commandFailed("Failed to get Fly.io organizations. Make sure you're logged in with: flyctl auth login")
+        }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        // Fly.io returns JSON as: { "slug": "name", "slug2": "name2" }
+        guard let orgs = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+              let firstSlug = orgs.keys.first else {
+            throw FlyError.commandFailed("No Fly.io organizations found. Create one at: https://fly.io/dashboard")
+        }
+
+        // Prefer personal org if it exists
+        return orgs["personal"] != nil ? "personal" : firstSlug
     }
 
     private func setupPostgreSQL(appName: String, verbose: Bool) async throws -> String {
@@ -223,16 +289,25 @@ public struct FlyDeployer {
         process.arguments = ["flyctl"] + args
         process.currentDirectoryURL = URL(fileURLWithPath: directory)
 
+        let stderrPipe = Pipe()
+        process.standardError = stderrPipe
+
         if !verbose {
             process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
         }
 
         try process.run()
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
-            throw FlyError.commandFailed("flyctl \(args.joined(separator: " ")) failed")
+            let errorData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorOutput = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+            let errorMessage = errorOutput.isEmpty
+                ? "flyctl \(args.joined(separator: " ")) failed"
+                : "flyctl \(args.joined(separator: " ")) failed:\n\(errorOutput)"
+
+            throw FlyError.commandFailed(errorMessage)
         }
     }
 
@@ -242,7 +317,8 @@ public struct FlyDeployer {
         let resolvedAppName = appName ?? config.projectName
         let port = 8080
 
-        var toml = """
+        // Use Fly.io v2 format (free-tier friendly)
+        let toml = """
         # fly.toml - Trebuchet deployment configuration
         # Generated by trebuchet CLI
 
@@ -255,31 +331,18 @@ public struct FlyDeployer {
         [env]
           PORT = "\(port)"
 
-        [[services]]
+        [http_service]
           internal_port = \(port)
-          protocol = "tcp"
-          auto_stop_machines = true
+          force_https = true
+          auto_stop_machines = "stop"
           auto_start_machines = true
           min_machines_running = 0
-
-          [[services.ports]]
-            port = 80
-            handlers = ["http"]
-            force_https = true
-
-          [[services.ports]]
-            port = 443
-            handlers = ["http", "tls"]
-
-          [services.concurrency]
-            type = "connections"
-            hard_limit = 1000
-            soft_limit = 500
+          processes = ["app"]
 
         [[vm]]
+          memory = "\(config.actors.map(\.memory).max() ?? 256)mb"
           cpu_kind = "shared"
           cpus = 1
-          memory_mb = \(config.actors.map(\.memory).max() ?? 512)
 
         """
 
@@ -293,14 +356,8 @@ public struct FlyDeployer {
 
         WORKDIR /build
 
-        # Copy package files
-        COPY Package.swift Package.resolved ./
-
-        # Resolve dependencies
-        RUN swift package resolve
-
-        # Copy source code
-        COPY Sources ./Sources
+        # Copy generated server package
+        COPY .trebuchet/fly-server ./
 
         # Build release binary
         RUN swift build -c release --static-swift-stdlib
@@ -316,8 +373,8 @@ public struct FlyDeployer {
 
         WORKDIR /app
 
-        # Copy built binary
-        COPY --from=build /build/.build/release/TrebuchetDemo /app/TrebuchetDemo
+        # Copy built binary (from generated server package)
+        COPY --from=build /build/.build/release/TrebuchetAutoServer /app/server
 
         # Create non-root user
         RUN useradd -m -u 1000 trebuchet
@@ -327,7 +384,7 @@ public struct FlyDeployer {
         EXPOSE 8080
 
         # Run the server
-        CMD ["./TrebuchetDemo"]
+        CMD ["./server"]
 
         """
     }
@@ -371,6 +428,7 @@ public enum FlyError: Error, CustomStringConvertible {
     case flyctlNotInstalled
     case commandFailed(String)
     case invalidResponse
+    case invalidStateType(String)
 
     public var description: String {
         switch self {
@@ -380,6 +438,8 @@ public enum FlyError: Error, CustomStringConvertible {
             return "Fly.io command failed: \(message)"
         case .invalidResponse:
             return "Invalid response from Fly.io API"
+        case .invalidStateType(let type):
+            return "Invalid state type '\(type)' for Fly.io. Supported types: memory, postgresql, postgres"
         }
     }
 }
