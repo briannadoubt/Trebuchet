@@ -93,7 +93,8 @@ public struct ConfigLoader {
         // Resolve each actor
         var resolvedActors: [ResolvedActorConfig] = []
         for actorMeta in discoveredActors {
-            let actorConfig = config.actors[actorMeta.name]
+            // Handle optional ActorConfig (nil when YAML has only comments)
+            let actorConfig = config.actors[actorMeta.name] ?? nil
 
             var actorEnv = envVars
             if let actorEnvVars = actorConfig?.environment {
@@ -150,24 +151,24 @@ public struct ConfigLoader {
         version: "1"
 
         defaults:
-          provider: aws
-          region: us-east-1
+          provider: fly
+          region: iad
           memory: 512
           timeout: 30
 
-        actors: {}
+        actors: {}  # Add your actors here, e.g., MyActor: {}
 
         environments:
           production:
-            region: us-west-2
+            region: lax
           staging:
-            region: us-east-1
+            region: iad
 
         state:
-          type: dynamodb
+          type: postgresql
 
         discovery:
-          type: cloudmap
+          type: dns
           namespace: \(projectName)
         """
     }

@@ -10,11 +10,11 @@ public struct InitCommand: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Project name")
     public var name: String?
 
-    @Option(name: .shortAndLong, help: "Cloud provider (aws, gcp, azure)")
-    public var provider: String = "aws"
+    @Option(name: .shortAndLong, help: "Cloud provider (fly, aws, gcp, azure)")
+    public var provider: String = "fly"
 
     @Option(name: .shortAndLong, help: "Default region")
-    public var region: String = "us-east-1"
+    public var region: String?
 
     @Flag(name: .long, help: "Overwrite existing configuration")
     public var force: Bool = false
@@ -32,6 +32,12 @@ public struct InitCommand: AsyncParsableCommand {
             throw ExitCode.failure
         }
 
+        // Normalize provider: fly.io -> fly
+        let normalizedProvider = provider.lowercased() == "fly.io" ? "fly" : provider
+
+        // Set default region based on provider if not specified
+        let defaultRegion = region ?? (normalizedProvider == "fly" ? "iad" : "us-east-1")
+
         // Determine project name from directory if not provided
         let projectName = name ?? URL(fileURLWithPath: cwd).lastPathComponent
 
@@ -47,8 +53,8 @@ public struct InitCommand: AsyncParsableCommand {
         var config = TrebuchetConfig(
             name: projectName,
             defaults: DefaultSettings(
-                provider: provider,
-                region: region
+                provider: normalizedProvider,
+                region: defaultRegion
             )
         )
 
@@ -59,9 +65,14 @@ public struct InitCommand: AsyncParsableCommand {
             )
         }
 
-        // Add state and discovery config
-        config.state = StateConfig(type: "dynamodb")
-        config.discovery = DiscoveryConfig(type: "cloudmap", namespace: projectName)
+        // Add state and discovery config based on provider
+        if normalizedProvider == "fly" {
+            config.state = StateConfig(type: "postgresql")
+            config.discovery = DiscoveryConfig(type: "dns", namespace: projectName)
+        } else {
+            config.state = StateConfig(type: "dynamodb")
+            config.discovery = DiscoveryConfig(type: "cloudmap", namespace: projectName)
+        }
 
         // Generate YAML
         let yamlContent = generateYAML(config: config, actors: actors)
@@ -101,31 +112,38 @@ public struct InitCommand: AsyncParsableCommand {
         if !actors.isEmpty {
             yaml += "actors:\n"
             for actor in actors {
-                yaml += "  \(actor.name):\n"
                 if actor.isStateful {
+                    yaml += "  \(actor.name):\n"
                     yaml += "    stateful: true\n"
+                    yaml += "    # memory: 512\n"
+                    yaml += "    # timeout: 30\n"
+                    yaml += "    # isolated: false\n"
+                } else {
+                    yaml += "  \(actor.name): {}  # memory: 512, timeout: 30, isolated: false\n"
                 }
-                yaml += "    # memory: 512\n"
-                yaml += "    # timeout: 30\n"
-                yaml += "    # isolated: false\n"
             }
             yaml += "\n"
         } else {
             yaml += "actors: {}\n\n"
         }
 
+        // Environment regions based on provider
+        let (prodRegion, stagingRegion) = config.defaults.provider == "fly"
+            ? ("lax", "iad")
+            : ("us-west-2", "us-east-1")
+
         yaml += """
         environments:
           production:
-            region: us-west-2
+            region: \(prodRegion)
           staging:
-            region: us-east-1
+            region: \(stagingRegion)
 
         state:
-          type: dynamodb
+          type: \(config.state?.type ?? "dynamodb")
 
         discovery:
-          type: cloudmap
+          type: \(config.discovery?.type ?? "cloudmap")
           namespace: \(config.name)
         """
 

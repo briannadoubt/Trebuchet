@@ -12,7 +12,7 @@ public struct TrebuchetConfig: Codable, Sendable {
     public var defaults: DefaultSettings
 
     /// Actor-specific configurations
-    public var actors: [String: ActorConfig]
+    public var actors: [String: ActorConfig?]
 
     /// Environment configurations
     public var environments: [String: EnvironmentConfig]?
@@ -27,7 +27,7 @@ public struct TrebuchetConfig: Codable, Sendable {
         name: String,
         version: String = "1",
         defaults: DefaultSettings = DefaultSettings(),
-        actors: [String: ActorConfig] = [:],
+        actors: [String: ActorConfig?] = [:],
         environments: [String: EnvironmentConfig]? = nil,
         state: StateConfig? = nil,
         discovery: DiscoveryConfig? = nil
@@ -57,8 +57,8 @@ public struct DefaultSettings: Codable, Sendable {
     public var timeout: Int
 
     public init(
-        provider: String = "aws",
-        region: String = "us-east-1",
+        provider: String = "fly",
+        region: String = "iad",
         memory: Int = 512,
         timeout: Int = 30
     ) {
