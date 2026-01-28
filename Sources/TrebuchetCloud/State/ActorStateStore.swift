@@ -144,6 +144,9 @@ extension ActorStateStore {
                 // Retry with exponential backoff
                 try await Task.sleep(for: .milliseconds(100 * (1 << attempt)))
                 continue
+            } catch ActorStateError.versionConflict {
+                // Final attempt failed - throw maxRetriesExceeded instead
+                throw ActorStateError.maxRetriesExceeded
             }
         }
         throw ActorStateError.maxRetriesExceeded

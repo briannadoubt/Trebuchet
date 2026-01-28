@@ -25,7 +25,7 @@ public struct RequestInfo: Sendable {
 
     /// How long this request has been running
     public var duration: Duration {
-        .nanoseconds(ContinuousClock.now.duration(to: startTime).components.attoseconds / 1_000_000_000)
+        startTime.duration(to: .now)
     }
 }
 
@@ -103,7 +103,7 @@ public actor InflightRequestTracker {
     public func statistics() -> RequestStatistics {
         let now = ContinuousClock.now
         let durations = requests.values.map { req in
-            now.duration(to: req.startTime)
+            req.startTime.duration(to: now)
         }
 
         return RequestStatistics(
