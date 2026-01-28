@@ -1,33 +1,38 @@
 import ArgumentParser
 import Foundation
 
-struct GenerateCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
+public struct GenerateCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
         commandName: "generate",
         abstract: "Generate deployment artifacts",
         subcommands: [GenerateServerCommand.self]
     )
+    
+    public init() {}
 }
 
-struct GenerateServerCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
+
+public struct GenerateServerCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
         commandName: "server",
         abstract: "Generate a server package from your actors"
     )
 
     @Option(name: .long, help: "Path to trebuchet.yaml")
-    var config: String?
+    public var config: String?
 
     @Option(name: .long, help: "Output directory for generated server")
-    var output: String?
+    public var output: String?
 
     @Flag(name: .shortAndLong, help: "Enable verbose output")
-    var verbose: Bool = false
+    public var verbose: Bool = false
 
     @Flag(name: .long, help: "Force regeneration even if server exists")
-    var force: Bool = false
+    public var force: Bool = false
 
-    mutating func run() async throws {
+    public init() {}
+
+    public mutating func run() async throws {
         let terminal = Terminal()
         let cwd = FileManager.default.currentDirectoryPath
 

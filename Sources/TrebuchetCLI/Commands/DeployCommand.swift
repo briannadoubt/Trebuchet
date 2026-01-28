@@ -1,31 +1,33 @@
 import ArgumentParser
 import Foundation
 
-struct DeployCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
+public struct DeployCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
         commandName: "deploy",
         abstract: "Deploy distributed actors to the cloud"
     )
 
     @Option(name: .shortAndLong, help: "Cloud provider (aws, fly)")
-    var provider: String?
+    public var provider: String?
 
     @Option(name: .shortAndLong, help: "Deployment region")
-    var region: String?
+    public var region: String?
 
     @Option(name: .shortAndLong, help: "Environment name (production, staging)")
-    var environment: String?
+    public var environment: String?
 
     @Option(name: .long, help: "Path to trebuchet.yaml")
-    var config: String?
+    public var config: String?
 
     @Flag(name: .long, help: "Show what would be deployed without deploying")
-    var dryRun: Bool = false
+    public var dryRun: Bool = false
 
     @Flag(name: .shortAndLong, help: "Enable verbose output")
-    var verbose: Bool = false
+    public var verbose: Bool = false
 
-    mutating func run() async throws {
+    public init() {}
+
+    public mutating func run() async throws {
         let terminal = Terminal()
         let cwd = FileManager.default.currentDirectoryPath
 
@@ -274,7 +276,7 @@ struct DeployCommand: AsyncParsableCommand {
 }
 
 /// Information about an AWS deployment
-struct DeploymentInfo: Codable {
+public struct DeploymentInfo: Codable {
     let projectName: String
     let provider: String
     let region: String
@@ -286,7 +288,7 @@ struct DeploymentInfo: Codable {
 }
 
 /// Information about a Fly.io deployment
-struct FlyDeploymentInfo: Codable {
+public struct FlyDeploymentInfo: Codable {
     let projectName: String
     let provider: String
     let appName: String
@@ -297,7 +299,7 @@ struct FlyDeploymentInfo: Codable {
 }
 
 /// Result from Terraform deployment
-struct TerraformDeploymentResult {
+public struct TerraformDeploymentResult {
     let lambdaArn: String
     let apiGatewayUrl: String?
     let dynamoDBTable: String
@@ -305,7 +307,7 @@ struct TerraformDeploymentResult {
 }
 
 /// Runs Terraform to deploy infrastructure
-struct TerraformDeployer {
+public struct TerraformDeployer {
     func deploy(
         terraformDir: String,
         region: String,
@@ -392,13 +394,13 @@ struct TerraformDeployer {
 }
 
 /// CLI errors
-enum CLIError: Error, CustomStringConvertible {
+public enum CLIError: Error, CustomStringConvertible {
     case buildFailed(String)
     case terraformFailed(String)
     case deploymentFailed(String)
     case configurationError(String)
 
-    var description: String {
+    public var description: String {
         switch self {
         case .buildFailed(let msg): return "Build failed: \(msg)"
         case .terraformFailed(let msg): return "Terraform failed: \(msg)"

@@ -1,22 +1,24 @@
 import ArgumentParser
 import Foundation
 
-struct DevCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
+public struct DevCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
         commandName: "dev",
         abstract: "Run actors locally for development"
     )
 
     @Option(name: .shortAndLong, help: "Port to listen on")
-    var port: UInt16 = 8080
+    public var port: UInt16 = 8080
 
     @Option(name: .shortAndLong, help: "Host to bind to")
-    var host: String = "localhost"
+    public var host: String = "localhost"
 
     @Flag(name: .shortAndLong, help: "Enable verbose output")
-    var verbose: Bool = false
+    public var verbose: Bool = false
 
-    mutating func run() async throws {
+    public init() {}
+
+    public mutating func run() async throws {
         let terminal = Terminal()
         let cwd = FileManager.default.currentDirectoryPath
 

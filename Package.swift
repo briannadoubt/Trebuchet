@@ -31,8 +31,12 @@ let package = Package(
             name: "TrebuchetSecurity",
             targets: ["TrebuchetSecurity"]
         ),
+        .plugin(
+            name: "TrebuchetPlugin",
+            targets: ["TrebuchetPlugin"]
+        ),
         .executable(
-            name: "trebuchet",
+            name: "TrebuchetCLI",
             targets: ["TrebuchetCLI"]
         ),
     ],
@@ -128,6 +132,25 @@ let package = Package(
             swiftSettings: [
                 .unsafeFlags(["-parse-as-library"])
             ]
+        ),
+        .plugin(
+            name: "TrebuchetPlugin",
+            capability: .command(
+                intent: .custom(
+                    verb: "trebuchet",
+                    description: "Deploy Swift distributed actors to the cloud"
+                ),
+                permissions: [
+                    .writeToPackageDirectory(
+                        reason: "Generate deployment artifacts, configuration files, and infrastructure code"
+                    ),
+                    .allowNetworkConnections(
+                        scope: .all(ports: []),
+                        reason: "Deploy to cloud providers (AWS, Fly.io) and check deployment status"
+                    ),
+                ]
+            ),
+            dependencies: ["TrebuchetCLI"]
         ),
         .testTarget(
             name: "TrebuchetTests",

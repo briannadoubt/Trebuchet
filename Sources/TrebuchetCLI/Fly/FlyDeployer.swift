@@ -1,7 +1,7 @@
 import Foundation
 
 /// Deploys Trebuchet actors to Fly.io
-struct FlyDeployer {
+public struct FlyDeployer {
     let terminal: Terminal
 
     init(terminal: Terminal = Terminal()) {
@@ -353,7 +353,7 @@ struct FlyDeployer {
 
 // MARK: - Types
 
-struct FlyDeploymentResult {
+public struct FlyDeploymentResult {
     let appName: String
     let region: String
     let hostname: String
@@ -361,18 +361,18 @@ struct FlyDeploymentResult {
     let databaseUrl: String?
 }
 
-struct FlyAppInfo {
+public struct FlyAppInfo {
     let region: String
     let hostname: String
     let status: String
 }
 
-enum FlyError: Error, CustomStringConvertible {
+public enum FlyError: Error, CustomStringConvertible {
     case flyctlNotInstalled
     case commandFailed(String)
     case invalidResponse
 
-    var description: String {
+    public var description: String {
         switch self {
         case .flyctlNotInstalled:
             return "flyctl CLI not installed"

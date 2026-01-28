@@ -38,17 +38,51 @@ Then add it to your target:
 
 ### CLI Tool
 
-Install the `trebuchet` CLI for cloud deployment:
+The `trebuchet` CLI enables cloud deployment and local development. You can use it in three ways:
+
+#### Swift Package Plugin (Recommended for Projects)
+
+Add Trebuchet as a dependency in your `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/briannadoubt/Trebuchet.git", from: "1.0.0")
+]
+```
+
+Then use the plugin from the command line:
 
 ```bash
-# Using Mint (recommended)
-mint install briannadoubt/Trebuchet
+# Initialize configuration
+swift package plugin --allow-writing-to-package-directory trebuchet init
 
-# Or build from source
+# Deploy to cloud
+swift package plugin --allow-writing-to-package-directory --allow-network-connections all trebuchet deploy
+
+# Run locally
+swift package plugin --allow-writing-to-package-directory trebuchet dev
+```
+
+Or in **Xcode**:
+1. Add Trebuchet package dependency to your Xcode project
+2. Right-click on your project in the navigator
+3. Select **Trebuchet** from the plugin menu
+4. Choose a subcommand (init, deploy, dev, etc.)
+
+#### Mint (Recommended for Global Installation)
+
+```bash
+mint install briannadoubt/Trebuchet
+trebuchet deploy --provider aws
+```
+
+#### Build from Source
+
+```bash
 git clone https://github.com/briannadoubt/Trebuchet.git
 cd Trebuchet
 swift build -c release
-cp .build/release/trebuchet /usr/local/bin/
+cp .build/release/TrebuchetCLI /usr/local/bin/trebuchet
 ```
 
 ## Quick Start
