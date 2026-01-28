@@ -32,6 +32,9 @@ public struct InitCommand: AsyncParsableCommand {
             throw ExitCode.failure
         }
 
+        // Normalize provider: fly.io -> fly
+        let normalizedProvider = provider.lowercased() == "fly.io" ? "fly" : provider
+
         // Determine project name from directory if not provided
         let projectName = name ?? URL(fileURLWithPath: cwd).lastPathComponent
 
@@ -47,7 +50,7 @@ public struct InitCommand: AsyncParsableCommand {
         var config = TrebuchetConfig(
             name: projectName,
             defaults: DefaultSettings(
-                provider: provider,
+                provider: normalizedProvider,
                 region: region
             )
         )
@@ -60,7 +63,7 @@ public struct InitCommand: AsyncParsableCommand {
         }
 
         // Add state and discovery config based on provider
-        if provider.lowercased() == "fly" || provider.lowercased() == "fly.io" {
+        if normalizedProvider == "fly" {
             config.state = StateConfig(type: "postgresql")
             config.discovery = DiscoveryConfig(type: "dns", namespace: projectName)
         } else {

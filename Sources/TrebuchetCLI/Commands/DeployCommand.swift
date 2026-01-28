@@ -70,7 +70,9 @@ public struct DeployCommand: AsyncParsableCommand {
         }
 
         // Resolve configuration
-        let resolvedProvider = provider ?? trebuchetConfig.defaults.provider
+        let rawProvider = provider ?? trebuchetConfig.defaults.provider
+        // Normalize provider: fly.io -> fly
+        let resolvedProvider = rawProvider.lowercased() == "fly.io" ? "fly" : rawProvider
         let resolvedRegion = region ?? trebuchetConfig.defaults.region
 
         let resolvedConfig = try configLoader.resolve(
@@ -101,8 +103,8 @@ public struct DeployCommand: AsyncParsableCommand {
 
         // Route to provider-specific deployment
         terminal.print("")
-        switch resolvedProvider.lowercased() {
-        case "fly", "fly.io":
+        switch resolvedProvider {
+        case "fly":
             try await deployToFly(
                 config: resolvedConfig,
                 actors: actors,
