@@ -49,6 +49,110 @@ public protocol ActorStateStore: Sendable {
     ) async throws -> State
 }
 
+// MARK: - State Versioning Extension
+
+/// Errors related to state versioning
+public enum ActorStateError: Error, Codable, Sendable {
+    case versionConflict(expected: UInt64, actual: UInt64)
+    case maxRetriesExceeded
+    case stateNotFound
+}
+
+extension ActorStateStore {
+    /// Load state with version metadata for optimistic locking
+    /// - Parameters:
+    ///   - actorID: The actor's identifier
+    ///   - type: The expected state type
+    /// - Returns: A snapshot containing the state and its version, or nil if not found
+    public func loadWithVersion<State: Codable & Sendable>(
+        for actorID: String,
+        as type: State.Type
+    ) async throws -> StateSnapshot<State>? {
+        guard let state = try await load(for: actorID, as: type) else {
+            return nil
+        }
+
+        // Get version from store-specific implementation
+        let version = try await getSequenceNumber(for: actorID) ?? 0
+
+        return StateSnapshot(
+            state: state,
+            version: Int(version),
+            actorID: actorID
+        )
+    }
+
+    /// Save state with version check to prevent concurrent write conflicts
+    /// - Parameters:
+    ///   - state: The state to save
+    ///   - actorID: The actor's identifier
+    ///   - expectedVersion: The version number that must match for the save to succeed
+    /// - Returns: The new version number after save
+    /// - Throws: ActorStateError.versionConflict if the version doesn't match
+    public func saveIfVersion<State: Codable & Sendable>(
+        _ state: State,
+        for actorID: String,
+        expectedVersion: UInt64
+    ) async throws -> UInt64 {
+        // Default implementation: compare-and-swap using the basic update
+        // Stores should override this for atomic database-level checks
+        let currentVersion = try await getSequenceNumber(for: actorID) ?? 0
+
+        guard currentVersion == expectedVersion else {
+            throw ActorStateError.versionConflict(
+                expected: expectedVersion,
+                actual: currentVersion
+            )
+        }
+
+        try await save(state, for: actorID)
+        return currentVersion + 1
+    }
+
+    /// Update state with automatic retry on version conflicts
+    /// - Parameters:
+    ///   - actorID: The actor's identifier
+    ///   - type: The expected state type
+    ///   - maxRetries: Maximum number of retry attempts
+    ///   - transform: Function to transform the state
+    /// - Returns: The new state after transformation
+    /// - Throws: ActorStateError.maxRetriesExceeded if all retries fail
+    public func updateWithRetry<State: Codable & Sendable>(
+        for actorID: String,
+        as type: State.Type,
+        maxRetries: Int = 3,
+        transform: @Sendable (State?) async throws -> State
+    ) async throws -> State {
+        for attempt in 1...maxRetries {
+            let snapshot = try await loadWithVersion(for: actorID, as: type)
+
+            let newState = try await transform(snapshot?.state)
+
+            do {
+                _ = try await saveIfVersion(
+                    newState,
+                    for: actorID,
+                    expectedVersion: UInt64(snapshot?.version ?? 0)
+                )
+                return newState
+            } catch ActorStateError.versionConflict where attempt < maxRetries {
+                // Retry with exponential backoff
+                try await Task.sleep(for: .milliseconds(100 * (1 << attempt)))
+                continue
+            }
+        }
+        throw ActorStateError.maxRetriesExceeded
+    }
+
+    /// Get the current sequence number (version) for an actor's state
+    /// - Parameter actorID: The actor's identifier
+    /// - Returns: The current version number, or nil if no state exists
+    func getSequenceNumber(for actorID: String) async throws -> UInt64? {
+        // Default implementation for stores without native versioning
+        return nil
+    }
+}
+
 // MARK: - State Store Options
 
 /// Options for state store operations
@@ -143,6 +247,34 @@ public actor InMemoryStateStore: ActorStateStore {
     public func clear() {
         storage.removeAll()
         versions.removeAll()
+    }
+
+    // MARK: - Versioning Support
+
+    public func getSequenceNumber(for actorID: String) async throws -> UInt64? {
+        return versions[actorID].map { UInt64($0) }
+    }
+
+    public func saveIfVersion<State: Codable & Sendable>(
+        _ state: State,
+        for actorID: String,
+        expectedVersion: UInt64
+    ) async throws -> UInt64 {
+        let currentVersion = UInt64(versions[actorID] ?? 0)
+
+        guard currentVersion == expectedVersion else {
+            throw ActorStateError.versionConflict(
+                expected: expectedVersion,
+                actual: currentVersion
+            )
+        }
+
+        let data = try encoder.encode(state)
+        storage[actorID] = data
+        let newVersion = currentVersion + 1
+        versions[actorID] = Int(newVersion)
+
+        return newVersion
     }
 }
 

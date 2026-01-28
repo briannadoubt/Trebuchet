@@ -1,6 +1,18 @@
 import Distributed
 import Foundation
 
+/// Server state for graceful shutdown
+public enum ServerState: Sendable {
+    /// Server is running and accepting new requests
+    case running
+
+    /// Server is draining existing requests but rejecting new ones
+    case draining
+
+    /// Server is fully stopped
+    case stopped
+}
+
 /// A server that hosts distributed actors and handles incoming connections.
 ///
 /// Example usage:
@@ -31,6 +43,15 @@ public final class TrebuchetServer: Sendable {
 
     /// Filter state for stateful filters (like "changed")
     private let filterState = StreamFilterState()
+
+    /// Tracker for in-flight requests
+    private let inflightTracker = InflightRequestTracker()
+
+    /// Current server state
+    private let serverState = ServerStateManager()
+
+    /// When the server started
+    private let startTime = ContinuousClock.Instant.now
 
     /// Create a new server with the specified transport
     /// - Parameter transport: The transport configuration (e.g., `.webSocket(port: 8080)`)
@@ -205,19 +226,35 @@ public final class TrebuchetServer: Sendable {
 
     /// Start the server and begin accepting connections
     ///
-    /// This method runs until the server is stopped via `shutdown()`.
+    /// This method runs until the server is stopped via `shutdown()` or `gracefulShutdown()`.
     public func run() async throws {
+        // Set state to running
+        await serverState.setState(.running)
+
         // Start listening
         try await transport.listen(on: transportConfig.endpoint)
 
         // Process incoming messages
         for await message in transport.incoming {
+            // Check if we should accept new requests
+            let state = await serverState.getState()
+            guard state == .running else {
+                // Reject during draining with helpful error
+                await rejectRequest(message, reason: "Server is shutting down")
+                continue
+            }
+
             await handleMessage(message)
         }
     }
 
-    /// Stop the server
+    /// Stop the server immediately
+    ///
+    /// This method stops the server immediately without waiting for in-flight requests.
+    /// For production deployments, prefer `gracefulShutdown()`.
     public func shutdown() async {
+        await serverState.setState(.stopped)
+
         // Clean up all active streams
         await actorSystem.streamRegistry.removeAllStreams()
 
@@ -227,11 +264,102 @@ public final class TrebuchetServer: Sendable {
         // Clean up filter state
         await filterState.clearAllState()
 
+        // Cancel all in-flight requests
+        await inflightTracker.cancelAll()
+
         // Shutdown transport
         await transport.shutdown()
     }
 
+    /// Gracefully shutdown the server
+    ///
+    /// This method:
+    /// 1. Stops accepting new requests (enters draining state)
+    /// 2. Waits for in-flight requests to complete (up to timeout)
+    /// 3. Cancels remaining requests after timeout
+    /// 4. Cleans up resources and shuts down transport
+    ///
+    /// - Parameter timeout: Maximum time to wait for requests to complete (default: 30 seconds)
+    public func gracefulShutdown(timeout: Duration = .seconds(30)) async {
+        // Phase 1: Stop accepting new requests
+        await serverState.setState(.draining)
+
+        // Phase 2: Wait for in-flight requests to complete
+        let deadline = ContinuousClock.now + timeout
+        while await inflightTracker.count() > 0 {
+            if ContinuousClock.now >= deadline {
+                break
+            }
+
+            // Check every 100ms
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+
+        // Phase 3: Force cleanup
+        await inflightTracker.cancelAll()
+        await actorSystem.streamRegistry.removeAllStreams()
+        await streamBuffer.removeAllBuffers()
+        await filterState.clearAllState()
+
+        // Phase 4: Shutdown transport
+        await serverState.setState(.stopped)
+        await transport.shutdown()
+    }
+
+    /// Get the current server state
+    /// - Returns: The current server state
+    public func getState() async -> ServerState {
+        await serverState.getState()
+    }
+
+    /// Get health status for load balancer checks
+    /// - Returns: Health status including server state and metrics
+    public func healthStatus() async -> HealthStatus {
+        let state = await serverState.getState()
+        let inflightCount = await inflightTracker.count()
+        let activeStreams = await actorSystem.streamRegistry.activeStreamCount()
+
+        let statusString: String
+        switch state {
+        case .running:
+            statusString = "healthy"
+        case .draining:
+            statusString = "draining"
+        case .stopped:
+            statusString = "unhealthy"
+        }
+
+        return HealthStatus(
+            status: statusString,
+            timestamp: Date(),
+            inflightRequests: inflightCount,
+            activeStreams: activeStreams,
+            uptime: ContinuousClock.now - startTime
+        )
+    }
+
     // MARK: - Private
+
+    private func rejectRequest(_ message: TransportMessage, reason: String) async {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        // Try to parse the message to get callID
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        if let envelope = try? decoder.decode(TrebuchetEnvelope.self, from: message.data),
+           case .invocation(let invocation) = envelope {
+            let errorResponse = ResponseEnvelope.failure(
+                callID: invocation.callID,
+                error: reason
+            )
+            let responseEnvelope = TrebuchetEnvelope.response(errorResponse)
+            if let responseData = try? encoder.encode(responseEnvelope) {
+                try? await message.respond(responseData)
+            }
+        }
+    }
 
     private func handleMessage(_ message: TransportMessage) async {
         let decoder = JSONDecoder()
@@ -261,7 +389,18 @@ public final class TrebuchetServer: Sendable {
                     await handleStreamingInvocation(invocationEnvelope, respond: message.respond)
                 } else {
                     // Regular RPC invocation
+                    // Track the request
+                    await inflightTracker.begin(
+                        callID: invocationEnvelope.callID,
+                        actorID: invocationEnvelope.actorID.id,
+                        method: invocationEnvelope.targetIdentifier
+                    )
+
                     let response = await actorSystem.handleIncomingInvocation(invocationEnvelope)
+
+                    // Mark as complete
+                    await inflightTracker.complete(callID: invocationEnvelope.callID)
+
                     let responseEnvelope = TrebuchetEnvelope.response(response)
                     let responseData = try encoder.encode(responseEnvelope)
                     try await message.respond(responseData)
@@ -588,5 +727,58 @@ private actor ServerStreamBuffer {
     /// Clean up all buffers
     func removeAllBuffers() {
         buffers.removeAll()
+    }
+}
+
+// MARK: - Server State Manager
+
+/// Actor for managing server state safely
+private actor ServerStateManager {
+    private var state: ServerState = .stopped
+
+    func setState(_ newState: ServerState) {
+        state = newState
+    }
+
+    func getState() -> ServerState {
+        state
+    }
+}
+
+// MARK: - Health Status
+
+/// Health status for load balancer checks
+public struct HealthStatus: Codable, Sendable {
+    /// Status string: "healthy", "draining", or "unhealthy"
+    public let status: String
+
+    /// Timestamp when status was checked
+    public let timestamp: Date
+
+    /// Number of in-flight requests
+    public let inflightRequests: Int
+
+    /// Number of active streams
+    public let activeStreams: Int
+
+    /// Server uptime
+    public let uptime: Duration
+
+    public var isHealthy: Bool {
+        status == "healthy"
+    }
+
+    public init(
+        status: String,
+        timestamp: Date,
+        inflightRequests: Int,
+        activeStreams: Int,
+        uptime: Duration
+    ) {
+        self.status = status
+        self.timestamp = timestamp
+        self.inflightRequests = inflightRequests
+        self.activeStreams = activeStreams
+        self.uptime = uptime
     }
 }

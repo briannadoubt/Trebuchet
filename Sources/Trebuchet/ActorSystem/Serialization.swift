@@ -42,12 +42,14 @@ public struct TrebuchetEncoder: DistributedTargetInvocationEncoder {
         callID: UUID,
         actorID: TrebuchetActorID,
         targetIdentifier: String,
-        streamFilter: StreamFilter? = nil
+        streamFilter: StreamFilter? = nil,
+        protocolVersion: UInt32 = TrebuchetProtocolVersion.current
     ) throws -> InvocationEnvelope {
         InvocationEnvelope(
             callID: callID,
             actorID: actorID,
             targetIdentifier: targetIdentifier,
+            protocolVersion: protocolVersion,
             genericSubstitutions: genericSubstitutions,
             arguments: arguments,
             streamFilter: streamFilter
@@ -153,11 +155,27 @@ public struct StreamResumeEnvelope: Codable, Sendable {
     }
 }
 
+/// Protocol version constants
+public enum TrebuchetProtocolVersion {
+    /// Version 1: Initial protocol
+    public static let v1: UInt32 = 1
+
+    /// Version 2: Adds protocol versioning and backward compatibility
+    public static let v2: UInt32 = 2
+
+    /// Current protocol version used by this build
+    public static let current: UInt32 = v2
+
+    /// Minimum supported protocol version
+    public static let minimum: UInt32 = v1
+}
+
 /// Wire format for a remote method invocation
 public struct InvocationEnvelope: Codable, Sendable {
     public let callID: UUID
     public let actorID: TrebuchetActorID
     public let targetIdentifier: String
+    public let protocolVersion: UInt32  // Protocol version for backward compatibility
     public let genericSubstitutions: [String]
     public let arguments: [Data]
     public let streamFilter: StreamFilter?  // Optional filter for streaming methods
@@ -167,6 +185,7 @@ public struct InvocationEnvelope: Codable, Sendable {
         callID: UUID,
         actorID: TrebuchetActorID,
         targetIdentifier: String,
+        protocolVersion: UInt32 = TrebuchetProtocolVersion.current,
         genericSubstitutions: [String],
         arguments: [Data],
         streamFilter: StreamFilter? = nil,
@@ -175,10 +194,36 @@ public struct InvocationEnvelope: Codable, Sendable {
         self.callID = callID
         self.actorID = actorID
         self.targetIdentifier = targetIdentifier
+        self.protocolVersion = protocolVersion
         self.genericSubstitutions = genericSubstitutions
         self.arguments = arguments
         self.streamFilter = streamFilter
         self.traceContext = traceContext
+    }
+
+    // Custom decoding for backward compatibility with v1 clients
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        callID = try container.decode(UUID.self, forKey: .callID)
+        actorID = try container.decode(TrebuchetActorID.self, forKey: .actorID)
+        targetIdentifier = try container.decode(String.self, forKey: .targetIdentifier)
+        // Default to v1 if not present (backward compatibility)
+        protocolVersion = try container.decodeIfPresent(UInt32.self, forKey: .protocolVersion) ?? TrebuchetProtocolVersion.v1
+        genericSubstitutions = try container.decode([String].self, forKey: .genericSubstitutions)
+        arguments = try container.decode([Data].self, forKey: .arguments)
+        streamFilter = try container.decodeIfPresent(StreamFilter.self, forKey: .streamFilter)
+        traceContext = try container.decodeIfPresent(TraceContext.self, forKey: .traceContext)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case callID
+        case actorID
+        case targetIdentifier
+        case protocolVersion
+        case genericSubstitutions
+        case arguments
+        case streamFilter
+        case traceContext
     }
 }
 

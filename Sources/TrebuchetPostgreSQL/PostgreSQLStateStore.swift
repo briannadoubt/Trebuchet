@@ -328,6 +328,92 @@ public actor PostgreSQLStateStore: ActorStateStore {
         }
     }
 
+    // MARK: - Optimistic Locking
+
+    /// Save state with version check to prevent concurrent write conflicts
+    ///
+    /// Uses PostgreSQL's atomic UPDATE with WHERE condition to ensure the version
+    /// matches before updating. If the version doesn't match, throws versionConflict.
+    ///
+    /// - Parameters:
+    ///   - state: The state to save
+    ///   - actorID: Actor identifier
+    ///   - expectedVersion: The version number that must match for the save to succeed
+    /// - Returns: The new version number after save
+    /// - Throws: ActorStateError.versionConflict if the version doesn't match
+    public func saveIfVersion<State: Codable & Sendable>(
+        _ state: State,
+        for actorID: String,
+        expectedVersion: UInt64
+    ) async throws -> UInt64 {
+        let stateData = try encoder.encode(state)
+
+        return try await withConnection { connection in
+            // For new actors (expectedVersion == 0), use INSERT
+            if expectedVersion == 0 {
+                let insertQuery = """
+                    INSERT INTO \(tableName) (actor_id, state, sequence_number)
+                    VALUES ($1, $2, 1)
+                    ON CONFLICT (actor_id) DO NOTHING
+                    RETURNING sequence_number
+                    """
+
+                let insertRows = try await connection.query(
+                    insertQuery,
+                    [
+                        PostgresData(string: actorID),
+                        PostgresData(bytes: [UInt8](stateData))
+                    ]
+                ).get()
+
+                if let row = insertRows.first {
+                    // Successfully inserted
+                    let seqNum = try row.decode(Int64.self, context: .default)
+                    return UInt64(seqNum)
+                } else {
+                    // Conflict - actor already exists, throw version conflict
+                    let actualVersion = try await getSequenceNumber(for: actorID) ?? 0
+                    throw ActorStateError.versionConflict(
+                        expected: expectedVersion,
+                        actual: actualVersion
+                    )
+                }
+            }
+
+            // For existing actors, use conditional UPDATE
+            let updateQuery = """
+                UPDATE \(tableName)
+                SET state = $1,
+                    sequence_number = sequence_number + 1,
+                    updated_at = NOW()
+                WHERE actor_id = $2
+                  AND sequence_number = $3
+                RETURNING sequence_number
+                """
+
+            let rows = try await connection.query(
+                updateQuery,
+                [
+                    PostgresData(bytes: [UInt8](stateData)),
+                    PostgresData(string: actorID),
+                    PostgresData(int64: Int64(expectedVersion))
+                ]
+            ).get()
+
+            guard let row = rows.first else {
+                // No rows updated = version conflict
+                let actualVersion = try await getSequenceNumber(for: actorID) ?? 0
+                throw ActorStateError.versionConflict(
+                    expected: expectedVersion,
+                    actual: actualVersion
+                )
+            }
+
+            let newVersion = try row.decode(Int64.self, context: .default)
+            return UInt64(newVersion)
+        }
+    }
+
     // MARK: - Connection Management
 
     /// Execute an operation with a PostgreSQL connection.

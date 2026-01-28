@@ -262,4 +262,9 @@ public actor StreamRegistry {
         }
         return state.recentData
     }
+
+    /// Get the count of active streams
+    public func activeStreamCount() -> Int {
+        streams.count
+    }
 }
