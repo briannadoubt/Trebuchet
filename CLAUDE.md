@@ -112,7 +112,7 @@ Sources/TrebuchetAWS/
 └── CloudClient.swift               # Client for actor-to-actor calls across Lambda
 
 Sources/TrebuchetCLI/
-├── main.swift                      # CLI entry point
+├── TrebuchetCLICore.swift          # CLI entry point (@main)
 ├── Commands/
 │   ├── DeployCommand.swift         # Deploy actors to cloud
 │   ├── StatusCommand.swift         # Check deployment status

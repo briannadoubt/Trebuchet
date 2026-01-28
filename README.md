@@ -82,7 +82,7 @@ trebuchet deploy --provider aws
 git clone https://github.com/briannadoubt/Trebuchet.git
 cd Trebuchet
 swift build -c release
-cp .build/release/TrebuchetCLI /usr/local/bin/trebuchet
+cp .build/release/trebuchet /usr/local/bin/trebuchet
 ```
 
 ## Quick Start
