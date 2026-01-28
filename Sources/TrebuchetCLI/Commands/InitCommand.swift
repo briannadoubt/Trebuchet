@@ -1,25 +1,27 @@
 import ArgumentParser
 import Foundation
 
-struct InitCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
+public struct InitCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
         commandName: "init",
         abstract: "Initialize a new Trebuchet configuration"
     )
 
     @Option(name: .shortAndLong, help: "Project name")
-    var name: String?
+    public var name: String?
 
     @Option(name: .shortAndLong, help: "Cloud provider (aws, gcp, azure)")
-    var provider: String = "aws"
+    public var provider: String = "aws"
 
     @Option(name: .shortAndLong, help: "Default region")
-    var region: String = "us-east-1"
+    public var region: String = "us-east-1"
 
     @Flag(name: .long, help: "Overwrite existing configuration")
-    var force: Bool = false
+    public var force: Bool = false
 
-    mutating func run() async throws {
+    public init() {}
+
+    public mutating func run() async throws {
         let terminal = Terminal()
         let cwd = FileManager.default.currentDirectoryPath
 

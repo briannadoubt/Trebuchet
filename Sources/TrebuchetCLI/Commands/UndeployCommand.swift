@@ -1,22 +1,24 @@
 import ArgumentParser
 import Foundation
 
-struct UndeployCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
+public struct UndeployCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
         commandName: "undeploy",
         abstract: "Remove deployed infrastructure"
     )
 
     @Option(name: .long, help: "Path to deployment info")
-    var deployment: String?
+    public var deployment: String?
 
     @Flag(name: .long, help: "Skip confirmation prompt")
-    var force: Bool = false
+    public var force: Bool = false
 
     @Flag(name: .shortAndLong, help: "Enable verbose output")
-    var verbose: Bool = false
+    public var verbose: Bool = false
 
-    mutating func run() async throws {
+    public init() {}
+
+    public mutating func run() async throws {
         let terminal = Terminal()
         let cwd = FileManager.default.currentDirectoryPath
 

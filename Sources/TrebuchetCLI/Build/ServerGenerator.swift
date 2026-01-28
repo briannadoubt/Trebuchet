@@ -1,7 +1,7 @@
 import Foundation
 
 /// Generates a server package from discovered actors
-struct ServerGenerator {
+public struct ServerGenerator {
     let terminal: Terminal
 
     init(terminal: Terminal = Terminal()) {

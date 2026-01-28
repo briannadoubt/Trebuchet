@@ -12,9 +12,12 @@ DerivedData/
 # Build artifacts
 *.build/
 .build-*
-build/
+/build/
 *.xcodeproj/
 *.xcworkspace/
+
+# Ignore build directories at root, but not source directories like Sources/*/Build/
+!/Sources/**/Build/
 
 # Xcode
 *.pbxuser
