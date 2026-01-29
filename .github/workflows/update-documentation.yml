@@ -1,0 +1,135 @@
+name: Update Documentation
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  update-docs:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_tools: "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git checkout -b:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(gh pr create:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(find:*),Bash(ls:*),View,GlobTool,GrepTool,Edit,Write"
+          prompt: |
+            A pull request was just merged to main: #${{ github.event.pull_request.number }} "${{ github.event.pull_request.title }}"
+
+            Your job is to review the code changes from this merged PR and ensure the project documentation is comprehensive and up-to-date. Follow these instructions precisely.
+
+            ## Step 1: Understand the Changes
+
+            Review the diff of the merged PR to understand what changed:
+            - Run `gh pr view ${{ github.event.pull_request.number }} --json title,body,files` to see the PR details and changed files.
+            - Run `gh pr diff ${{ github.event.pull_request.number }}` to see the actual code diff.
+            - Focus on understanding: new public APIs, changed behavior, new features, removed functionality, configuration changes, and architectural changes.
+
+            ## Step 2: Audit the Existing Documentation
+
+            The documentation for this project lives in specific locations. Review them:
+
+            ### DocC Documentation Bundle (primary user-facing docs)
+            Location: `Sources/Trebuchet/Trebuchet.docc/`
+            This is a Swift DocC documentation catalog. It contains:
+            - `Trebuchet.md` — the root landing page with topic groups
+            - Guide articles (GettingStarted.md, DefiningActors.md, Streaming.md, etc.)
+            - `CloudDeployment/` — cloud deployment guides
+            - `Extensions/` — symbol extension files for API reference
+
+            ### Other allowed files at the repository root
+            - `README.md` — project overview and quick start
+            - `CLAUDE.md` — instructions for Claude Code (do NOT modify unless the architecture section is materially wrong)
+
+            ### Internal development docs
+            - `DevelopmentDocs/` — internal planning documents, integration examples, roadmaps (not user-facing)
+
+            ## Step 3: Identify Documentation Gaps
+
+            Compare the code changes against the existing documentation. Look for:
+
+            1. **New public APIs** that are not documented in the DocC Extensions/ files
+            2. **New features or behaviors** that are not covered by any guide article in the DocC bundle
+            3. **Changed APIs** where the documentation now describes outdated behavior
+            4. **Removed APIs** that are still referenced in documentation
+            5. **New configuration options** (CLI flags, YAML keys, environment variables) not documented
+            6. **New modules or targets** not mentioned in the DocC landing page topic groups
+            7. **Architectural changes** that invalidate existing guide content
+
+            Also check for violations of the documentation policy:
+            - There must be NO markdown files at the repository root other than `README.md` and `CLAUDE.md`. If any exist, they must be moved to `DevelopmentDocs/` (if they are internal/planning docs) or adapted into the DocC bundle (if they are user-facing documentation), then deleted from the root.
+            - There must be NO markdown files in a top-level `Documentation/` directory. If that directory exists, move its contents to `DevelopmentDocs/` or adapt them into DocC, then remove the directory.
+
+            ## Step 4: Decide Whether to Act
+
+            If ALL of the following are true, then no documentation PR is needed — just output a summary saying documentation is up-to-date and stop:
+            - The code changes are purely internal (private APIs, test-only changes, CI config, dependency bumps)
+            - No public API surface changed
+            - No user-facing behavior changed
+            - No documentation policy violations exist (no stray markdown files)
+
+            Otherwise, proceed to Step 5.
+
+            ## Step 5: Make Documentation Updates
+
+            Create a new branch from main named `docs/update-from-pr-${{ github.event.pull_request.number }}`.
+
+            Make the necessary documentation changes. Follow these rules:
+
+            ### For DocC articles (Sources/Trebuchet/Trebuchet.docc/)
+            - Use DocC markdown syntax: `## Topics`, `### Group Name`, `- ``SymbolName```, `- <doc:ArticleName>`
+            - Article files start with `# Article Title` followed by a summary line
+            - Symbol links use double backticks: ``SymbolName``
+            - Cross-references use `<doc:ArticleName>` syntax
+            - Code examples should be real, compilable Swift using Trebuchet's actual API
+            - Keep a professional, concise technical writing style
+
+            ### For DocC Extensions (Sources/Trebuchet/Trebuchet.docc/Extensions/)
+            - One file per major symbol
+            - Format: `# ``SymbolName``` followed by description and Topics groups
+
+            ### For the DocC landing page (Trebuchet.md)
+            - Add new articles to the appropriate Topics group
+            - Add new symbols to the appropriate Topics group
+            - Maintain the existing group organization
+
+            ### For README.md
+            - Only update if the project overview, quick start example, or installation instructions are materially affected by the changes
+            - Keep it concise — detailed docs belong in DocC
+
+            ### For stray markdown files
+            - If a file is user-facing documentation, create a corresponding DocC article and add it to Trebuchet.md Topics
+            - If a file is internal/planning, move it to DevelopmentDocs/
+            - Delete the original file from its non-compliant location
+
+            ## Step 6: Open a Pull Request
+
+            After making changes:
+            1. Stage all changed files with `git add`
+            2. Commit with message: `docs: update documentation for PR #${{ github.event.pull_request.number }}`
+            3. Push the branch
+            4. Open a PR with `gh pr create` targeting `main` with:
+               - Title: `docs: update documentation for #${{ github.event.pull_request.number }}`
+               - Body explaining what documentation was added/changed and why, referencing the original PR
+
+            ## Important Notes
+
+            - Do NOT modify source code. Only modify documentation files.
+            - Do NOT modify CLAUDE.md unless the Architecture section contains materially incorrect information due to the code changes.
+            - Do NOT create documentation for private/internal APIs.
+            - Do NOT add speculative documentation for features that don't exist yet.
+            - Do NOT rewrite documentation that is already accurate — only fill gaps or fix inaccuracies introduced by the merged PR.
+            - Keep documentation changes minimal and focused on what the PR actually changed.
