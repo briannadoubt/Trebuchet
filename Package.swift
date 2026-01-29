@@ -157,7 +157,10 @@ let package = Package(
         ),
         .testTarget(
             name: "TrebuchetTests",
-            dependencies: ["Trebuchet"]
+            dependencies: [
+                "Trebuchet",
+                "TrebuchetCloud",
+            ]
         ),
         .testTarget(
             name: "TrebuchetCloudTests",

@@ -41,7 +41,7 @@ struct TrebuchetAWSTests {
         let deployment = AWSDeployment(
             provider: .aws,
             actorID: "test-actor",
-            region: .useast1,
+            region: "us-east-1",
             identifier: "arn:aws:lambda:us-east-1:123456789012:function:test-actor",
             createdAt: Date(),
             functionName: "test-actor",
@@ -103,7 +103,7 @@ struct LambdaTransportTests {
     func transportInit() {
         let transport = LambdaInvokeTransport(
             functionArn: "arn:aws:lambda:us-east-1:123456789012:function:test",
-            region: .useast1
+            region: "us-east-1"
         )
 
         #expect(transport != nil)
