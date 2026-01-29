@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import SotoCore
 @testable import TrebuchetAWS
 @testable import TrebuchetCloud
 @testable import Trebuchet
@@ -40,7 +41,7 @@ struct TrebuchetAWSTests {
         let deployment = AWSDeployment(
             provider: .aws,
             actorID: "test-actor",
-            region: "us-east-1",
+            region: .useast1,
             identifier: "arn:aws:lambda:us-east-1:123456789012:function:test-actor",
             createdAt: Date(),
             functionName: "test-actor",
@@ -73,7 +74,7 @@ struct DynamoDBStateStoreTests {
     func stateStoreInit() async {
         let store = DynamoDBStateStore(
             tableName: "test-table",
-            region: "us-east-1"
+            region: .useast1
         )
 
         // Store should be created without errors
@@ -88,7 +89,7 @@ struct CloudMapRegistryTests {
     func registryInit() async {
         let registry = CloudMapRegistry(
             namespace: "test-namespace",
-            region: "us-east-1"
+            region: .useast1
         )
 
         #expect(registry != nil)
@@ -102,7 +103,7 @@ struct LambdaTransportTests {
     func transportInit() {
         let transport = LambdaInvokeTransport(
             functionArn: "arn:aws:lambda:us-east-1:123456789012:function:test",
-            region: "us-east-1"
+            region: .useast1
         )
 
         #expect(transport != nil)

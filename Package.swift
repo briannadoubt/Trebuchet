@@ -177,7 +177,10 @@ let package = Package(
         ),
         .testTarget(
             name: "TrebuchetObservabilityTests",
-            dependencies: ["TrebuchetObservability"]
+            dependencies: [
+                "TrebuchetObservability",
+                .product(name: "SotoCloudWatch", package: "soto"),
+            ]
         ),
         .testTarget(
             name: "TrebuchetSecurityTests",
