@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: briannadoubt/trebuchet-plugin
-          token: ${{ secrets.TREBUCHET_PAT }}
+          token: ${{ secrets.UPDATE_TREBUCHET_PLUGIN_PAT }}
           fetch-depth: 0
           path: trebuchet-plugin
 
