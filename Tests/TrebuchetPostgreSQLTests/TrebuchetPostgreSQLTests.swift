@@ -297,12 +297,36 @@ struct PostgreSQLErrorTests {
 
 @Suite("PostgreSQL Integration Tests")
 struct PostgreSQLIntegrationTests {
-    // These tests require a running PostgreSQL instance
-    // Uncomment and configure for integration testing
+    // MARK: - Integration Tests
+    //
+    // These tests require a running PostgreSQL instance.
+    // Start the test database with: docker-compose -f docker-compose.test.yml up -d
+    // Stop it with: docker-compose -f docker-compose.test.yml down
+    //
+    // The tests will automatically skip if PostgreSQL is not available.
 
-    /*
+    /// Check if PostgreSQL is available for integration testing
+    private func isPostgreSQLAvailable() async -> Bool {
+        do {
+            _ = try await PostgreSQLStateStore(
+                host: "localhost",
+                database: "test_trebuchet",
+                username: "test",
+                password: "test"
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
     @Test("Save and load actor state")
     func testSaveAndLoad() async throws {
+        guard await isPostgreSQLAvailable() else {
+            print("⏭️  Skipping: PostgreSQL not available. Start with: docker-compose -f docker-compose.test.yml up -d")
+            return
+        }
+
         let store = try await PostgreSQLStateStore(
             host: "localhost",
             database: "test_trebuchet",
@@ -324,6 +348,11 @@ struct PostgreSQLIntegrationTests {
 
     @Test("Sequence numbers auto-increment on save")
     func testSequenceIncrement() async throws {
+        guard await isPostgreSQLAvailable() else {
+            print("⏭️  Skipping: PostgreSQL not available")
+            return
+        }
+
         let store = try await PostgreSQLStateStore(
             host: "localhost",
             database: "test_trebuchet",
@@ -346,6 +375,11 @@ struct PostgreSQLIntegrationTests {
 
     @Test("Delete removes actor state")
     func testDelete() async throws {
+        guard await isPostgreSQLAvailable() else {
+            print("⏭️  Skipping: PostgreSQL not available")
+            return
+        }
+
         let store = try await PostgreSQLStateStore(
             host: "localhost",
             database: "test_trebuchet",
@@ -366,6 +400,11 @@ struct PostgreSQLIntegrationTests {
 
     @Test("Exists returns correct status")
     func testExists() async throws {
+        guard await isPostgreSQLAvailable() else {
+            print("⏭️  Skipping: PostgreSQL not available")
+            return
+        }
+
         let store = try await PostgreSQLStateStore(
             host: "localhost",
             database: "test_trebuchet",
@@ -388,6 +427,11 @@ struct PostgreSQLIntegrationTests {
 
     @Test("NOTIFY broadcasts to subscribers")
     func testNotifyBroadcast() async throws {
+        guard await isPostgreSQLAvailable() else {
+            print("⏭️  Skipping: PostgreSQL not available")
+            return
+        }
+
         let adapter = try await PostgreSQLStreamAdapter(
             host: "localhost",
             database: "test_trebuchet",
@@ -396,7 +440,7 @@ struct PostgreSQLIntegrationTests {
             channel: "test_notifications"
         )
 
-        let stream = try await adapter.start()
+        _ = try await adapter.start()
 
         let notification = StateChangeNotification(
             actorID: "test-actor",
@@ -406,12 +450,19 @@ struct PostgreSQLIntegrationTests {
 
         try await adapter.notify(notification)
 
+        try await adapter.stop()
+
         // In a full implementation, would verify notification received via stream
         // For now, just verify notify doesn't throw
     }
 
     @Test("Connection pool handles concurrent operations")
     func testConcurrentAccess() async throws {
+        guard await isPostgreSQLAvailable() else {
+            print("⏭️  Skipping: PostgreSQL not available")
+            return
+        }
+
         let store = try await PostgreSQLStateStore(
             host: "localhost",
             database: "test_trebuchet",
@@ -438,5 +489,4 @@ struct PostgreSQLIntegrationTests {
             #expect(state?.id == i)
         }
     }
-    */
 }

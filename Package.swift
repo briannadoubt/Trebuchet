@@ -172,7 +172,10 @@ let package = Package(
         ),
         .testTarget(
             name: "TrebuchetPostgreSQLTests",
-            dependencies: ["TrebuchetPostgreSQL"]
+            dependencies: ["TrebuchetPostgreSQL"],
+            resources: [
+                .copy("setup.sql")
+            ]
         ),
         .testTarget(
             name: "TrebuchetCLITests",
