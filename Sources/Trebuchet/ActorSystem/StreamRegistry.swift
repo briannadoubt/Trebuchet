@@ -102,6 +102,35 @@ public actor StreamRegistry {
         return (streamID, stream)
     }
 
+    /// Create a resumed stream using a specific streamID from a checkpoint
+    ///
+    /// This is used when resuming a stream after reconnection. The streamID
+    /// should match the one in the checkpoint so the server's replayed data
+    /// can be routed correctly.
+    public func createResumedStream(streamID: UUID, callID: UUID) -> AsyncStream<Data> {
+        // Start cleanup task on first stream creation
+        startCleanupTaskIfNeeded()
+
+        // Pre-register the stream with the checkpoint's streamID
+        let state = StreamState(streamID: streamID, callID: callID)
+        streams[streamID] = state
+        callIDToStreamID[callID] = streamID
+
+        let stream = AsyncStream<Data> { continuation in
+            Task {
+                self.registerContinuation(continuation, streamID: streamID)
+
+                continuation.onTermination = { @Sendable [weak self] _ in
+                    Task {
+                        await self?.removeStream(streamID: streamID)
+                    }
+                }
+            }
+        }
+
+        return stream
+    }
+
     private func registerContinuation(_ continuation: AsyncStream<Data>.Continuation, streamID: UUID) {
         guard streams[streamID] != nil else {
             // Stream was removed before continuation was registered

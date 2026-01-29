@@ -94,6 +94,20 @@ public final class TrebuchetClient: Sendable {
         await transport.shutdown()
     }
 
+    /// Send a stream resume envelope to the server
+    ///
+    /// This is used when resuming a stream from a checkpoint after reconnection.
+    ///
+    /// - Parameter resume: The stream resume envelope containing checkpoint information
+    /// - Throws: ``TrebuchetError`` if the envelope cannot be sent
+    public func resumeStream(_ resume: StreamResumeEnvelope) async throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let envelope = TrebuchetEnvelope.streamResume(resume)
+        let data = try encoder.encode(envelope)
+        try await transport.send(data, to: serverEndpoint)
+    }
+
     // MARK: - Private
 
     private func handleResponse(_ message: TransportMessage) async {

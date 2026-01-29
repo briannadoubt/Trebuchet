@@ -202,7 +202,7 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
         target: RemoteCallTarget,
         invocation: inout InvocationEncoder,
         returning: Res.Type
-    ) async throws -> AsyncStream<Res>
+    ) async throws -> (streamID: UUID, stream: AsyncStream<Res>)
     where Act: DistributedActor,
           Act.ID == TrebuchetActorID,
           Res: Codable & Sendable {
@@ -223,7 +223,7 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
         }
 
         // Create a stream for receiving data
-        let (_, dataStream) = await streamRegistry.createRemoteStream(callID: callID)
+        let (streamID, dataStream) = await streamRegistry.createRemoteStream(callID: callID)
 
         // Send the invocation
         let invocationEnvelope = TrebuchetEnvelope.invocation(envelope)
@@ -232,7 +232,7 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
 
         let decoder = self.decoder
         // Transform the data stream into a typed stream
-        return AsyncStream<Res> { continuation in
+        let typedStream = AsyncStream<Res> { continuation in
             Task {
                 for await dataItem in dataStream {
                     do {
@@ -246,6 +246,8 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
                 continuation.finish()
             }
         }
+
+        return (streamID: streamID, stream: typedStream)
     }
 
     /// Handle incoming stream start envelope

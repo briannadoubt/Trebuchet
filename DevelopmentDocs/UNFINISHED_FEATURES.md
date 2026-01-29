@@ -271,75 +271,77 @@ let gateway = CloudGateway(configuration: .init(
 
 ---
 
-## 4. Stream Resumption 🟡 HIGH VALUE
+## 4. Stream Resumption ✅ COMPLETED
 
-**Status:** Acknowledged as incomplete with TODOs
-**Impact:** Streams restart from beginning on reconnection
-**Effort:** Medium (1 week)
+**Status:** Core infrastructure implemented and tested
+**Completed:** January 28, 2026
+**Branch:** `feature/stream-resumption`
 
-### Affected Components
+### What Was Completed
 
-| Component | File | Issue |
-|-----------|------|-------|
-| ObservedActor | `Trebuchet/SwiftUI/ObservedActor.swift:227` | "TODO: Implement actual stream resumption" |
-| Stream ID | `Trebuchet/SwiftUI/ObservedActor.swift:313` | Uses UUID() instead of real stream ID |
-| Server Buffer | `Trebuchet/Server/TrebuchetServer.swift` | ServerStreamBuffer exists but resumption not used |
+1. **Stream ID Infrastructure** ✅
+   - Modified `TrebuchetActorSystem.remoteCallStream()` to return `(streamID: UUID, stream: AsyncStream<Res>)` instead of just the stream
+   - Updated `ObservedActor.startStreaming()` to capture real streamID from actor system
+   - Fixed placeholder UUID() usage - now uses real stream IDs from the system
 
-### What's Missing
+2. **Resume Envelope Protocol** ✅
+   - Added `TrebuchetClient.resumeStream()` method to send StreamResumeEnvelope
+   - Implemented `StreamRegistry.createResumedStream()` to create streams with specific streamIDs
+   - Implemented `ObservedActor.attemptStreamResume()` to handle reconnection with checkpoint
+   - Client sends StreamResumeEnvelope with checkpoint on reconnect
+   - Sequence number tracking continues across reconnections
 
-1. **Stream ID Management**
-   - Get real stream ID from actor system (not UUID placeholder)
-   - Track stream ID across reconnections
-   - Associate checkpoints with stream IDs
+3. **Server Replay Logic** ✅ (Already Existed)
+   - `WebSocketLambdaHandler.handleStreamResume()` already implements full replay logic
+   - Checks for buffered data and replays from checkpoint
+   - Falls back to fresh StreamStartEnvelope if buffer expired
+   - ServerStreamBuffer handles buffering with TTL
 
-2. **StreamResumeEnvelope Handling**
-   - Client should send StreamResumeEnvelope with checkpoint on reconnect
-   - Server should recognize resume requests
-   - Server should replay buffered data from checkpoint
+4. **Client State Reconciliation** ✅
+   - ObservedActor tracks sequence numbers with StreamCheckpoint
+   - Resumed streams continue from last sequence
+   - Falls back to fresh stream on resume errors
+   - Maintains checkpoint across reconnections
 
-3. **Server Replay Logic**
-   - ServerStreamBuffer already buffers data
-   - Need to implement replay from checkpoint
-   - Handle checkpoint not found (expired buffer)
+### Implementation Summary
 
-4. **Client Data Application**
-   - Skip already-received data
-   - Apply new data starting from checkpoint
-   - Update UI smoothly without flicker
+**Files Modified:**
+- `Sources/Trebuchet/ActorSystem/TrebuchetActorSystem.swift` - Return streamID from remoteCallStream()
+- `Sources/Trebuchet/ActorSystem/StreamRegistry.swift` - Added createResumedStream() method
+- `Sources/Trebuchet/Client/TrebuchetClient.swift` - Added resumeStream() method
+- `Sources/Trebuchet/SwiftUI/ObservedActor.swift` - Implemented attemptStreamResume()
 
-### Implementation Path
+**Tests Added:**
+- `testCreateResumedStream()` - Verifies creating stream with specific streamID
+- `testStreamResumptionFlow()` - Tests full disconnect/reconnect/resume flow
+- `testStreamBufferedDataRetrieval()` - Tests buffer catch-up on resumption
 
-**Phase 1: Stream ID Infrastructure (Days 1-2)**
-- Integrate with TrebuchetActorSystem for real stream IDs
-- Update StreamRegistry to track stream IDs
-- Persist stream ID with checkpoint in ObservedActor
+**All 22 streaming tests pass**, including the 3 new stream resumption tests.
 
-**Phase 2: Resume Envelope Protocol (Days 3-4)**
-- Implement StreamResumeEnvelope sending on reconnect
-- Server recognition of resume vs fresh stream request
-- Protocol for checkpoint negotiation
+### Architecture
 
-**Phase 3: Server Replay (Days 4-5)**
-- Implement replay from checkpoint in ServerStreamBuffer
-- Handle buffer expiration gracefully
-- Add metrics for resume success/failure
+When a client reconnects:
+1. `ObservedActor` detects connection state change from disconnected → connected
+2. If a checkpoint exists, calls `attemptStreamResume(checkpoint:)`
+3. Creates a new local stream with the checkpoint's streamID via `StreamRegistry.createResumedStream()`
+4. Sends `StreamResumeEnvelope` to server via `TrebuchetClient.resumeStream()`
+5. Server (WebSocketLambdaHandler) receives resume request
+6. Server replays buffered `StreamDataEnvelope`s from checkpoint, or sends fresh `StreamStartEnvelope` if buffer expired
+7. Client's `StreamRegistry.handleStreamData()` yields data to resumed stream
+8. ObservedActor continues updating state and tracking sequence numbers
 
-**Phase 4: Client State Reconciliation (Days 6-7)**
-- Skip already-received data on client
-- Merge resumed stream with existing state
-- Test with various reconnection scenarios
+### Remaining Work
 
-### Testing Strategy
+**For Production:**
+- End-to-end integration testing with real server
+- Performance testing with various buffer sizes
+- Metrics for resume success/failure rates
+- Documentation for users on stream resumption behavior
 
-- Test reconnection with small checkpoint
-- Test reconnection after long disconnect (buffer expired)
-- Test concurrent streams with different checkpoints
-- Test performance impact of buffering
-
-### Dependencies
-
-- Requires: StreamID from actor system (Phase 7.3 mentioned in comments)
-- Enables: Reliable streaming in unstable network conditions
+**Known Limitations:**
+- Sequence tracking assumes no gaps (increments by 1)
+- No sequence number reconciliation from StreamDataEnvelope (data stream doesn't include metadata)
+- Buffer TTL is fixed (could be configurable per stream)
 
 ---
 

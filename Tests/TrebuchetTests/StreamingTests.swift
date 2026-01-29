@@ -592,4 +592,182 @@ struct StreamingTests {
 
         #expect(resumeEnvelope.lastSequence == 5)
     }
+
+    @Test("StreamRegistry creates resumed stream with specific streamID")
+    func testCreateResumedStream() async throws {
+        let registry = StreamRegistry()
+
+        let streamID = UUID()
+        let callID = UUID()
+
+        // Create a resumed stream with a specific streamID (from checkpoint)
+        let stream = await registry.createResumedStream(streamID: streamID, callID: callID)
+
+        // Verify stream ID was registered correctly
+        let retrievedStreamID = await registry.streamID(for: callID)
+        #expect(retrievedStreamID == streamID)
+
+        // Verify we can send data to this stream
+        let testData = "resumed data".data(using: .utf8)!
+
+        let receiverTask = Task {
+            var receivedData: [Data] = []
+            for await data in stream {
+                receivedData.append(data)
+                break  // Just receive one item
+            }
+            return receivedData
+        }
+
+        // Give stream time to set up
+        try await Task.sleep(for: .milliseconds(100))
+
+        // Send data using the resumed streamID
+        await registry.handleStreamData(
+            StreamDataEnvelope(streamID: streamID, sequenceNumber: 1, data: testData, timestamp: Date())
+        )
+
+        // Verify data was received
+        let received = await receiverTask.value
+        #expect(received.count == 1)
+        #expect(received[0] == testData)
+
+        // Clean up
+        await registry.removeStream(streamID: streamID)
+    }
+
+    @Test("StreamRegistry resumes stream and replays missed data")
+    func testStreamResumptionFlow() async throws {
+        let registry = StreamRegistry()
+
+        let streamID = UUID()
+        let callID1 = UUID()
+
+        // 1. Create initial stream and receive some data
+        let (_, stream1) = await registry.createRemoteStream(callID: callID1)
+
+        let receiverTask1 = Task {
+            var receivedCount = 0
+            for await _ in stream1 {
+                receivedCount += 1
+                if receivedCount >= 3 {
+                    break
+                }
+            }
+            return receivedCount
+        }
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        // Map client streamID to server streamID
+        let startEnvelope = StreamStartEnvelope(
+            streamID: streamID,
+            callID: callID1,
+            actorID: TrebuchetActorID(id: "test"),
+            targetIdentifier: "observeState"
+        )
+        await registry.handleStreamStart(startEnvelope)
+
+        // Send some data
+        let testData = "test".data(using: .utf8)!
+        for seq in 1...3 {
+            await registry.handleStreamData(
+                StreamDataEnvelope(streamID: streamID, sequenceNumber: UInt64(seq), data: testData, timestamp: Date())
+            )
+        }
+
+        let count1 = await receiverTask1.value
+        #expect(count1 == 3)
+
+        // Check last sequence
+        let lastSeq = await registry.getLastSequence(streamID: streamID)
+        #expect(lastSeq == 3)
+
+        // 2. Simulate disconnection (remove stream)
+        await registry.removeStream(streamID: streamID)
+
+        // 3. Simulate reconnection with stream resumption
+        let callID2 = UUID()
+        let stream2 = await registry.createResumedStream(streamID: streamID, callID: callID2)
+
+        let receiverTask2 = Task {
+            var receivedCount = 0
+            for await _ in stream2 {
+                receivedCount += 1
+                if receivedCount >= 2 {
+                    break
+                }
+            }
+            return receivedCount
+        }
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        // Server would send data starting from sequence 4
+        for seq in 4...5 {
+            await registry.handleStreamData(
+                StreamDataEnvelope(streamID: streamID, sequenceNumber: UInt64(seq), data: testData, timestamp: Date())
+            )
+        }
+
+        // Should receive the new data
+        let count2 = await receiverTask2.value
+        #expect(count2 == 2)
+
+        // Verify sequence tracking continues correctly
+        let finalSeq = await registry.getLastSequence(streamID: streamID)
+        #expect(finalSeq == 5)
+
+        // Clean up
+        await registry.removeStream(streamID: streamID)
+    }
+
+    @Test("StreamRegistry buffers data for catch-up on resumption")
+    func testStreamBufferedDataRetrieval() async throws {
+        let registry = StreamRegistry(maxBufferSize: 10)
+
+        let callID = UUID()
+        let (streamID, stream) = await registry.createRemoteStream(callID: callID)
+
+        // Set up receiver that will consume data
+        let receiverTask = Task {
+            var count = 0
+            for await _ in stream {
+                count += 1
+                if count >= 5 {
+                    break
+                }
+            }
+            return count
+        }
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        // Send data
+        let testData = "test".data(using: .utf8)!
+        for seq in 1...5 {
+            await registry.handleStreamData(
+                StreamDataEnvelope(streamID: streamID, sequenceNumber: UInt64(seq), data: testData, timestamp: Date())
+            )
+        }
+
+        await receiverTask.value
+
+        // Now check if we can retrieve buffered data (for resumption logic)
+        let buffered = await registry.getBufferedData(streamID: streamID)
+        #expect(buffered != nil)
+        #expect(buffered?.count == 5)
+        #expect(buffered?.first?.sequence == 1)
+        #expect(buffered?.last?.sequence == 5)
+
+        // Test resumeStream method to get missed data
+        let missedData = await registry.resumeStream(streamID: streamID, lastSequence: 2)
+        #expect(missedData != nil)
+        #expect(missedData?.count == 3)  // Sequences 3, 4, 5
+        #expect(missedData?.first?.sequence == 3)
+        #expect(missedData?.last?.sequence == 5)
+
+        // Clean up
+        await registry.removeStream(streamID: streamID)
+    }
 }

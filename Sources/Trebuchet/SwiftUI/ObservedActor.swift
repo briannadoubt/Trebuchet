@@ -224,19 +224,12 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
 
     @MainActor
     private func attemptStreamResume(checkpoint: StreamCheckpoint) async {
-        // TODO: Implement actual stream resumption
-        // This requires:
-        // 1. Sending StreamResumeEnvelope through TrebuchetClient
-        // 2. Server replaying buffered data or sending fresh StreamStartEnvelope
-        // 3. Client receiving and applying replayed data
-        //
-        // For now, fall back to fresh stream start
         guard let connection = resolveConnection(),
+              let client = connection.client,
               connection.state.isConnected else {
             return
         }
 
-        // Start fresh resolution (resume logic to be implemented)
         resolutionTask = Task { @MainActor in
             defer { resolutionTask = nil }
 
@@ -244,15 +237,76 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
             resolutionError = nil
 
             do {
+                // Resolve actor
                 let actor = try connection.resolve(Act.self, id: actorID)
                 resolvedActor = actor
 
-                // Start streaming (will eventually support resume)
-                startStreaming(actor: actor)
+                // Create a resumed stream with the checkpoint's streamID
+                let callID = UUID()
+                let dataStream = await actor.actorSystem.streamRegistry.createResumedStream(
+                    streamID: checkpoint.streamID,
+                    callID: callID
+                )
+
+                // Send resume envelope to server
+                let resume = StreamResumeEnvelope(
+                    streamID: checkpoint.streamID,
+                    lastSequence: checkpoint.lastSequence,
+                    actorID: actor.id,
+                    targetIdentifier: checkpoint.methodName
+                )
+                try await client.resumeStream(resume)
+
+                // Transform data stream to typed stream and iterate
+                streamTask = Task { @MainActor in
+                    defer {
+                        if streamTask?.isCancelled != false {
+                            streamTask = nil
+                        }
+                    }
+
+                    let decoder = JSONDecoder()
+                    decoder.dateDecodingStrategy = .iso8601
+
+                    var currentSequence = checkpoint.lastSequence
+
+                    for await dataItem in dataStream {
+                        guard !Task.isCancelled else { break }
+
+                        do {
+                            let value = try decoder.decode(State.self, from: dataItem)
+                            currentState = value
+
+                            // Update checkpoint sequence number
+                            currentSequence += 1
+                            streamCheckpoint = StreamCheckpoint(
+                                streamID: checkpoint.streamID,
+                                actorID: checkpoint.actorID,
+                                methodName: checkpoint.methodName,
+                                lastSequence: currentSequence
+                            )
+                        } catch {
+                            // Decoding error - finish stream
+                            if !Task.isCancelled {
+                                resolutionError = .deserializationFailed(error)
+                            }
+                            break
+                        }
+                    }
+                }
+
             } catch let error as TrebuchetError {
                 resolutionError = error
+                // Fall back to fresh stream start on error
+                if let actor = resolvedActor {
+                    startStreaming(actor: actor)
+                }
             } catch {
                 resolutionError = .remoteInvocationFailed(error.localizedDescription)
+                // Fall back to fresh stream start on error
+                if let actor = resolvedActor {
+                    startStreaming(actor: actor)
+                }
             }
 
             isResolving = false
@@ -280,12 +334,15 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
                 let stream: AsyncStream<State>
                 let methodName: String
 
+                let realStreamID: UUID
                 if let keyPath = observeKeyPath {
                     // Use keypath approach (if it works)
                     let observeMethod = actor[keyPath: keyPath]
                     stream = await observeMethod()
                     // For keypath, we don't have a method name, use a placeholder
                     methodName = "observe"
+                    // Keypath approach doesn't have access to stream ID
+                    realStreamID = UUID()
                 } else if let propertyName {
                     // Use the actor system's streaming infrastructure
                     // The observe method name follows the pattern: observe + PropertyName
@@ -295,7 +352,7 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
                     var encoder = actor.actorSystem.makeInvocationEncoder()
 
                     // Make a streaming remote call
-                    let dataStream = try await actor.actorSystem.remoteCallStream(
+                    let (streamID, dataStream) = try await actor.actorSystem.remoteCallStream(
                         on: actor,
                         target: RemoteCallTarget(methodName),
                         invocation: &encoder,
@@ -304,13 +361,14 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
 
                     // The dataStream is already typed as AsyncStream<State>
                     stream = dataStream
+                    realStreamID = streamID
                 } else {
                     throw TrebuchetError.remoteInvocationFailed("No observe method or property name specified")
                 }
 
                 // Initialize checkpoint for stream resumption
                 streamCheckpoint = StreamCheckpoint(
-                    streamID: UUID(), // TODO: Get real streamID from actor system in Phase 7.3
+                    streamID: realStreamID,
                     actorID: actorID,
                     methodName: methodName,
                     lastSequence: 0
