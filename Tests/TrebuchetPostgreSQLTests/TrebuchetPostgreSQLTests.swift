@@ -340,10 +340,15 @@ struct PostgreSQLIntegrationTests {
         }
 
         let originalState = TestState(value: "hello", count: 42)
-        try await store.save(originalState, for: "actor-1")
+        let actorID = "test-save-load-\(UUID().uuidString)"
 
-        let loadedState = try await store.load(for: "actor-1", as: TestState.self)
+        try await store.save(originalState, for: actorID)
+
+        let loadedState = try await store.load(for: actorID, as: TestState.self)
         #expect(loadedState == originalState)
+
+        // Cleanup
+        try await store.delete(for: actorID)
     }
 
     @Test("Sequence numbers auto-increment on save")
@@ -364,13 +369,17 @@ struct PostgreSQLIntegrationTests {
             let iteration: Int
         }
 
-        // Save multiple times
-        try await store.save(TestState(iteration: 1), for: "actor-seq")
-        try await store.save(TestState(iteration: 2), for: "actor-seq")
-        try await store.save(TestState(iteration: 3), for: "actor-seq")
+        // Save multiple times with unique actor ID
+        let actorID = "test-sequence-\(UUID().uuidString)"
+        try await store.save(TestState(iteration: 1), for: actorID)
+        try await store.save(TestState(iteration: 2), for: actorID)
+        try await store.save(TestState(iteration: 3), for: actorID)
 
         // Query sequence number directly
         // (Would need to expose sequence number in API or query database)
+
+        // Cleanup
+        try await store.delete(for: actorID)
     }
 
     @Test("Delete removes actor state")
@@ -391,10 +400,11 @@ struct PostgreSQLIntegrationTests {
             let data: String
         }
 
-        try await store.save(TestState(data: "test"), for: "actor-delete")
-        try await store.delete(for: "actor-delete")
+        let actorID = "test-delete-\(UUID().uuidString)"
+        try await store.save(TestState(data: "test"), for: actorID)
+        try await store.delete(for: actorID)
 
-        let loaded = try await store.load(for: "actor-delete", as: TestState.self)
+        let loaded = try await store.load(for: actorID, as: TestState.self)
         #expect(loaded == nil)
     }
 
@@ -416,13 +426,16 @@ struct PostgreSQLIntegrationTests {
             let data: String
         }
 
-        #expect(try await !store.exists(for: "nonexistent"))
+        let actorID = "test-exists-\(UUID().uuidString)"
+        #expect(try await !store.exists(for: actorID))
 
-        try await store.save(TestState(data: "test"), for: "actor-exists")
-        #expect(try await store.exists(for: "actor-exists"))
+        try await store.save(TestState(data: "test"), for: actorID)
+        #expect(try await store.exists(for: actorID))
 
-        try await store.delete(for: "actor-exists")
-        #expect(try await !store.exists(for: "actor-exists"))
+        try await store.delete(for: actorID)
+        #expect(try await !store.exists(for: actorID))
+
+        // Already cleaned up by delete above
     }
 
     @Test("NOTIFY broadcasts to subscribers")
@@ -440,20 +453,49 @@ struct PostgreSQLIntegrationTests {
             channel: "test_notifications"
         )
 
-        _ = try await adapter.start()
+        let stream = try await adapter.start()
 
-        let notification = StateChangeNotification(
+        // Create expectation for receiving notification
+        let receivedNotification = Task {
+            for await notification in stream {
+                // Verify we received the notification
+                if notification.actorID == "test-actor" && notification.sequenceNumber == 1 {
+                    return true
+                }
+            }
+            return false
+        }
+
+        // Send notification
+        let testNotification = StateChangeNotification(
             actorID: "test-actor",
             sequenceNumber: 1,
             timestamp: Date()
         )
+        try await adapter.notify(testNotification)
 
-        try await adapter.notify(notification)
+        // Wait for notification with timeout
+        let received = try await withThrowingTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                try await receivedNotification.value
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(2))
+                return false  // Timeout
+            }
 
+            // Return first result
+            if let result = try await group.next() {
+                group.cancelAll()
+                return result
+            }
+            return false
+        }
+
+        // Stop adapter
         try await adapter.stop()
 
-        // In a full implementation, would verify notification received via stream
-        // For now, just verify notify doesn't throw
+        #expect(received)
     }
 
     @Test("Connection pool handles concurrent operations")
@@ -474,19 +516,25 @@ struct PostgreSQLIntegrationTests {
             let id: Int
         }
 
-        // Execute 10 concurrent save operations
+        // Execute 10 concurrent save operations with unique base ID
+        let baseID = UUID().uuidString
         await withThrowingTaskGroup(of: Void.self) { group in
             for i in 0..<10 {
                 group.addTask {
-                    try await store.save(TestState(id: i), for: "actor-\(i)")
+                    try await store.save(TestState(id: i), for: "test-concurrent-\(baseID)-\(i)")
                 }
             }
         }
 
         // Verify all saves succeeded
         for i in 0..<10 {
-            let state = try await store.load(for: "actor-\(i)", as: TestState.self)
+            let state = try await store.load(for: "test-concurrent-\(baseID)-\(i)", as: TestState.self)
             #expect(state?.id == i)
+        }
+
+        // Cleanup
+        for i in 0..<10 {
+            try await store.delete(for: "test-concurrent-\(baseID)-\(i)")
         }
     }
 }
