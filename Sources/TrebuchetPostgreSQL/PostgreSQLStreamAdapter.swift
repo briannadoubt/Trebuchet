@@ -166,24 +166,44 @@ public actor PostgreSQLStreamAdapter {
     ///
     /// - Returns: AsyncStream of state change notifications
     ///
-    /// ## Implementation Note
+    /// ## Implementation
     ///
-    /// This stream integrates with PostgreSQL's LISTEN/NOTIFY system. The stream remains
-    /// open and yields notifications as they arrive from the database. To properly integrate
-    /// with PostgresNIO's notification system, you need to:
+    /// This method connects to PostgreSQL and starts listening for notifications on the
+    /// configured channel. It uses PostgresNIO's native `listen()` method which returns
+    /// an AsyncSequence of notifications.
     ///
-    /// 1. Set up a notification handler on the connection
-    /// 2. Parse the notification payload as JSON
-    /// 3. Yield StateChangeNotification objects to the continuation
+    /// ### How It Works
     ///
-    /// Example integration (requires PostgresNIO notification API):
-    /// ```swift
-    /// connection.addNotificationListener { notification in
-    ///     if notification.channel == self.channel {
-    ///         let change = try decoder.decode(StateChangeNotification.self, from: notification.payload)
-    ///         continuation.yield(change)
-    ///     }
-    /// }
+    /// 1. Connects to PostgreSQL
+    /// 2. Calls `connection.listen(channel)` which automatically sends LISTEN command
+    /// 3. Bridges PostgresNIO's notification sequence to an AsyncStream
+    /// 4. Parses JSON payloads into StateChangeNotification objects
+    /// 5. Yields notifications to subscribers
+    ///
+    /// ### Error Handling
+    ///
+    /// - Connection errors will throw immediately
+    /// - JSON decoding errors are logged but don't terminate the stream
+    /// - When the stream is cancelled, PostgresNIO automatically sends UNLISTEN
+    ///
+    /// ### Database Trigger Setup
+    ///
+    /// Your PostgreSQL database should have a trigger that calls pg_notify():
+    ///
+    /// ```sql
+    /// CREATE OR REPLACE FUNCTION notify_actor_state_change()
+    /// RETURNS TRIGGER AS $$
+    /// BEGIN
+    ///     PERFORM pg_notify('actor_state_changes',
+    ///         json_build_object(
+    ///             'actorID', NEW.actor_id,
+    ///             'sequenceNumber', NEW.sequence_number,
+    ///             'timestamp', EXTRACT(EPOCH FROM NEW.updated_at)
+    ///         )::text
+    ///     );
+    ///     RETURN NEW;
+    /// END;
+    /// $$ LANGUAGE plpgsql;
     /// ```
     public func start() async throws -> AsyncStream<StateChangeNotification> {
         // Connect to PostgreSQL
@@ -197,54 +217,91 @@ public actor PostgreSQLStreamAdapter {
         self.connection = conn
 
         // Start listening on the channel
-        let listenQuery = "LISTEN " + channel
-        _ = try await conn.query(listenQuery).get()
+        // PostgresNIO's listen() automatically sends the LISTEN command
+        // and returns an AsyncSequence of notifications
+        let notifications = try await conn.listen(channel)
         isListeningFlag = true
 
-        // Create async stream that stays open
+        logger.info("Started listening on PostgreSQL channel: \(channel)")
+
+        // Create async stream that bridges PostgreSQL notifications to our stream type
         return AsyncStream { continuation in
-            // Store continuation for notification handler integration
-            // In a full implementation, this would set up PostgresNIO notification handlers
-            // and yield notifications as they arrive. The stream should NOT finish until
-            // stop() is called.
+            continuation.onTermination = { @Sendable [weak self] _ in
+                Task {
+                    // Clean up connection when stream is terminated
+                    try? await self?.stop()
+                }
+            }
 
-            // TODO: Integrate with PostgresNIO notification system
-            // For now, the stream stays open waiting for manual notification via notify()
-            // A production implementation would hook into PostgresNIO's notification callbacks:
-            //
-            // self.connection?.addNotificationListener(channel: self.channel) { payload in
-            //     do {
-            //         let data = payload.data(using: .utf8) ?? Data()
-            //         let notification = try self.decoder.decode(StateChangeNotification.self, from: data)
-            //         continuation.yield(notification)
-            //     } catch {
-            //         self.logger.error("Failed to decode notification: \(error)")
-            //     }
-            // }
-            //
-            // continuation.onTermination = { _ in
-            //     Task {
-            //         try? await self.stop()
-            //     }
-            // }
+            // Bridge PostgresNIO notifications to our AsyncStream
+            Task { [weak self] in
+                guard let self = self else {
+                    continuation.finish()
+                    return
+                }
 
-            // The stream remains open until explicitly stopped
-            // This allows for future integration with PostgresNIO's notification system
+                do {
+                    // Iterate over notifications from PostgreSQL
+                    for try await notification in notifications {
+                        // Check for cancellation
+                        guard !Task.isCancelled else {
+                            break
+                        }
+
+                        // Parse the JSON payload from PostgreSQL
+                        guard let data = notification.payload.data(using: .utf8) else {
+                            self.logger.warning("Failed to convert notification payload to UTF-8")
+                            continue
+                        }
+
+                        do {
+                            // Decode JSON into StateChangeNotification
+                            let change = try self.decoder.decode(
+                                StateChangeNotification.self,
+                                from: data
+                            )
+
+                            // Yield to stream subscribers
+                            continuation.yield(change)
+
+                            self.logger.debug("Received notification for actor: \(change.actorID), sequence: \(change.sequenceNumber)")
+                        } catch {
+                            // Log decoding errors but don't terminate the stream
+                            self.logger.error("Failed to decode notification payload: \(error)")
+                        }
+                    }
+
+                    // Notification sequence finished (connection closed or UNLISTEN)
+                    self.logger.info("Notification stream ended for channel: \(channel)")
+                    continuation.finish()
+
+                } catch {
+                    // Connection or iteration error
+                    self.logger.error("Error receiving notifications: \(error)")
+                    continuation.finish()
+                }
+            }
         }
     }
 
     /// Stop listening for notifications
+    ///
+    /// This closes the PostgreSQL connection, which automatically terminates any
+    /// active LISTEN subscriptions. PostgresNIO sends UNLISTEN automatically when
+    /// the notification AsyncSequence is cancelled or the connection closes.
     public func stop() async throws {
         guard let connection = self.connection else {
             return
         }
 
-        let unlistenQuery = "UNLISTEN " + channel
-        _ = try await connection.query(unlistenQuery).get()
-        isListeningFlag = false
+        logger.info("Stopping PostgreSQL listener on channel: \(channel)")
 
+        // Close connection (PostgresNIO automatically sends UNLISTEN)
         try await connection.close()
+        isListeningFlag = false
         self.connection = nil
+
+        logger.info("PostgreSQL listener stopped")
     }
 
     /// Manually send a notification (for testing or manual triggering)
