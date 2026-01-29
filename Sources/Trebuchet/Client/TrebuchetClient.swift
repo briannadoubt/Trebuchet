@@ -41,7 +41,7 @@ public final class TrebuchetClient: Sendable {
         case .webSocket(_, _, let tls):
             self.transport = WebSocketTransport(tlsConfiguration: tls)
         case .tcp:
-            fatalError("TCP transport not yet implemented")
+            self.transport = TCPTransport()
         }
 
         // Configure the actor system with transport info
