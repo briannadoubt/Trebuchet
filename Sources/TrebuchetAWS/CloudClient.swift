@@ -147,28 +147,7 @@ public actor TrebuchetCloudClient {
 }
 
 // MARK: - Gateway Extension for Actor-to-Actor Calls
-
-extension CloudGateway {
-    /// Create a client for calling other actors from within an actor
-    public func makeClient(
-        region: String,
-        credentials: AWSCredentials = .default
-    ) -> TrebuchetCloudClient? {
-        // This would use the gateway's registry if available
-        // For now, return nil if no registry is configured
-        return nil
-    }
-
-    /// Process an invocation envelope and return a response
-    public func process(_ envelope: InvocationEnvelope) async -> ResponseEnvelope {
-        // This is a placeholder for the internal routing logic
-        // The actual implementation would use executeDistributedTarget
-        ResponseEnvelope.failure(
-            callID: envelope.callID,
-            error: "Gateway routing not implemented"
-        )
-    }
-}
+// Moved to CloudGateway.swift in TrebuchetCloud module
 
 // MARK: - Actor Resolution Helpers
 

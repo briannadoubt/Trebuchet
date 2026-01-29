@@ -13,15 +13,15 @@ import TrebuchetSecurity
 /// CloudGateway provides a unified interface for exposing actors via HTTP,
 /// handling invocation routing, state management, and health checks.
 public actor CloudGateway {
-    private let actorSystem: TrebuchetActorSystem
+    internal let actorSystem: TrebuchetActorSystem
     private let transport: HTTPTransport
     private let stateStore: (any ActorStateStore)?
-    private let registry: (any ServiceRegistry)?
-    private var exposedActors: [String: any DistributedActor] = [:]
+    internal let registry: (any ServiceRegistry)?
+    internal var exposedActors: [String: any DistributedActor] = [:]
     private var running = false
     private let logger: TrebuchetLogger
     private let metrics: (any MetricsCollector)?
-    private let middlewareChain: MiddlewareChain
+    internal let middlewareChain: MiddlewareChain
 
     /// Configuration for the gateway
     public struct Configuration: Sendable {
@@ -402,7 +402,7 @@ public actor CloudGateway {
         }
     }
 
-    private func executeInvocation(
+    internal func executeInvocation(
         _ envelope: InvocationEnvelope,
         on actor: any DistributedActor
     ) async throws -> ResponseEnvelope {
@@ -435,6 +435,51 @@ public actor CloudGateway {
             return ResponseEnvelope.failure(
                 callID: envelope.callID,
                 error: String(describing: error)
+            )
+        }
+    }
+
+    // MARK: - Programmatic Invocation
+
+    /// Process an invocation envelope and return a response
+    ///
+    /// This method provides programmatic access to actor invocation without
+    /// going through the HTTP transport layer. Useful for:
+    /// - Actor-to-actor calls within the same process/Lambda
+    /// - Testing and development
+    /// - Internal routing
+    ///
+    /// - Parameter envelope: The invocation to process
+    /// - Returns: The response envelope with result or error
+    public func process(_ envelope: InvocationEnvelope) async -> ResponseEnvelope {
+        // This is a simplified version of handleMessage() without transport
+        // Find the target actor
+        guard let actor = exposedActors[envelope.actorID.id] else {
+            return ResponseEnvelope.failure(
+                callID: envelope.callID,
+                error: "Actor '\(envelope.actorID.id)' not found"
+            )
+        }
+
+        // Execute through middleware chain
+        let context = MiddlewareContext(
+            correlationID: envelope.traceContext?.traceID ?? UUID(),
+            timestamp: Date()
+        )
+
+        do {
+            let response = try await middlewareChain.execute(
+                envelope,
+                actor: actor,
+                context: context
+            ) { envelope, context in
+                try await self.executeInvocation(envelope, on: actor)
+            }
+            return response
+        } catch {
+            return ResponseEnvelope.failure(
+                callID: envelope.callID,
+                error: "Failed to process invocation: \(error)"
             )
         }
     }

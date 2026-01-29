@@ -443,3 +443,98 @@ struct LocalDeploymentTests {
         #expect(deployment.trebuchetEndpoint.port == 9000)
     }
 }
+
+// MARK: - CloudGateway Tests
+
+@Suite("CloudGateway Tests")
+struct CloudGatewayTests {
+    @Trebuchet
+    distributed actor TestCalculator {
+        distributed func add(a: Int, b: Int) -> Int {
+            return a + b
+        }
+
+        distributed func multiply(a: Int, b: Int) -> Int {
+            return a * b
+        }
+    }
+
+    // Note: Successful method invocation is tested via handleMessage() in integration tests.
+    // Testing process() directly requires matching Swift's internal method name mangling,
+    // which is complex. The tests below verify the unique aspects of process().
+
+    @Test("Process method returns error for unknown actor")
+    func processUnknownActor() async throws {
+        let gateway = CloudGateway.development(port: 9877)
+
+        let actorID = TrebuchetActorID(id: "unknown-actor", host: "localhost", port: 9877)
+        let envelope = InvocationEnvelope(
+            callID: UUID(),
+            actorID: actorID,
+            targetIdentifier: "someMethod",
+            genericSubstitutions: [],
+            arguments: [],
+            streamFilter: nil,
+            traceContext: nil
+        )
+
+        let response = await gateway.process(envelope)
+
+        // Verify failure response
+        #expect(!response.isSuccess)
+        #expect(response.errorMessage != nil)
+        if let error = response.errorMessage {
+            #expect(error.contains("not found"))
+        } else {
+            Issue.record("Expected error message but got nil")
+        }
+    }
+
+    @Test("Process method invokes middleware chain")
+    func processWithMiddleware() async throws {
+        // Create a simple counting middleware to verify it's called
+        actor CountingMiddleware: CloudMiddleware {
+            var callCount = 0
+
+            func process(
+                _ envelope: InvocationEnvelope,
+                actor: any DistributedActor,
+                context: MiddlewareContext,
+                next: (InvocationEnvelope, MiddlewareContext) async throws -> ResponseEnvelope
+            ) async throws -> ResponseEnvelope {
+                callCount += 1
+                return try await next(envelope, context)
+            }
+        }
+
+        let middleware = CountingMiddleware()
+        var config = CloudGateway.Configuration(port: 9878)
+        config.middlewares = [middleware]
+
+        let gateway = CloudGateway(configuration: config)
+        let calculator = TestCalculator(actorSystem: gateway.system)
+        try await gateway.expose(calculator, as: "calc-2")
+
+        let actorID = TrebuchetActorID(id: "calc-2", host: "localhost", port: 9878)
+        // Use a simple envelope - the method invocation may fail due to name mangling,
+        // but we can still verify middleware is called
+        let envelope = InvocationEnvelope(
+            callID: UUID(),
+            actorID: actorID,
+            targetIdentifier: "test()",
+            genericSubstitutions: [],
+            arguments: [],
+            streamFilter: nil,
+            traceContext: nil
+        )
+
+        _ = await gateway.process(envelope)
+
+        // Verify middleware was called (even if invocation failed)
+        let count = await middleware.callCount
+        #expect(count == 1)
+
+        // We don't care if the invocation succeeded - we're just testing middleware integration
+        // The actual method invocation is tested via handleMessage() in integration tests
+    }
+}
