@@ -19,6 +19,16 @@ import NIOFoundationCompat
 /// [4 bytes: message length][message payload]
 /// ```
 ///
+/// ## Security
+///
+/// **IMPORTANT:** This transport does NOT support TLS encryption. For secure communication:
+/// - Use WebSocket transport with TLS for public networks
+/// - Deploy within a trusted network (e.g., VPC, private network, localhost)
+/// - Use a TLS termination proxy (e.g., nginx, Envoy) if TLS is required
+///
+/// This transport is designed for internal service-to-service communication within
+/// secure network boundaries.
+///
 /// ## Usage
 ///
 /// ```swift
@@ -47,7 +57,11 @@ public final class TCPTransport: TrebuchetTransport, @unchecked Sendable {
             self.eventLoopGroup = eventLoopGroup
             self.ownsEventLoopGroup = false
         } else {
-            self.eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+            // Use 2-4 threads for typical server-to-server workloads
+            // This is more efficient than using all cores for I/O bound operations
+            self.eventLoopGroup = MultiThreadedEventLoopGroup(
+                numberOfThreads: min(4, max(2, System.coreCount))
+            )
             self.ownsEventLoopGroup = true
         }
 
@@ -92,8 +106,22 @@ public final class TCPTransport: TrebuchetTransport, @unchecked Sendable {
             }
         )
 
-        // Write length-prefixed message
-        try await channel.writeAndFlush(data).get()
+        // Write length-prefixed message with timeout to prevent hanging
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await channel.writeAndFlush(data).get()
+                }
+                group.addTask {
+                    try await Task.sleep(for: .seconds(30))
+                    throw TrebuchetError.remoteInvocationFailed("Write timeout after 30 seconds")
+                }
+                try await group.next()
+                group.cancelAll()
+            }
+        } catch {
+            throw TrebuchetError.connectionFailed(host: endpoint.host, port: endpoint.port, underlying: error)
+        }
     }
 
     public func listen(on endpoint: Endpoint) async throws {
@@ -138,17 +166,34 @@ public final class TCPTransport: TrebuchetTransport, @unchecked Sendable {
 // MARK: - TCP Connection Manager
 
 private actor TCPConnectionManager {
-    private var connections: [Endpoint: Channel] = [:]
+    private struct ConnectionInfo {
+        let channel: Channel
+        var lastUsed: Date
+    }
+
+    private var connections: [Endpoint: ConnectionInfo] = [:]
+    private let maxIdleTime: TimeInterval = 300 // 5 minutes
 
     func getOrCreate(
         to endpoint: Endpoint,
         using group: EventLoopGroup,
         onMessage: @escaping @Sendable (Data) -> Void
     ) async throws -> Channel {
-        // Check for existing connection
-        if let existing = connections[endpoint], existing.isActive {
-            return existing
+        // Check for existing connection and validate it's active
+        if let existing = connections[endpoint] {
+            if existing.channel.isActive {
+                // Update last used time
+                connections[endpoint]?.lastUsed = Date()
+                return existing.channel
+            } else {
+                // Clean up stale connection
+                try? await existing.channel.close()
+                connections.removeValue(forKey: endpoint)
+            }
         }
+
+        // Clean up idle connections periodically
+        await cleanupIdleConnections()
 
         // Create new connection
         var bootstrap = ClientBootstrap(group: group)
@@ -169,13 +214,29 @@ private actor TCPConnectionManager {
         }
 
         let channel = try await bootstrap.connect(host: endpoint.host, port: Int(endpoint.port)).get()
-        connections[endpoint] = channel
+        connections[endpoint] = ConnectionInfo(channel: channel, lastUsed: Date())
         return channel
     }
 
+    private func cleanupIdleConnections() async {
+        let now = Date()
+        var toRemove: [Endpoint] = []
+
+        for (endpoint, info) in connections {
+            if now.timeIntervalSince(info.lastUsed) > maxIdleTime {
+                try? await info.channel.close()
+                toRemove.append(endpoint)
+            }
+        }
+
+        for endpoint in toRemove {
+            connections.removeValue(forKey: endpoint)
+        }
+    }
+
     func closeAll() async {
-        for channel in connections.values {
-            try? await channel.close()
+        for info in connections.values {
+            try? await info.channel.close()
         }
         connections.removeAll()
     }

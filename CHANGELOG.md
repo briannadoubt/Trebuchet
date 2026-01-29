@@ -47,10 +47,14 @@ ContentView()
 ### Added
 
 - **TCP Transport**: Production-ready TCP transport for efficient server-to-server communication
-  - Length-prefixed message framing (4-byte big-endian)
-  - Connection pooling for outgoing connections
+  - Length-prefixed message framing (4-byte big-endian) via NIOExtras
+  - Connection pooling with automatic stale connection cleanup
+  - Idle connection timeout (5 minutes) to prevent resource leaks
+  - Backpressure handling with 30-second write timeout
+  - Optimized EventLoopGroup thread count (2-4 threads for I/O workloads)
   - Full integration with TrebuchetServer and TrebuchetClient
-  - Comprehensive test suite with 8 integration tests
+  - Comprehensive test suite with 12 integration tests including error scenarios
+  - Security: Designed for trusted networks only (no TLS support)
   - Ideal for actor-to-actor communication in multi-machine deployments (e.g., Fly.io)
   - Usage: `.tcp(host: "0.0.0.0", port: 9001)`
 - PostgreSQL integration tests with Docker Compose infrastructure
