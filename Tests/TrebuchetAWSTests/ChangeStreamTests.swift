@@ -275,6 +275,49 @@ struct ChangeStreamTests {
         #expect(handler != nil)
     }
 
+    @Test("StreamProcessorHandler initialization requires environment variables")
+    func testStreamProcessorEnvironmentVariables() async throws {
+        // Save original environment
+        let originalConnectionTable = ProcessInfo.processInfo.environment["CONNECTION_TABLE"]
+        let originalEndpoint = ProcessInfo.processInfo.environment["API_GATEWAY_ENDPOINT"]
+
+        // Test missing CONNECTION_TABLE
+        setenv("API_GATEWAY_ENDPOINT", "https://test.execute-api.us-east-1.amazonaws.com", 1)
+        unsetenv("CONNECTION_TABLE")
+
+        do {
+            _ = try await StreamProcessorHandler.initialize()
+            #expect(Bool(false), "Should throw error when CONNECTION_TABLE is missing")
+        } catch {
+            // Expected error
+            #expect(error is StreamProcessorError)
+        }
+
+        // Test missing API_GATEWAY_ENDPOINT
+        setenv("CONNECTION_TABLE", "test-connections", 1)
+        unsetenv("API_GATEWAY_ENDPOINT")
+
+        do {
+            _ = try await StreamProcessorHandler.initialize()
+            #expect(Bool(false), "Should throw error when API_GATEWAY_ENDPOINT is missing")
+        } catch {
+            // Expected error
+            #expect(error is StreamProcessorError)
+        }
+
+        // Restore original environment
+        if let table = originalConnectionTable {
+            setenv("CONNECTION_TABLE", table, 1)
+        } else {
+            unsetenv("CONNECTION_TABLE")
+        }
+        if let endpoint = originalEndpoint {
+            setenv("API_GATEWAY_ENDPOINT", endpoint, 1)
+        } else {
+            unsetenv("API_GATEWAY_ENDPOINT")
+        }
+    }
+
     @Test("StreamProcessorHandler handles events")
     func testStreamProcessorHandleEvent() async throws {
         let storage = InMemoryConnectionStorage()

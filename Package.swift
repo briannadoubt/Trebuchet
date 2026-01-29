@@ -102,6 +102,7 @@ let package = Package(
                 .product(name: "SotoServiceDiscovery", package: "soto"),
                 .product(name: "SotoCloudWatch", package: "soto"),
                 .product(name: "SotoLambda", package: "soto"),
+                .product(name: "SotoIAM", package: "soto"),
                 .product(name: "SotoApiGatewayManagementApi", package: "soto"),
             ]
         ),

@@ -1,6 +1,7 @@
 import Foundation
 import Trebuchet
 import TrebuchetCloud
+import SotoCore
 
 // MARK: - Stream Processor Handler
 
@@ -76,12 +77,27 @@ public actor StreamProcessorHandler {
     /// - `API_GATEWAY_ENDPOINT`: WebSocket API endpoint
     /// - `AWS_REGION`: AWS region (defaults to us-east-1)
     public static func initialize() async throws -> StreamProcessorHandler {
-        // In production, these would come from environment variables
-        // For now, we provide a way to initialize with custom values
+        // Read environment variables
+        guard let connectionTable = ProcessInfo.processInfo.environment["CONNECTION_TABLE"] else {
+            throw StreamProcessorError.missingEnvironmentVariable("CONNECTION_TABLE")
+        }
 
-        // This is a placeholder - in production you'd use actual AWS SDK clients
-        let storage = InMemoryConnectionStorage()
-        let sender = InMemoryConnectionSender()
+        guard let apiGatewayEndpoint = ProcessInfo.processInfo.environment["API_GATEWAY_ENDPOINT"] else {
+            throw StreamProcessorError.missingEnvironmentVariable("API_GATEWAY_ENDPOINT")
+        }
+
+        let region = ProcessInfo.processInfo.environment["AWS_REGION"] ?? "us-east-1"
+
+        // Use production implementations
+        let storage = DynamoDBConnectionStorage(
+            tableName: connectionTable,
+            region: Region(awsRegionName: region) ?? .useast1
+        )
+
+        let sender = APIGatewayConnectionSender(
+            endpoint: apiGatewayEndpoint,
+            region: region
+        )
 
         let connectionManager = ConnectionManager(
             storage: storage,
@@ -118,9 +134,15 @@ public actor StreamProcessorHandler {
     }
 }
 
+// MARK: - Error Types
+
+public enum StreamProcessorError: Error {
+    case missingEnvironmentVariable(String)
+}
+
 // MARK: - Production Lambda Entry Point
 
-#if false  // This would be enabled in production
+#if canImport(AWSLambdaRuntime)
 
 import AWSLambdaRuntime
 
@@ -132,35 +154,16 @@ struct StreamProcessorLambda: SimpleLambdaHandler {
     let handler: StreamProcessorHandler
 
     init(context: LambdaInitializationContext) async throws {
-        // Get environment variables
-        guard let connectionTable = ProcessInfo.processInfo.environment["CONNECTION_TABLE"] else {
-            throw StreamProcessorError.missingEnvironmentVariable("CONNECTION_TABLE")
-        }
-
-        guard let apiGatewayEndpoint = ProcessInfo.processInfo.environment["API_GATEWAY_ENDPOINT"] else {
-            throw StreamProcessorError.missingEnvironmentVariable("API_GATEWAY_ENDPOINT")
-        }
-
-        let region = ProcessInfo.processInfo.environment["AWS_REGION"] ?? "us-east-1"
-
-        // Initialize AWS clients (would use real AWS SDK in production)
-        // let dynamoDB = DynamoDBClient(region: region)
-        // let apiGatewayManagement = APIGatewayManagementAPIClient(endpoint: apiGatewayEndpoint)
-
-        // For now, use in-memory implementations
-        let storage = InMemoryConnectionStorage()
-        let sender = InMemoryConnectionSender()
-
-        let connectionManager = ConnectionManager(
-            storage: storage,
-            sender: sender
-        )
-
-        self.handler = StreamProcessorHandler(connectionManager: connectionManager)
+        // Initialize using production AWS clients
+        self.handler = try await StreamProcessorHandler.initialize()
 
         context.logger.info("Stream processor initialized")
-        context.logger.info("Connection table: \(connectionTable)")
-        context.logger.info("API Gateway endpoint: \(apiGatewayEndpoint)")
+        if let connectionTable = ProcessInfo.processInfo.environment["CONNECTION_TABLE"] {
+            context.logger.info("Connection table: \(connectionTable)")
+        }
+        if let apiGatewayEndpoint = ProcessInfo.processInfo.environment["API_GATEWAY_ENDPOINT"] {
+            context.logger.info("API Gateway endpoint: \(apiGatewayEndpoint)")
+        }
     }
 
     func handle(
@@ -173,10 +176,6 @@ struct StreamProcessorLambda: SimpleLambdaHandler {
 
         context.logger.info("Successfully processed all records")
     }
-}
-
-enum StreamProcessorError: Error {
-    case missingEnvironmentVariable(String)
 }
 
 #endif

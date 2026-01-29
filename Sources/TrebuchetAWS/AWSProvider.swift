@@ -2,6 +2,10 @@ import Distributed
 import Foundation
 import Trebuchet
 import TrebuchetCloud
+import SotoLambda
+import SotoIAM
+import SotoCore
+import NIOCore
 
 // MARK: - AWS Provider
 
@@ -14,10 +18,53 @@ public struct AWSProvider: CloudProvider, Sendable {
 
     private let region: String
     private let credentials: AWSCredentials
+    private let lambdaClient: Lambda
+    private let iamClient: IAM?
+    private let awsClient: AWSClient
+    private let createRoles: Bool
 
-    public init(region: String, credentials: AWSCredentials = .default) {
+    /// Initialize AWS provider
+    ///
+    /// - Parameters:
+    ///   - region: AWS region (e.g., "us-east-1")
+    ///   - credentials: AWS credentials (default uses credential chain)
+    ///   - createRoles: Whether to create IAM roles automatically (default: false)
+    ///   - awsClient: Optional custom AWSClient for advanced configuration
+    public init(
+        region: String,
+        credentials: AWSCredentials = .default,
+        createRoles: Bool = false,
+        awsClient: AWSClient? = nil
+    ) {
         self.region = region
         self.credentials = credentials
+        self.createRoles = createRoles
+
+        // Create or use provided AWSClient
+        let client: AWSClient
+        if let provided = awsClient {
+            client = provided
+        } else if let accessKey = credentials.accessKeyId,
+                  let secretKey = credentials.secretAccessKey {
+            // Use static credentials if provided
+            client = AWSClient(
+                credentialProvider: .static(
+                    accessKeyId: accessKey,
+                    secretAccessKey: secretKey,
+                    sessionToken: credentials.sessionToken
+                )
+            )
+        } else {
+            // Otherwise use default credential chain
+            client = AWSClient(credentialProvider: .default)
+        }
+
+        self.awsClient = client
+        self.lambdaClient = Lambda(
+            client: client,
+            region: Region(awsRegionName: region) ?? .useast1
+        )
+        self.iamClient = createRoles ? IAM(client: client) : nil
     }
 
     public func deploy<A: DistributedActor>(
@@ -26,19 +73,56 @@ public struct AWSProvider: CloudProvider, Sendable {
         config: AWSFunctionConfig,
         factory: @Sendable (TrebuchetActorSystem) -> A
     ) async throws -> AWSDeployment where A.ActorSystem == TrebuchetActorSystem {
-        // In a real implementation, this would use the AWS SDK to:
-        // 1. Create/update the Lambda function
-        // 2. Configure IAM roles
-        // 3. Set up triggers
+        let functionName = sanitizeFunctionName(actorID)
 
-        // For now, return a placeholder deployment
+        // Get or create IAM role
+        let roleArn: String
+        if let providedRole = config.roleArn {
+            roleArn = providedRole
+        } else if createRoles, let iamClient = iamClient {
+            roleArn = try await ensureRole(functionName: functionName, iamClient: iamClient)
+        } else {
+            throw AWSProviderError.missingRole("No IAM role provided and createRoles=false")
+        }
+
+        // Check if function exists
+        let exists = try await functionExists(functionName: functionName)
+
+        if exists {
+            // Update existing function
+            try await updateFunction(
+                functionName: functionName,
+                config: config,
+                roleArn: roleArn
+            )
+        } else {
+            // Create new function
+            try await createFunction(
+                functionName: functionName,
+                actorID: actorID,
+                config: config,
+                roleArn: roleArn
+            )
+        }
+
+        // Wait for function to be ready
+        try await waitForFunctionReady(functionName: functionName)
+
+        // Configure concurrency if specified
+        if let reserved = config.reservedConcurrency {
+            try await configureConcurrency(functionName: functionName, reserved: reserved)
+        }
+
+        // Get function ARN
+        let functionArn = try await getFunctionArn(functionName: functionName)
+
         return AWSDeployment(
             provider: .aws,
             actorID: actorID,
             region: region,
-            identifier: "arn:aws:lambda:\(region):123456789012:function:\(actorID)",
+            identifier: functionArn,
             createdAt: Date(),
-            functionName: actorID,
+            functionName: functionName,
             memoryMB: config.memoryMB,
             timeout: config.timeout
         )
@@ -53,17 +137,271 @@ public struct AWSProvider: CloudProvider, Sendable {
     }
 
     public func listDeployments() async throws -> [AWSDeployment] {
-        // Would use AWS SDK to list Lambda functions with trebuchet tags
-        []
+        var deployments: [AWSDeployment] = []
+        var marker: String?
+
+        repeat {
+            let request = Lambda.ListFunctionsRequest(marker: marker, maxItems: 50)
+            let response = try await lambdaClient.listFunctions(request)
+
+            // Filter functions with Trebuchet tag
+            for function in response.functions ?? [] {
+                guard let functionName = function.functionName,
+                      let functionArn = function.functionArn else {
+                    continue
+                }
+
+                // Get tags to verify this is a Trebuchet function
+                let tagsRequest = Lambda.ListTagsRequest(resource: functionArn)
+                let tagsResponse = try await lambdaClient.listTags(tagsRequest)
+
+                if let tags = tagsResponse.tags,
+                   tags["ManagedBy"] == "trebuchet" {
+                    let deployment = AWSDeployment(
+                        provider: .aws,
+                        actorID: tags["ActorID"] ?? functionName,
+                        region: region,
+                        identifier: functionArn,
+                        createdAt: Date(), // Could parse from LastModified if needed
+                        functionName: functionName,
+                        memoryMB: function.memorySize ?? 512,
+                        timeout: .seconds(Int64(function.timeout ?? 30))
+                    )
+                    deployments.append(deployment)
+                }
+            }
+
+            marker = response.nextMarker
+        } while marker != nil
+
+        return deployments
     }
 
     public func undeploy(_ deployment: AWSDeployment) async throws {
-        // Would use AWS SDK to delete the Lambda function
+        let request = Lambda.DeleteFunctionRequest(functionName: deployment.functionName)
+        _ = try await lambdaClient.deleteFunction(request)
     }
 
     public func status(of deployment: AWSDeployment) async throws -> DeploymentStatus {
-        // Would use AWS SDK to check function status
-        .active
+        do {
+            let request = Lambda.GetFunctionRequest(functionName: deployment.functionName)
+            let response = try await lambdaClient.getFunction(request)
+
+            guard let configuration = response.configuration else {
+                return .failed(reason: "No configuration found")
+            }
+
+            // Map Lambda state to DeploymentStatus
+            switch (configuration.state, configuration.lastUpdateStatus) {
+            case (.active, .successful):
+                return .active
+            case (.pending, _), (_, .inProgress):
+                return .deploying
+            case (.failed, _):
+                let reason = configuration.stateReason ?? "Unknown Lambda state error"
+                return .failed(reason: reason)
+            case (_, .failed):
+                let reason = configuration.lastUpdateStatusReason ?? "Unknown update error"
+                return .failed(reason: reason)
+            case (.inactive, _):
+                return .failed(reason: "Function is inactive")
+            default:
+                return .active
+            }
+        } catch {
+            // If function doesn't exist, it's in failed state
+            return .failed(reason: "Function not found: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Private Helper Methods
+
+    private func sanitizeFunctionName(_ actorID: String) -> String {
+        // Lambda function names must match: [a-zA-Z0-9-_]+
+        actorID
+            .replacingOccurrences(of: ":", with: "-")
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+    }
+
+    private func functionExists(functionName: String) async throws -> Bool {
+        do {
+            let request = Lambda.GetFunctionRequest(functionName: functionName)
+            _ = try await lambdaClient.getFunction(request)
+            return true
+        } catch {
+            // Function doesn't exist
+            return false
+        }
+    }
+
+    private func createFunction(
+        functionName: String,
+        actorID: String,
+        config: AWSFunctionConfig,
+        roleArn: String
+    ) async throws {
+        // Note: In a real deployment, the code would be provided via deployment package
+        // For now, we create a placeholder - the CLI would handle actual code upload
+        var tags = config.tags
+        tags["ManagedBy"] = "trebuchet"
+        tags["ActorID"] = actorID
+
+        let vpcConfig: Lambda.VpcConfig?
+        if let vpc = config.vpcConfig {
+            vpcConfig = Lambda.VpcConfig(
+                securityGroupIds: vpc.securityGroupIds,
+                subnetIds: vpc.subnetIds
+            )
+        } else {
+            vpcConfig = nil
+        }
+
+        let environment = Lambda.Environment(variables: config.environment)
+
+        // Note: In production, the deployment package would need to be provided
+        // Either via S3 bucket or as a base64-encoded zip file
+        // For now, we'll create an empty FunctionCode - this would need to be updated
+        // with actual deployment package location before real use
+        let request = Lambda.CreateFunctionRequest(
+            code: Lambda.FunctionCode(),
+            environment: environment,
+            functionName: functionName,
+            handler: "bootstrap", // Custom runtime
+            memorySize: config.memoryMB,
+            packageType: .zip,
+            role: roleArn,
+            runtime: .providedal2,
+            tags: tags,
+            timeout: Int(config.timeout.components.seconds),
+            vpcConfig: vpcConfig
+        )
+
+        _ = try await lambdaClient.createFunction(request)
+    }
+
+    private func updateFunction(
+        functionName: String,
+        config: AWSFunctionConfig,
+        roleArn: String
+    ) async throws {
+        // Update function configuration
+        let environment = Lambda.Environment(variables: config.environment)
+
+        let vpcConfig: Lambda.VpcConfig?
+        if let vpc = config.vpcConfig {
+            vpcConfig = Lambda.VpcConfig(
+                securityGroupIds: vpc.securityGroupIds,
+                subnetIds: vpc.subnetIds
+            )
+        } else {
+            vpcConfig = nil
+        }
+
+        let request = Lambda.UpdateFunctionConfigurationRequest(
+            environment: environment,
+            functionName: functionName,
+            memorySize: config.memoryMB,
+            role: roleArn,
+            timeout: Int(config.timeout.components.seconds),
+            vpcConfig: vpcConfig
+        )
+
+        _ = try await lambdaClient.updateFunctionConfiguration(request)
+    }
+
+    private func waitForFunctionReady(functionName: String, maxAttempts: Int = 30) async throws {
+        for attempt in 0..<maxAttempts {
+            let request = Lambda.GetFunctionRequest(functionName: functionName)
+            let response = try await lambdaClient.getFunction(request)
+
+            guard let config = response.configuration else {
+                throw AWSProviderError.deploymentFailed("No configuration returned")
+            }
+
+            if config.state == .active && config.lastUpdateStatus == .successful {
+                return
+            }
+
+            if config.state == .failed || config.lastUpdateStatus == .failed {
+                let reason = config.lastUpdateStatusReason ?? "Unknown error"
+                throw AWSProviderError.deploymentFailed(reason)
+            }
+
+            // Wait 2 seconds before next check
+            if attempt < maxAttempts - 1 {
+                try await Task.sleep(for: .seconds(2))
+            }
+        }
+
+        throw AWSProviderError.deploymentTimeout
+    }
+
+    private func configureConcurrency(functionName: String, reserved: Int) async throws {
+        let request = Lambda.PutFunctionConcurrencyRequest(
+            functionName: functionName,
+            reservedConcurrentExecutions: reserved
+        )
+        _ = try await lambdaClient.putFunctionConcurrency(request)
+    }
+
+    private func getFunctionArn(functionName: String) async throws -> String {
+        let request = Lambda.GetFunctionRequest(functionName: functionName)
+        let response = try await lambdaClient.getFunction(request)
+
+        guard let arn = response.configuration?.functionArn else {
+            throw AWSProviderError.deploymentFailed("No ARN returned")
+        }
+
+        return arn
+    }
+
+    private func ensureRole(functionName: String, iamClient: IAM) async throws -> String {
+        let roleName = "trebuchet-\(functionName)-role"
+
+        // Check if role exists
+        do {
+            let getRequest = IAM.GetRoleRequest(roleName: roleName)
+            let response = try await iamClient.getRole(getRequest)
+            return response.role.arn
+        } catch {
+            // Role doesn't exist, create it
+        }
+
+        // Create trust policy for Lambda
+        let trustPolicy = """
+        {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {"Service": "lambda.amazonaws.com"},
+            "Action": "sts:AssumeRole"
+          }]
+        }
+        """
+
+        let createRequest = IAM.CreateRoleRequest(
+            assumeRolePolicyDocument: trustPolicy,
+            roleName: roleName,
+            tags: [
+                IAM.Tag(key: "ManagedBy", value: "trebuchet"),
+                IAM.Tag(key: "FunctionName", value: functionName)
+            ]
+        )
+
+        let createResponse = try await iamClient.createRole(createRequest)
+
+        // Attach basic Lambda execution policy
+        let attachRequest = IAM.AttachRolePolicyRequest(
+            policyArn: "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+            roleName: roleName
+        )
+        _ = try await iamClient.attachRolePolicy(attachRequest)
+
+        // Wait for role to propagate (usually takes a few seconds)
+        try await Task.sleep(for: .seconds(10))
+
+        return createResponse.role.arn
     }
 }
 
@@ -200,4 +538,14 @@ public struct AWSCredentials: Sendable {
             sessionToken: ProcessInfo.processInfo.environment["AWS_SESSION_TOKEN"]
         )
     }
+}
+
+// MARK: - AWS Provider Error
+
+/// Errors that can occur during AWS deployment
+public enum AWSProviderError: Error {
+    case missingRole(String)
+    case deploymentFailed(String)
+    case deploymentTimeout
+    case roleCreationFailed(String)
 }

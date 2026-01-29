@@ -4,6 +4,9 @@ import FoundationNetworking
 #endif
 import Trebuchet
 import TrebuchetCloud
+import SotoLambda
+import SotoCore
+import NIOCore
 
 // MARK: - Lambda Invoke Transport
 
@@ -11,7 +14,8 @@ import TrebuchetCloud
 public final class LambdaInvokeTransport: TrebuchetTransport, @unchecked Sendable {
     private let functionArn: String
     private let region: String
-    private let credentials: AWSCredentials
+    private let lambdaClient: Lambda
+    private let awsClient: AWSClient
 
     private var incomingContinuation: AsyncStream<TransportMessage>.Continuation?
     private let incomingStream: AsyncStream<TransportMessage>
@@ -23,11 +27,35 @@ public final class LambdaInvokeTransport: TrebuchetTransport, @unchecked Sendabl
     public init(
         functionArn: String,
         region: String,
-        credentials: AWSCredentials = .default
+        credentials: AWSCredentials = .default,
+        awsClient: AWSClient? = nil
     ) {
         self.functionArn = functionArn
         self.region = region
-        self.credentials = credentials
+
+        // Create or use provided AWSClient
+        let client: AWSClient
+        if let provided = awsClient {
+            client = provided
+        } else if let accessKey = credentials.accessKeyId,
+                  let secretKey = credentials.secretAccessKey {
+            // Use static credentials if provided
+            client = AWSClient(
+                credentialProvider: .static(
+                    accessKeyId: accessKey,
+                    secretAccessKey: secretKey,
+                    sessionToken: credentials.sessionToken
+                )
+            )
+        } else {
+            // Otherwise use default credential chain
+            client = AWSClient(credentialProvider: .default)
+        }
+        self.awsClient = client
+        self.lambdaClient = Lambda(
+            client: client,
+            region: Region(awsRegionName: region) ?? .useast1
+        )
 
         var continuation: AsyncStream<TransportMessage>.Continuation!
         self.incomingStream = AsyncStream { continuation = $0 }
@@ -61,58 +89,54 @@ public final class LambdaInvokeTransport: TrebuchetTransport, @unchecked Sendabl
 
     public func shutdown() async {
         incomingContinuation?.finish()
+        try? await awsClient.shutdown()
     }
 
     // MARK: - Lambda Invocation
 
     private func invokeLambda(payload: Data) async throws -> Data {
-        let url = URL(string: "https://lambda.\(region).amazonaws.com/2015-03-31/functions/\(functionArn)/invocations")!
+        // Convert Data to ByteBuffer for Soto SDK
+        var buffer = ByteBufferAllocator().buffer(capacity: payload.count)
+        buffer.writeBytes(payload)
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.httpBody = payload
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("RequestResponse", forHTTPHeaderField: "X-Amz-Invocation-Type")
+        // Create Lambda invocation request using Soto SDK
+        let request = Lambda.InvocationRequest(
+            functionName: functionArn,
+            invocationType: .requestResponse,
+            payload: .init(buffer: buffer)
+        )
 
-        // Sign request (simplified - real implementation uses AWS Signature V4)
-        try signRequest(&request)
+        // Invoke Lambda function
+        let response = try await lambdaClient.invoke(request)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw CloudError.networkError(underlying: URLError(.badServerResponse))
+        // Helper to convert optional AWSHTTPBody to Data
+        func awsHTTPBodyToData(_ body: AWSHTTPBody?) async throws -> Data {
+            guard let body = body else { return Data() }
+            // Collect the body as ByteBuffer and convert to Data
+            let buffer = try await body.collect(upTo: .max)
+            return Data(buffer: buffer, byteTransferStrategy: .copy)
         }
 
-        // Check for Lambda errors
-        if let functionError = httpResponse.value(forHTTPHeaderField: "X-Amz-Function-Error") {
-            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw CloudError.invocationFailed(actorID: functionArn, reason: "\(functionError): \(errorMessage)")
+        // Check for function errors
+        if let functionError = response.functionError {
+            let errorData = try await awsHTTPBodyToData(response.payload)
+            let errorPayload = String(decoding: errorData, as: UTF8.self)
+            throw CloudError.invocationFailed(
+                actorID: functionArn,
+                reason: "\(functionError): \(errorPayload)"
+            )
         }
 
-        guard httpResponse.statusCode == 200 else {
-            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw CloudError.invocationFailed(actorID: functionArn, reason: "HTTP \(httpResponse.statusCode): \(errorMessage)")
+        // Check status code
+        guard response.statusCode == 200 else {
+            throw CloudError.invocationFailed(
+                actorID: functionArn,
+                reason: "HTTP \(response.statusCode ?? 0)"
+            )
         }
 
-        return data
-    }
-
-    private func signRequest(_ request: inout URLRequest) throws {
-        // AWS Signature Version 4 signing
-        // In a real implementation, this would compute the proper signature
-        // For now, we add basic headers
-
-        let date = ISO8601DateFormatter().string(from: Date())
-        request.setValue(date, forHTTPHeaderField: "X-Amz-Date")
-
-        if let accessKey = credentials.accessKeyId {
-            // Simplified - real implementation computes HMAC-SHA256 signature
-            request.setValue(accessKey, forHTTPHeaderField: "X-Amz-Security-Token")
-        }
-
-        if let sessionToken = credentials.sessionToken {
-            request.setValue(sessionToken, forHTTPHeaderField: "X-Amz-Security-Token")
-        }
+        // Extract response payload and convert to Data
+        return try await awsHTTPBodyToData(response.payload)
     }
 }
 
