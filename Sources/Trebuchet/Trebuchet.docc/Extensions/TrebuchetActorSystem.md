@@ -29,6 +29,26 @@ let system = TrebuchetActorSystem.forServer(host: "0.0.0.0", port: 8080)
 let actor = MyActor(actorSystem: system)
 ```
 
+## Streaming Support
+
+The actor system provides streaming capabilities through `remoteCallStream()`. As of version 0.2.3, this method returns both a stream ID and the typed stream:
+
+```swift
+let (streamID, stream) = try await actorSystem.remoteCallStream(
+    on: actor,
+    target: target,
+    invocation: &encoder,
+    returning: State.self
+)
+
+// streamID can be used for stream resumption after reconnection
+for await state in stream {
+    // Process state updates
+}
+```
+
+The returned `streamID` is used for stream resumption, allowing clients to continue receiving updates after reconnection without missing data.
+
 ## Topics
 
 ### Creating a System

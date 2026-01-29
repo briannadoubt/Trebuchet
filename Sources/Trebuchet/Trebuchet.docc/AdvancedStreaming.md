@@ -21,6 +21,7 @@ Gracefully handles connection loss with automatic stream resumption, ensuring cl
    - Server buffers recent stream data (100 items default, 5-minute TTL)
    - Client receives StreamData with sequence numbers
    - Client tracks last sequence in checkpoint
+   - Stream IDs are now consistently tracked across client and server
 
 2. **On Disconnection**:
    - Client saves checkpoint (streamID, lastSequence, actorID, method)
@@ -28,10 +29,12 @@ Gracefully handles connection loss with automatic stream resumption, ensuring cl
    - Stream continuations are cleaned up
 
 3. **On Reconnection**:
-   - Client sends StreamResumeEnvelope with checkpoint info
+   - Client creates a resumed stream with the checkpoint's streamID via ``StreamRegistry/createResumedStream(streamID:callID:)``
+   - Client sends ``StreamResumeEnvelope`` to server via ``TrebuchetClient/resumeStream(_:)``
    - Server checks if buffered data exists:
      - **Buffer available**: Replays missed updates from buffer
      - **Buffer expired**: Sends StreamStart and current state
+   - `@ObservedActor` handles this automatically in SwiftUI apps
 
 ### Configuration
 
@@ -68,6 +71,32 @@ Server → Client: StreamDataEnvelope (seq: 46)
 
 Client now caught up!
 ```
+
+### SwiftUI Integration
+
+The `@ObservedActor` property wrapper in SwiftUI automatically handles stream resumption:
+
+```swift
+struct GameView: View {
+    @ObservedActor("game", observe: \GameServer.observeGameState)
+    var gameState
+
+    var body: some View {
+        if let state = gameState {
+            // Stream automatically resumes after reconnection
+            GameBoard(state: state)
+        }
+    }
+}
+```
+
+When the connection is restored, `@ObservedActor`:
+1. Detects the connection state change from disconnected → connected
+2. Checks if a checkpoint exists for the stream
+3. Calls ``ObservedActor/attemptStreamResume(checkpoint:)`` internally
+4. Creates a new stream with the checkpoint's streamID
+5. Sends the resume request to the server
+6. Updates the view with resumed data seamlessly
 
 ### AWS Lambda Considerations
 

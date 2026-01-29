@@ -135,6 +135,33 @@ var body: some View {
 }
 ```
 
+## Using @ObservedActor for Streaming State
+
+The `@ObservedActor` property wrapper provides automatic subscription to streaming state from distributed actors, with built-in stream resumption after reconnection:
+
+```swift
+struct TodoListView: View {
+    @ObservedActor("todos", observe: \TodoList.observeState)
+    var state
+
+    var body: some View {
+        if let currentState = state {
+            List(currentState.todos) { todo in
+                Text(todo.title)
+            }
+        }
+    }
+}
+```
+
+When the connection is lost and restored, `@ObservedActor` automatically:
+1. Detects the reconnection
+2. Attempts to resume the stream from the last checkpoint
+3. Requests missed updates from the server
+4. Seamlessly continues updating the view
+
+This ensures your SwiftUI views stay synchronized with server state even across network interruptions. For more details on stream resumption and streaming in general, see <doc:Streaming> and <doc:AdvancedStreaming>.
+
 ## View Modifiers
 
 Trebuchet provides several view modifiers for common patterns:

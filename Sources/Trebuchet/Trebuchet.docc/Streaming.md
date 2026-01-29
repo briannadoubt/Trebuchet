@@ -289,6 +289,69 @@ struct GameView: View {
 - Verify `@StreamedState` is applied to property
 - Clean build folder and rebuild
 
+## Stream Resumption
+
+Trebuchet automatically handles stream resumption after reconnection, ensuring clients continue receiving updates without missing data.
+
+### How It Works
+
+When using `@ObservedActor` in SwiftUI, stream resumption is automatic:
+
+1. **During Connection**: The system tracks stream checkpoints (streamID, last sequence number)
+2. **On Disconnection**: Checkpoints are preserved in memory
+3. **On Reconnection**: The framework automatically attempts to resume streams from the last checkpoint
+4. **Server Replay**: If buffered data is available, the server replays missed updates; otherwise, it sends the current state
+
+```swift
+struct TodoListView: View {
+    // Stream resumption happens automatically
+    @ObservedActor("todos", observe: \TodoList.observeState)
+    var state
+
+    var body: some View {
+        if let currentState = state {
+            // View continues seamlessly after reconnection
+            List(currentState.todos) { todo in
+                Text(todo.title)
+            }
+        }
+    }
+}
+```
+
+### Manual Resumption
+
+For advanced use cases outside SwiftUI, you can manually resume streams:
+
+```swift
+let client = TrebuchetClient(transport: .webSocket(host: "localhost", port: 8080))
+try await client.connect()
+
+// Create a resumed stream with a specific streamID from a checkpoint
+let streamID = checkpoint.streamID
+let callID = UUID()
+let dataStream = await client.actorSystem.streamRegistry.createResumedStream(
+    streamID: streamID,
+    callID: callID
+)
+
+// Send resume envelope to server
+let resume = StreamResumeEnvelope(
+    streamID: streamID,
+    lastSequence: checkpoint.lastSequence,
+    actorID: actorID,
+    targetIdentifier: "observeState"
+)
+try await client.resumeStream(resume)
+
+// Process the resumed stream
+for await data in dataStream {
+    // Handle state updates
+}
+```
+
+For detailed information on stream resumption configuration, buffering, and cloud deployment considerations, see <doc:AdvancedStreaming>.
+
 ## See Also
 
 - <doc:AdvancedStreaming> - Stream resumption, filtering, and delta encoding

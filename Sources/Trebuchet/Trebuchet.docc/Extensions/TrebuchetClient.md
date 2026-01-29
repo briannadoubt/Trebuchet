@@ -27,6 +27,27 @@ The returned actor proxy is fully type-safe. You call its methods normally:
 let players = try await room.join(player: me)
 ```
 
+## Stream Resumption
+
+After a reconnection, you can resume streams from where they left off using ``resumeStream(_:)``:
+
+```swift
+// Assume you have a checkpoint saved from before disconnection
+let resume = StreamResumeEnvelope(
+    streamID: checkpoint.streamID,
+    lastSequence: checkpoint.lastSequence,
+    actorID: actorID,
+    targetIdentifier: "observeState"
+)
+
+// Resume the stream
+try await client.resumeStream(resume)
+```
+
+This allows the server to replay any buffered data the client missed during disconnection, ensuring no state updates are lost.
+
+For SwiftUI apps, this is handled automatically by `@ObservedActor`. See <doc:AdvancedStreaming> for more details.
+
 ## Disconnecting
 
 When you're done, disconnect cleanly:
@@ -50,3 +71,7 @@ await client.disconnect()
 
 - ``resolve(_:id:)``
 - ``actorSystem``
+
+### Streaming
+
+- ``resumeStream(_:)``
