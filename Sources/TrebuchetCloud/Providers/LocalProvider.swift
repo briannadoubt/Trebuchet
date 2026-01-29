@@ -144,6 +144,10 @@ public struct LocalDeployment: CloudDeployment {
         "\(host):\(port)"
     }
 
+    enum CodingKeys: String, CodingKey {
+        case provider, actorID, region, host, port, actorType, createdAt
+    }
+
     public init(
         actorID: String,
         host: String,

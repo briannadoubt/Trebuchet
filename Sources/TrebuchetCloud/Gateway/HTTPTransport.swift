@@ -1,8 +1,8 @@
 import Foundation
-import NIO
-import NIOHTTP1
+@preconcurrency import NIO
+@preconcurrency import NIOHTTP1
 import NIOFoundationCompat
-import NIOSSL
+@preconcurrency import NIOSSL
 import Trebuchet
 
 // MARK: - HTTP Transport
@@ -88,13 +88,13 @@ public final class HTTPTransport: TrebuchetTransport, @unchecked Sendable {
         try await channel.pipeline.addHandler(handler).get()
 
         // Send request
-        channel.write(NIOAny(HTTPClientRequestPart.head(requestHead)), promise: nil)
+        channel.write(HTTPClientRequestPart.head(requestHead), promise: nil)
 
         var buffer = channel.allocator.buffer(capacity: data.count)
         buffer.writeBytes(data)
-        channel.write(NIOAny(HTTPClientRequestPart.body(.byteBuffer(buffer))), promise: nil)
+        channel.write(HTTPClientRequestPart.body(.byteBuffer(buffer)), promise: nil)
 
-        try await channel.writeAndFlush(NIOAny(HTTPClientRequestPart.end(nil))).get()
+        try await channel.writeAndFlush(HTTPClientRequestPart.end(nil)).get()
 
         // Wait for response
         let responseData = try await responsePromise.futureResult.get()

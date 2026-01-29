@@ -1,11 +1,11 @@
 import Foundation
-import NIO
+@preconcurrency import NIO
 import NIOConcurrencyHelpers
 import NIOFoundationCompat
-import NIOHTTP1
-import NIOSSL
-import NIOWebSocket
-import WebSocketKit
+@preconcurrency import NIOHTTP1
+@preconcurrency import NIOSSL
+@preconcurrency import NIOWebSocket
+@preconcurrency import WebSocketKit
 
 /// WebSocket-based transport for Trebuchet.
 ///
@@ -256,7 +256,7 @@ private final class WebSocketMessageHandler: ChannelInboundHandler {
                 var buffer = channel.allocator.buffer(capacity: responseData.count)
                 buffer.writeBytes(responseData)
                 let responseFrame = WebSocketFrame(fin: true, opcode: .binary, data: buffer)
-                channel.writeAndFlush(NIOAny(responseFrame), promise: nil)
+                channel.writeAndFlush(responseFrame, promise: nil)
             }
 
             onMessage(data, respond)

@@ -91,7 +91,7 @@ public struct DockerBuilder {
 
         // Get binary size
         let attributes = try fileManager.attributesOfItem(atPath: outputPath)
-        let size = attributes[.size] as? Int64 ?? 0
+        let _ = attributes[.size] as? Int64 ?? 0
 
         // Create Lambda package
         terminal.print("  Creating deployment package...", style: .dim)

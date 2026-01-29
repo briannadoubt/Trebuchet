@@ -2,6 +2,7 @@ import Distributed
 import Foundation
 import Trebuchet
 import TrebuchetCloud
+import SotoCore
 
 // MARK: - Cloud Client
 
@@ -28,26 +29,37 @@ public actor TrebuchetCloudClient {
     }
 
     /// Create a cloud client configured for AWS
+    ///
+    /// **Credential Handling:**
+    /// - CloudMapRegistry uses Soto SDK's credential provider chain (environment, IAM roles, instance profiles)
+    /// - LambdaInvokeTransport currently uses manual HTTP and needs credential migration to Soto SDK
+    ///
+    /// TODO: Migrate LambdaInvokeTransport to use SotoLambda for consistent credential handling
     public static func aws(
         region: String,
-        namespace: String,
-        credentials: AWSCredentials = .default
+        namespace: String
     ) -> TrebuchetCloudClient {
         let actorSystem = TrebuchetActorSystem()
+        // Convert String region to Soto Region enum
+        let awsRegion = Region(rawValue: region)
+
+        // CloudMapRegistry uses Soto SDK with proper credential chain
         let registry = CloudMapRegistry(
             namespace: namespace,
-            region: region,
-            credentials: credentials
+            region: awsRegion
         )
 
         return TrebuchetCloudClient(
             actorSystem: actorSystem,
             registry: registry
         ) { endpoint in
+            // TODO: LambdaInvokeTransport needs Soto SDK migration for proper credentials
+            // Currently uses AWSCredentials.default (all-nil) which may fail in production
+            // Workaround: Set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY environment variables
             LambdaInvokeTransport(
                 functionArn: endpoint.identifier,
                 region: region,
-                credentials: credentials
+                credentials: .fromEnvironment()
             )
         }
     }

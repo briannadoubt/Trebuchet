@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import SotoCore
 @testable import TrebuchetAWS
 @testable import TrebuchetCloud
 @testable import Trebuchet
@@ -70,14 +71,17 @@ struct TrebuchetAWSTests {
 struct DynamoDBStateStoreTests {
 
     @Test("DynamoDBStateStore initialization")
-    func stateStoreInit() async {
+    func stateStoreInit() async throws {
         let store = DynamoDBStateStore(
             tableName: "test-table",
-            region: "us-east-1"
+            region: .useast1
         )
 
         // Store should be created without errors
         #expect(store != nil)
+
+        // Clean up
+        try await store.shutdown()
     }
 }
 
@@ -85,13 +89,16 @@ struct DynamoDBStateStoreTests {
 struct CloudMapRegistryTests {
 
     @Test("CloudMapRegistry initialization")
-    func registryInit() async {
+    func registryInit() async throws {
         let registry = CloudMapRegistry(
             namespace: "test-namespace",
-            region: "us-east-1"
+            region: .useast1
         )
 
         #expect(registry != nil)
+
+        // Clean up
+        try await registry.shutdown()
     }
 }
 

@@ -1,29 +1,87 @@
 import Foundation
 import Trebuchet
 import TrebuchetCloud
+import SotoServiceDiscovery
+import SotoCore
 
 // MARK: - CloudMap Service Registry
 
-/// Service registry implementation using AWS Cloud Map
+/// Service registry implementation using AWS Cloud Map (Service Discovery)
+///
+/// AWS Cloud Map provides DNS-based service discovery for distributed actors.
+/// This implementation manages actor instance registration and discovery across
+/// multiple Lambda functions or EC2 instances.
+///
+/// ## Architecture
+///
+/// - **Namespace**: Top-level organization (e.g., "my-app-prod")
+/// - **Service**: Groups instances (e.g., "actors")
+/// - **Instances**: Individual actor deployments with metadata
+///
+/// ## Example Usage
+///
+/// ```swift
+/// let registry = CloudMapRegistry(
+///     namespace: "my-app-prod",
+///     serviceName: "trebuchet-actors",
+///     region: .useast1
+/// )
+///
+/// try await registry.register(
+///     actorID: "game-room-123",
+///     endpoint: CloudEndpoint(
+///         provider: .aws,
+///         region: "us-east-1",
+///         identifier: "arn:aws:lambda:us-east-1:123:function:actors",
+///         scheme: .lambda
+///     ),
+///     metadata: ["version": "1.0.0"],
+///     ttl: .seconds(300)
+/// )
+/// ```
 public actor CloudMapRegistry: ServiceRegistry {
+    private let client: ServiceDiscovery
+    private let awsClient: AWSClient
     private let namespace: String
-    private let region: String
-    private let credentials: AWSCredentials
+    private let serviceName: String
 
-    /// Local cache of registrations
+    /// Cached namespace ID to avoid repeated lookups
+    private var cachedNamespaceId: String?
+
+    /// Cached service ID to avoid repeated lookups
+    private var cachedServiceId: String?
+
+    /// Local cache of registrations for fast lookups
     private var cache: [String: CloudEndpoint] = [:]
 
     /// Watchers for change notifications
     private var watchers: [String: [AsyncStream<RegistryEvent>.Continuation]] = [:]
 
+    /// Initialize CloudMap registry
+    ///
+    /// - Parameters:
+    ///   - namespace: Cloud Map namespace (e.g., "my-app-prod")
+    ///   - serviceName: Service name within namespace (default: "trebuchet-actors")
+    ///   - region: AWS region (default: .useast1)
+    ///   - endpoint: Custom endpoint for testing (e.g., LocalStack)
+    ///   - awsClient: Optional custom AWSClient
     public init(
         namespace: String,
-        region: String = "us-east-1",
-        credentials: AWSCredentials = .default
+        serviceName: String = "trebuchet-actors",
+        region: Region = .useast1,
+        endpoint: String? = nil,
+        awsClient: AWSClient? = nil
     ) {
         self.namespace = namespace
-        self.region = region
-        self.credentials = credentials
+        self.serviceName = serviceName
+
+        self.awsClient = awsClient ?? AWSClient(credentialProvider: .default)
+
+        if let endpoint = endpoint {
+            self.client = ServiceDiscovery(client: self.awsClient, region: region, endpoint: endpoint)
+        } else {
+            self.client = ServiceDiscovery(client: self.awsClient, region: region)
+        }
     }
 
     public func register(
@@ -32,20 +90,22 @@ public actor CloudMapRegistry: ServiceRegistry {
         metadata: [String: String],
         ttl: Duration?
     ) async throws {
-        // Build attributes from metadata
+        // Build attributes from metadata and endpoint
         var attributes: [String: String] = metadata
         attributes["ENDPOINT"] = endpoint.identifier
         attributes["REGION"] = endpoint.region
         attributes["PROVIDER"] = endpoint.provider.rawValue
+        attributes["SCHEME"] = endpoint.scheme.rawValue
 
-        let request = CloudMapRequest(
-            operation: "RegisterInstance",
-            serviceId: try await getServiceId(),
+        let serviceId = try await getOrCreateServiceId()
+
+        let input = ServiceDiscovery.RegisterInstanceRequest(
+            attributes: attributes,
             instanceId: actorID,
-            attributes: attributes
+            serviceId: serviceId
         )
 
-        try await execute(request)
+        _ = try await client.registerInstance(input)
 
         // Update local cache
         cache[actorID] = endpoint
@@ -61,35 +121,41 @@ public actor CloudMapRegistry: ServiceRegistry {
         }
 
         // Query CloudMap
-        let request = CloudMapRequest(
-            operation: "DiscoverInstances",
+        let input = ServiceDiscovery.DiscoverInstancesRequest(
             namespaceName: namespace,
-            serviceName: "actors",
-            queryParameters: ["actorId": actorID]
+            queryParameters: ["actorId": actorID],
+            serviceName: serviceName
         )
 
-        let response = try await execute(request)
+        do {
+            let output = try await client.discoverInstances(input)
 
-        guard let instance = response.instances?.first else {
+            guard let instance = output.instances?.first else {
+                return nil
+            }
+
+            let endpoint = parseEndpoint(from: instance)
+            cache[actorID] = endpoint
+            return endpoint
+        } catch let error as ServiceDiscoveryErrorType where error == .namespaceNotFound || error == .serviceNotFound {
+            // Service or namespace doesn't exist yet
             return nil
         }
-
-        let endpoint = parseEndpoint(from: instance)
-        cache[actorID] = endpoint
-        return endpoint
     }
 
     public func resolveAll(actorID: String) async throws -> [CloudEndpoint] {
-        let request = CloudMapRequest(
-            operation: "DiscoverInstances",
+        let input = ServiceDiscovery.DiscoverInstancesRequest(
             namespaceName: namespace,
-            serviceName: "actors",
-            queryParameters: ["actorId": actorID]
+            queryParameters: ["actorId": actorID],
+            serviceName: serviceName
         )
 
-        let response = try await execute(request)
-
-        return response.instances?.compactMap { parseEndpoint(from: $0) } ?? []
+        do {
+            let output = try await client.discoverInstances(input)
+            return output.instances?.compactMap { parseEndpoint(from: $0) } ?? []
+        } catch let error as ServiceDiscoveryErrorType where error == .namespaceNotFound || error == .serviceNotFound {
+            return []
+        }
     }
 
     public nonisolated func watch(actorID: String) -> AsyncStream<RegistryEvent> {
@@ -106,20 +172,21 @@ public actor CloudMapRegistry: ServiceRegistry {
     }
 
     public func deregister(actorID: String) async throws {
-        let request = CloudMapRequest(
-            operation: "DeregisterInstance",
-            serviceId: try await getServiceId(),
-            instanceId: actorID
+        let serviceId = try await getOrCreateServiceId()
+
+        let input = ServiceDiscovery.DeregisterInstanceRequest(
+            instanceId: actorID,
+            serviceId: serviceId
         )
 
-        try await execute(request)
+        _ = try await client.deregisterInstance(input)
 
         cache.removeValue(forKey: actorID)
         notifyWatchers(actorID: actorID, event: .removed(actorID: actorID))
     }
 
     public func heartbeat(actorID: String) async throws {
-        // CloudMap uses health checks, so heartbeat is just updating TTL
+        // CloudMap uses health checks, so heartbeat is just updating metadata
         guard let endpoint = cache[actorID] else {
             throw CloudError.actorNotFound(actorID: actorID, provider: .aws)
         }
@@ -134,14 +201,15 @@ public actor CloudMapRegistry: ServiceRegistry {
     }
 
     public func list(prefix: String?) async throws -> [String] {
-        let request = CloudMapRequest(
-            operation: "ListInstances",
-            serviceId: try await getServiceId()
+        let serviceId = try await getOrCreateServiceId()
+
+        let input = ServiceDiscovery.ListInstancesRequest(
+            serviceId: serviceId
         )
 
-        let response = try await execute(request)
+        let output = try await client.listInstances(input)
 
-        var ids = response.instances?.compactMap { $0["instanceId"] as? String } ?? []
+        var ids = output.instances?.compactMap { $0.id } ?? []
 
         if let prefix = prefix {
             ids = ids.filter { $0.hasPrefix(prefix) }
@@ -150,28 +218,152 @@ public actor CloudMapRegistry: ServiceRegistry {
         return ids
     }
 
-    // MARK: - Private
+    // MARK: - Private Helpers
 
-    private func getServiceId() async throws -> String {
-        // In a real implementation, this would look up the service ID
-        // from CloudMap or use a cached value
-        return "\(namespace)/actors"
+    /// Get or create the Cloud Map namespace ID
+    private func getOrCreateNamespaceId() async throws -> String {
+        // Return cached value if available
+        if let cached = cachedNamespaceId {
+            return cached
+        }
+
+        // List namespaces to find ours
+        let listInput = ServiceDiscovery.ListNamespacesRequest()
+        let listOutput = try await client.listNamespaces(listInput)
+
+        if let existing = listOutput.namespaces?.first(where: { $0.name == namespace }) {
+            guard let namespaceId = existing.id else {
+                throw CloudError.deploymentFailed(provider: .aws, reason: "Namespace summary missing ID")
+            }
+            cachedNamespaceId = namespaceId
+            return namespaceId
+        }
+
+        // Create namespace if it doesn't exist
+        let createInput = ServiceDiscovery.CreatePrivateDnsNamespaceRequest(
+            name: namespace,
+            vpc: try await getVpcId()
+        )
+
+        let createOutput = try await client.createPrivateDnsNamespace(createInput)
+
+        // Wait for operation to complete and get the namespace ID from the operation
+        guard let operationId = createOutput.operationId else {
+            throw CloudError.deploymentFailed(provider: .aws, reason: "CreatePrivateDnsNamespace returned no operation ID")
+        }
+
+        try await waitForOperation(operationId: operationId)
+
+        // Get the namespace ID from the operation result
+        let operation = try await client.getOperation(.init(operationId: operationId))
+        guard let namespaceId = operation.operation?.targets?[.namespace] else {
+            throw CloudError.deploymentFailed(provider: .aws, reason: "Operation result missing namespace ID")
+        }
+
+        cachedNamespaceId = namespaceId
+        return namespaceId
     }
 
-    private func parseEndpoint(from instance: [String: Any]) -> CloudEndpoint? {
-        guard let identifier = instance["ENDPOINT"] as? String,
-              let regionStr = instance["REGION"] as? String else {
+    /// Get or create the Cloud Map service ID
+    private func getOrCreateServiceId() async throws -> String {
+        // Return cached value if available
+        if let cached = cachedServiceId {
+            return cached
+        }
+
+        let namespaceId = try await getOrCreateNamespaceId()
+
+        // List services to find ours
+        let listInput = ServiceDiscovery.ListServicesRequest()
+        let listOutput = try await client.listServices(listInput)
+
+        if let existing = listOutput.services?.first(where: { $0.name == serviceName }) {
+            guard let serviceId = existing.id else {
+                throw CloudError.deploymentFailed(provider: .aws, reason: "Service summary missing ID")
+            }
+            cachedServiceId = serviceId
+            return serviceId
+        }
+
+        // Create service if it doesn't exist
+        let dnsConfig = ServiceDiscovery.DnsConfig(
+            dnsRecords: [
+                ServiceDiscovery.DnsRecord(
+                    ttl: 60,
+                    type: .a
+                )
+            ],
+            routingPolicy: .multivalue
+        )
+
+        let createInput = ServiceDiscovery.CreateServiceRequest(
+            dnsConfig: dnsConfig,
+            name: serviceName,
+            namespaceId: namespaceId
+        )
+
+        let createOutput = try await client.createService(createInput)
+
+        guard let serviceId = createOutput.service?.id else {
+            throw CloudError.deploymentFailed(provider: .aws, reason: "Service creation returned nil service ID")
+        }
+        cachedServiceId = serviceId
+        return serviceId
+    }
+
+    /// Get VPC ID for private DNS namespace (required for Cloud Map)
+    /// In production, this should be configured via environment variable
+    private func getVpcId() async throws -> String {
+        // Try environment variable first
+        if let vpcId = ProcessInfo.processInfo.environment["TREBUCHET_VPC_ID"] {
+            return vpcId
+        }
+
+        // For now, throw error - VPC ID must be provided
+        throw CloudError.configurationInvalid("TREBUCHET_VPC_ID environment variable required for Cloud Map")
+    }
+
+    /// Wait for a Cloud Map operation to complete
+    private func waitForOperation(operationId: String) async throws {
+        var attempts = 0
+        let maxAttempts = 30
+
+        while attempts < maxAttempts {
+            let input = ServiceDiscovery.GetOperationRequest(operationId: operationId)
+            let output = try await client.getOperation(input)
+
+            switch output.operation?.status {
+            case .success:
+                return
+            case .fail:
+                throw CloudError.deploymentFailed(provider: .aws, reason: "Cloud Map operation failed")
+            case .pending, .submitted, .none:
+                try await Task.sleep(for: .seconds(2))
+                attempts += 1
+            }
+        }
+
+        throw CloudError.timeout(operation: "Cloud Map operation", duration: .seconds(60))
+    }
+
+    private func parseEndpoint(from instance: ServiceDiscovery.HttpInstanceSummary) -> CloudEndpoint? {
+        guard let attributes = instance.attributes,
+              let identifier = attributes["ENDPOINT"],
+              let regionStr = attributes["REGION"] else {
             return nil
         }
 
-        let providerStr = instance["PROVIDER"] as? String ?? "aws"
+        let providerStr = attributes["PROVIDER"] ?? "aws"
         let provider = CloudProviderType(rawValue: providerStr) ?? .aws
+
+        let schemeStr = attributes["SCHEME"] ?? "lambda"
+        let scheme = EndpointScheme(rawValue: schemeStr) ?? .lambda
 
         return CloudEndpoint(
             provider: provider,
             region: regionStr,
             identifier: identifier,
-            scheme: .lambda
+            scheme: scheme
         )
     }
 
@@ -188,60 +380,13 @@ public actor CloudMapRegistry: ServiceRegistry {
         }
     }
 
-    private func execute(_ request: CloudMapRequest) async throws -> CloudMapResponse {
-        // In a real implementation, this would use the AWS SDK (Soto)
-        // For now, we return an empty response
-        return CloudMapResponse()
-    }
-}
+    // MARK: - Lifecycle
 
-// MARK: - CloudMap Types
-
-struct CloudMapRequest: Codable {
-    let operation: String
-    var serviceId: String?
-    var instanceId: String?
-    var namespaceName: String?
-    var serviceName: String?
-    var attributes: [String: String]?
-    var queryParameters: [String: String]?
-}
-
-struct CloudMapResponse: Codable {
-    var instances: [[String: Any]]?
-
-    init(instances: [[String: Any]]? = nil) {
-        self.instances = instances
-    }
-
-    init(from decoder: Decoder) throws {
-        // Custom decoding for dynamic dictionaries
-        let container = try decoder.container(keyedBy: DynamicCodingKeys.self)
-
-        if container.contains(DynamicCodingKeys(stringValue: "Instances")!) {
-            // Would decode instances array
-            self.instances = nil
-        } else {
-            self.instances = nil
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        // Custom encoding for dynamic dictionaries
-    }
-}
-
-struct DynamicCodingKeys: CodingKey {
-    var stringValue: String
-    var intValue: Int?
-
-    init?(stringValue: String) {
-        self.stringValue = stringValue
-        self.intValue = nil
-    }
-
-    init?(intValue: Int) {
-        self.stringValue = "\(intValue)"
-        self.intValue = intValue
+    /// Shutdown the underlying AWS client
+    ///
+    /// This should be called when the registry is no longer needed to properly
+    /// clean up resources. After calling shutdown, the registry cannot be used.
+    public func shutdown() async throws {
+        try await awsClient.shutdown()
     }
 }

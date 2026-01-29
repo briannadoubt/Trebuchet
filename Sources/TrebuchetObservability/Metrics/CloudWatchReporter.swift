@@ -2,6 +2,8 @@
 // AWS CloudWatch metrics reporter
 
 import Foundation
+import SotoCloudWatch
+import SotoCore
 
 /// Configuration for CloudWatch metrics reporting
 public struct CloudWatchConfiguration: Sendable {
@@ -9,23 +11,23 @@ public struct CloudWatchConfiguration: Sendable {
     public let namespace: String
 
     /// AWS region
-    public let region: String
+    public let region: Region
 
     /// Flush interval for batching metrics
     public let flushInterval: Duration
 
-    /// Maximum batch size
+    /// Maximum batch size (CloudWatch supports up to 1000, but smaller batches are more reliable)
     public let maxBatchSize: Int
 
     /// Creates a new CloudWatch configuration
     /// - Parameters:
     ///   - namespace: CloudWatch namespace (e.g., "Trebuchet/Production")
-    ///   - region: AWS region (e.g., "us-east-1")
+    ///   - region: AWS region (default: .useast1)
     ///   - flushInterval: How often to flush metrics (default: 60 seconds)
-    ///   - maxBatchSize: Maximum metrics per batch (default: 20, CloudWatch limit)
+    ///   - maxBatchSize: Maximum metrics per batch (default: 20)
     public init(
         namespace: String,
-        region: String = "us-east-1",
+        region: Region = .useast1,
         flushInterval: Duration = .seconds(60),
         maxBatchSize: Int = 20
     ) {
@@ -41,17 +43,47 @@ public struct CloudWatchConfiguration: Sendable {
 /// This reporter sends metrics to AWS CloudWatch. It batches metrics
 /// and flushes them periodically to minimize API calls.
 ///
-/// Note: This is a placeholder implementation. In production, you would
-/// use the AWS SDK to actually send metrics to CloudWatch.
+/// ## Features
+///
+/// - Automatic batching to reduce API calls
+/// - Periodic flushing on configured interval
+/// - Retry logic for throttled requests
+/// - Support for dimensions (tags)
+/// - Multiple metric units (count, milliseconds, bytes, etc.)
+///
+/// ## Example Usage
+///
+/// ```swift
+/// let reporter = CloudWatchReporter(
+///     configuration: CloudWatchConfiguration(
+///         namespace: "MyApp/Production",
+///         region: .useast1
+///     )
+/// )
+///
+/// await reporter.incrementCounter("requests", by: 1, tags: ["endpoint": "/api/users"])
+/// await reporter.recordHistogram("latency", value: .milliseconds(150), tags: ["operation": "query"])
+/// ```
 public actor CloudWatchReporter: MetricsCollector {
+    private let client: CloudWatch
+    private let awsClient: AWSClient
     private let configuration: CloudWatchConfiguration
     private var pendingMetrics: [CloudWatchMetric] = []
     private var flushTask: Task<Void, Never>?
 
     /// Creates a new CloudWatch reporter
-    /// - Parameter configuration: CloudWatch configuration
-    public init(configuration: CloudWatchConfiguration) {
+    /// - Parameters:
+    ///   - configuration: CloudWatch configuration
+    ///   - awsClient: Optional custom AWSClient for advanced configuration
+    public init(
+        configuration: CloudWatchConfiguration,
+        awsClient: AWSClient? = nil
+    ) {
         self.configuration = configuration
+
+        self.awsClient = awsClient ?? AWSClient(credentialProvider: .default)
+        self.client = CloudWatch(client: self.awsClient, region: configuration.region)
+
         // Start flush loop after initialization
         Task {
             await self.startFlushLoop()
@@ -97,7 +129,7 @@ public actor CloudWatchReporter: MetricsCollector {
         let metricsToFlush = pendingMetrics
         pendingMetrics.removeAll()
 
-        // Batch metrics
+        // Batch metrics (CloudWatch supports up to 1000, but we use smaller batches)
         let batches = stride(from: 0, to: metricsToFlush.count, by: configuration.maxBatchSize).map {
             Array(metricsToFlush[$0..<min($0 + configuration.maxBatchSize, metricsToFlush.count)])
         }
@@ -118,25 +150,76 @@ public actor CloudWatchReporter: MetricsCollector {
     }
 
     private func sendBatch(_ metrics: [CloudWatchMetric]) async throws {
-        // In a real implementation, this would use the AWS SDK to call PutMetricData
-        // For now, we'll just log the metrics that would be sent
-
-        #if DEBUG
-        print("[CloudWatch] Would send batch to \(configuration.namespace) in \(configuration.region):")
-        for metric in metrics {
-            let dimensionsStr = metric.dimensions.map { "\($0.name)=\($0.value)" }.joined(separator: ", ")
-            print("  \(metric.name): \(metric.value) \(metric.unit) [\(dimensionsStr)]")
+        // Convert internal metrics to CloudWatch MetricDatum
+        let metricData = metrics.map { metric -> CloudWatch.MetricDatum in
+            CloudWatch.MetricDatum(
+                dimensions: metric.dimensions.map { dimension in
+                    CloudWatch.Dimension(
+                        name: dimension.name,
+                        value: dimension.value
+                    )
+                },
+                metricName: metric.name,
+                timestamp: metric.timestamp,
+                unit: convertUnit(metric.unit),
+                value: metric.value
+            )
         }
-        #endif
 
-        // TODO: Implement actual CloudWatch API call
-        // Example using AWS SDK:
-        // let client = CloudWatchClient(region: configuration.region)
-        // let request = PutMetricDataRequest(
-        //     namespace: configuration.namespace,
-        //     metricData: metrics.map { ... }
-        // )
-        // try await client.putMetricData(request)
+        let input = CloudWatch.PutMetricDataInput(
+            metricData: metricData,
+            namespace: configuration.namespace
+        )
+
+        // Send to CloudWatch with retry logic for throttling
+        var retries = 0
+        let maxRetries = 3
+
+        while retries < maxRetries {
+            do {
+                _ = try await client.putMetricData(input)
+                return
+            } catch {
+                // Check if it's a throttling error (AWS returns this in error messages)
+                let errorString = String(describing: error)
+                if errorString.contains("Throttling") || errorString.contains("throttling") {
+                    retries += 1
+                    if retries < maxRetries {
+                        let backoff = Duration.milliseconds(100 * (1 << retries))
+                        try await Task.sleep(for: backoff)
+                    } else {
+                        throw error
+                    }
+                } else {
+                    // Non-throttling error, rethrow immediately
+                    throw error
+                }
+            }
+        }
+    }
+
+    /// Convert internal unit enum to CloudWatch StandardUnit
+    private func convertUnit(_ unit: CloudWatchUnit) -> CloudWatch.StandardUnit {
+        switch unit {
+        case .none: return .none
+        case .count: return .count
+        case .milliseconds: return .milliseconds
+        case .seconds: return .seconds
+        case .bytes: return .bytes
+        case .kilobytes: return .kilobytes
+        case .megabytes: return .megabytes
+        case .percent: return .percent
+        }
+    }
+
+    /// Shutdown the reporter and underlying AWS client
+    ///
+    /// This cancels the flush task, flushes any pending metrics, and shuts down
+    /// the AWS client. Should be called when the reporter is no longer needed.
+    public func shutdown() async throws {
+        flushTask?.cancel()
+        try await flush()
+        try await awsClient.shutdown()
     }
 
     deinit {

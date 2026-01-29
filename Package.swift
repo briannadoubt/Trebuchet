@@ -54,6 +54,8 @@ let package = Package(
         // CLI dependencies
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.0"),
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
+        // AWS SDK (Soto) - individual service packages
+        .package(url: "https://github.com/soto-project/soto.git", from: "7.0.0"),
     ],
     targets: [
         .target(
@@ -94,6 +96,11 @@ let package = Package(
                 "Trebuchet",
                 "TrebuchetCloud",
                 .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "SotoDynamoDB", package: "soto"),
+                .product(name: "SotoServiceDiscovery", package: "soto"),
+                .product(name: "SotoCloudWatch", package: "soto"),
+                .product(name: "SotoLambda", package: "soto"),
+                .product(name: "SotoApiGatewayManagementApi", package: "soto"),
             ]
         ),
         .target(
@@ -108,6 +115,7 @@ let package = Package(
             name: "TrebuchetObservability",
             dependencies: [
                 "Trebuchet",
+                .product(name: "SotoCloudWatch", package: "soto"),
             ]
         ),
         .target(
@@ -149,7 +157,10 @@ let package = Package(
         ),
         .testTarget(
             name: "TrebuchetTests",
-            dependencies: ["Trebuchet"]
+            dependencies: [
+                "Trebuchet",
+                "TrebuchetCloud",
+            ]
         ),
         .testTarget(
             name: "TrebuchetCloudTests",
@@ -169,7 +180,10 @@ let package = Package(
         ),
         .testTarget(
             name: "TrebuchetObservabilityTests",
-            dependencies: ["TrebuchetObservability"]
+            dependencies: [
+                "TrebuchetObservability",
+                .product(name: "SotoCloudWatch", package: "soto"),
+            ]
         ),
         .testTarget(
             name: "TrebuchetSecurityTests",
