@@ -204,7 +204,7 @@ Sources/TrebuchetPostgreSQL/
 
 #### Cloud Types (TrebuchetCloud)
 
-- **CloudGateway**: HTTP gateway for hosting actors in cloud environments
+- **CloudGateway**: HTTP gateway for hosting actors in cloud environments. Supports both HTTP transport (via handleMessage) and programmatic invocation (via process()) for actor-to-actor calls
 - **CloudProvider**: Protocol for cloud provider implementations (AWS, GCP, Azure)
 - **ServiceRegistry**: Protocol for actor discovery (CloudMap, etc.)
 - **ActorStateStore**: Protocol for external state storage (DynamoDB, etc.)
@@ -351,7 +351,7 @@ struct ActorLambdaHandler: LambdaHandler {
 
     func handle(_ event: APIGatewayV2Request, context: LambdaContext) async throws -> APIGatewayV2Response {
         let envelope = try LambdaEventAdapter.fromAPIGateway(event)
-        let response = await gateway.handleInvocation(envelope)
+        let response = await gateway.process(envelope)
         return try LambdaEventAdapter.toAPIGatewayResponse(response)
     }
 }
