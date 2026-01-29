@@ -231,8 +231,11 @@ public actor CloudMapRegistry: ServiceRegistry {
         let listOutput = try await client.listNamespaces(listInput)
 
         if let existing = listOutput.namespaces?.first(where: { $0.name == namespace }) {
-            cachedNamespaceId = existing.id
-            return existing.id!
+            guard let namespaceId = existing.id else {
+                throw CloudError.deploymentFailed(provider: .aws, reason: "Namespace summary missing ID")
+            }
+            cachedNamespaceId = namespaceId
+            return namespaceId
         }
 
         // Create namespace if it doesn't exist
@@ -243,13 +246,19 @@ public actor CloudMapRegistry: ServiceRegistry {
 
         let createOutput = try await client.createPrivateDnsNamespace(createInput)
 
-        // Wait for operation to complete
-        if let operationId = createOutput.operationId {
-            try await waitForOperation(operationId: operationId)
+        // Wait for operation to complete and get the namespace ID from the operation
+        guard let operationId = createOutput.operationId else {
+            throw CloudError.deploymentFailed(provider: .aws, reason: "CreatePrivateDnsNamespace returned no operation ID")
         }
 
-        // Get the created namespace ID
-        let namespaceId = try await getOrCreateNamespaceId()
+        try await waitForOperation(operationId: operationId)
+
+        // Get the namespace ID from the operation result
+        let operation = try await client.getOperation(.init(operationId: operationId))
+        guard let namespaceId = operation.operation?.targets?[.namespace] else {
+            throw CloudError.deploymentFailed(provider: .aws, reason: "Operation result missing namespace ID")
+        }
+
         cachedNamespaceId = namespaceId
         return namespaceId
     }
@@ -268,8 +277,11 @@ public actor CloudMapRegistry: ServiceRegistry {
         let listOutput = try await client.listServices(listInput)
 
         if let existing = listOutput.services?.first(where: { $0.name == serviceName }) {
-            cachedServiceId = existing.id
-            return existing.id!
+            guard let serviceId = existing.id else {
+                throw CloudError.deploymentFailed(provider: .aws, reason: "Service summary missing ID")
+            }
+            cachedServiceId = serviceId
+            return serviceId
         }
 
         // Create service if it doesn't exist
@@ -291,7 +303,9 @@ public actor CloudMapRegistry: ServiceRegistry {
 
         let createOutput = try await client.createService(createInput)
 
-        let serviceId = createOutput.service?.id ?? ""
+        guard let serviceId = createOutput.service?.id else {
+            throw CloudError.deploymentFailed(provider: .aws, reason: "Service creation returned nil service ID")
+        }
         cachedServiceId = serviceId
         return serviceId
     }
