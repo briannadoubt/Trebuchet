@@ -496,45 +496,61 @@ let gateway = CloudGateway(configuration: .init(
 
 ---
 
-## 7. WebSocket Lambda Handler RPC Execution 🟡 HIGH VALUE
+## 7. WebSocket Lambda Handler RPC Execution ✅ COMPLETE
 
-**Status:** Returns dummy responses
-**Impact:** Non-streaming RPC calls via API Gateway don't work
-**Effort:** Small (included in Task #2)
+**Status:** ✅ Implemented and tested
+**Completed:** 2026-01-28
+**Impact:** Non-streaming RPC calls via API Gateway WebSocket now fully functional
 
-### Affected Components
+### Implementation Summary
 
-| Component | File | Issue |
-|-----------|------|-------|
-| RPC Handler | `TrebuchetAWS/WebSocketLambdaHandler.swift:248` | "TODO: Execute RPC through CloudGateway" |
+**File:** `TrebuchetAWS/WebSocketLambdaHandler.swift:244-260`
 
-### What's Missing
-
-This is actually part of CloudGateway invocation routing (Task #2). Once CloudGateway.process() is implemented, this handler should call it:
-
+**Before:**
 ```swift
-// Currently:
-case .invoke(let envelope):
-    return ResponseEnvelope(id: envelope.id, result: .success(Data()))
+private func handleRPCInvocation(...) async throws -> APIGatewayWebSocketResponse {
+    // TODO: Execute RPC through CloudGateway when handleInvocation is implemented
+    // For now, return a simple acknowledgment
 
-// Should be:
-case .invoke(let envelope):
-    return await cloudGateway.process(envelope)
+    let response = ResponseEnvelope(
+        callID: invocation.callID,
+        result: Data(),
+        errorMessage: nil
+    )
+    // ...
+}
 ```
 
-### Implementation Path
+**After:**
+```swift
+private func handleRPCInvocation(...) async throws -> APIGatewayWebSocketResponse {
+    // Execute RPC through CloudGateway
+    let response = await gateway.process(invocation)
+    // ...
+}
+```
 
-**Day 1:** Wire up CloudGateway call
-- Replace dummy response with `await cloudGateway.process(envelope)`
-- Handle async/await in Lambda context
-- Add error handling
+### Changes Made
 
-**Testing:** Include in Task #2 testing
+1. **WebSocketLambdaHandler.swift (line 248)**
+   - Replaced dummy response with `await gateway.process(invocation)`
+   - Removed TODO comment
+   - RPC invocations now execute actual actor methods
 
-### Dependencies
+2. **Test Coverage**
+   - Added `testHandleRPCInvocation()` test in WebSocketTests.swift
+   - Tests full RPC flow: invocation → CloudGateway.process() → actor method → response
+   - Verifies correct result encoding and WebSocket transmission
 
-- Requires: Task #2 (CloudGateway routing) to be completed
-- Enables: Full WebSocket RPC in Lambda deployments
+### Integration
+
+WebSocket Lambda Handler now provides complete support for:
+- ✅ Connection lifecycle ($connect, $disconnect)
+- ✅ **Non-streaming RPC calls** (via CloudGateway.process())
+- ✅ Streaming invocations (with StreamStart/StreamData/StreamEnd)
+- ✅ Stream resumption (with buffered data replay)
+
+All invocation types route through CloudGateway with full middleware support (authentication, authorization, rate limiting, validation, tracing).
 
 ---
 

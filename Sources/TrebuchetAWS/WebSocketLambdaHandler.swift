@@ -245,14 +245,8 @@ public actor WebSocketLambdaHandler {
         _ invocation: InvocationEnvelope,
         connectionID: String
     ) async throws -> APIGatewayWebSocketResponse {
-        // TODO: Execute RPC through CloudGateway when handleInvocation is implemented
-        // For now, return a simple acknowledgment
-
-        let response = ResponseEnvelope(
-            callID: invocation.callID,
-            result: Data(),
-            errorMessage: nil
-        )
+        // Execute RPC through CloudGateway
+        let response = await gateway.process(invocation)
 
         // Encode response
         let responseData = try encoder.encode(TrebuchetEnvelope.response(response))

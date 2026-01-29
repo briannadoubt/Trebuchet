@@ -4,6 +4,14 @@ import Foundation
 @testable import TrebuchetCloud
 @testable import TrebuchetAWS
 
+// Test actor for RPC invocation tests
+@Trebuchet
+distributed actor TestCalculator {
+    distributed func add(a: Int, b: Int) -> Int {
+        return a + b
+    }
+}
+
 @Suite("WebSocket Tests")
 struct WebSocketTests {
 
@@ -358,6 +366,80 @@ struct WebSocketTests {
         // Verify StreamStart sent (since we don't have buffered data yet)
         let sentMessages = await sender.getSentMessages(for: "conn-123")
         #expect(sentMessages.count == 1)
+    }
+
+    @Test("WebSocketLambdaHandler handles RPC invocations")
+    func testHandleRPCInvocation() async throws {
+        let storage = InMemoryConnectionStorage()
+        let sender = InMemoryConnectionSender()
+        let manager = ConnectionManager(storage: storage, sender: sender)
+
+        // Register connection first
+        try await manager.register(connectionID: "conn-123")
+        await sender.markAlive("conn-123")
+
+        let stateStore = InMemoryStateStore()
+        let gateway = CloudGateway(
+            configuration: .init(stateStore: stateStore)
+        )
+
+        let handler = WebSocketLambdaHandler(
+            gateway: gateway,
+            connectionManager: manager
+        )
+
+        // Create RPC invocation for non-existent actor (to test routing, not execution)
+        let actorID = TrebuchetActorID(id: "unknown-actor")
+        let invocation = InvocationEnvelope(
+            callID: UUID(),
+            actorID: actorID,
+            targetIdentifier: "someMethod",
+            genericSubstitutions: [],
+            arguments: []
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let envelopeData = try encoder.encode(TrebuchetEnvelope.invocation(invocation))
+        let body = String(data: envelopeData, encoding: .utf8)!
+
+        // Create message event
+        let event = APIGatewayWebSocketEvent(
+            requestContext: .init(
+                connectionId: "conn-123",
+                routeKey: "$default"
+            ),
+            body: body
+        )
+
+        // Handle event
+        let response = try await handler.handle(event)
+
+        // Verify response
+        #expect(response.statusCode == 200)
+
+        // Verify response was sent
+        let sentMessages = await sender.getSentMessages(for: "conn-123")
+        #expect(sentMessages.count == 1)
+
+        // Decode and verify it's a response envelope
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let envelope = try decoder.decode(TrebuchetEnvelope.self, from: sentMessages[0])
+
+        if case .response(let responseEnvelope) = envelope {
+            // Should be an error since actor doesn't exist
+            #expect(!responseEnvelope.isSuccess)
+            #expect(responseEnvelope.errorMessage != nil)
+            if let error = responseEnvelope.errorMessage {
+                #expect(error.contains("not found"))
+            }
+        } else {
+            #expect(Bool(false), "Expected Response envelope")
+        }
+
+        // The key test: This verifies handleRPCInvocation calls gateway.process()
+        // instead of returning dummy data. If it returned dummy data, we'd get success.
     }
 
     @Test("WebSocketLambdaHandler broadcasts stream data")
