@@ -16,7 +16,7 @@ enum LocalStackTestHelpers {
 
     /// Check if LocalStack is available and healthy
     static func isLocalStackAvailable() async -> Bool {
-        // First check if LocalStack health endpoint is reachable
+        // Check if LocalStack health endpoint is reachable
         guard let url = URL(string: "\(endpoint)/_localstack/health") else {
             return false
         }
@@ -25,33 +25,30 @@ enum LocalStackTestHelpers {
         request.timeoutInterval = 5.0
 
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
                 return false
             }
-        } catch {
-            return false
-        }
 
-        // Actually verify DynamoDB is working by trying to list tables
-        // This ensures LocalStack is not just running, but actually functional
-        do {
-            let client = createAWSClient()
-            defer {
-                Task {
-                    try? await client.shutdown()
-                }
+            // Parse the health response to check service status
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let services = json["services"] as? [String: Any] else {
+                // If we can't parse the response, but got 200, assume LocalStack is available
+                // The GitHub Actions workflow ensures services are initialized before tests
+                return true
             }
 
-            let dynamodb = DynamoDB(client: client, region: .useast1, endpoint: endpoint)
-            _ = try await dynamodb.listTables(.init())
+            // Check if DynamoDB service is present and not in "error" state
+            if let dynamoStatus = services["dynamodb"] as? String {
+                // Accept any status except "error" - LocalStack may report different statuses
+                return dynamoStatus != "error"
+            }
 
-            // If we can list tables, DynamoDB is working
+            // If DynamoDB status is missing but we got a health response, assume available
             return true
         } catch {
-            // DynamoDB not ready or not working
             return false
         }
     }
