@@ -66,21 +66,11 @@ public actor DynamoDBStateStore: ActorStateStore {
             return nil
         }
 
-        // Extract Data from AWSBase64Data using Codable round-trip
-        // This is a workaround since AWSBase64Data's internal data is not public
-        // TODO: File issue with Soto to add public data accessor
-        let stateData: Data
-        do {
-            let jsonData = try JSONEncoder().encode(awsData)
-            let base64String = try JSONDecoder().decode(String.self, from: jsonData)
-            guard let decoded = Data(base64Encoded: base64String) else {
-                throw CloudError.configurationInvalid("AWSBase64Data contains invalid base64 for actor \(actorID)")
-            }
-            stateData = decoded
-        } catch {
-            // If Soto changes Codable format, provide helpful error
-            throw CloudError.configurationInvalid("Failed to extract data from AWSBase64Data (Soto SDK format may have changed): \(error)")
+        // Extract Data from AWSBase64Data using Soto SDK's decoded() method
+        guard let bytes = awsData.decoded() else {
+            throw CloudError.stateStoreFailed(reason: "Failed to decode base64 data for actor \(actorID)")
         }
+        let stateData = Data(bytes)
         return try decoder.decode(State.self, from: stateData)
     }
 

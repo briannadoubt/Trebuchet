@@ -1,3 +1,6 @@
+// TrebuchetCLI cannot be imported on Linux because it's an executable target
+// Swift Package Manager doesn't support importing executable targets in tests on Linux
+#if !os(Linux)
 import Testing
 import Foundation
 @testable import TrebuchetCLI
@@ -103,6 +106,291 @@ struct ConfigLoaderTests {
         #expect(yaml.contains("name: test-app"))
         #expect(yaml.contains("provider: fly"))
         #expect(yaml.contains("region: iad"))
+    }
+
+    // MARK: - Validation Tests
+
+    @Test("Validation accepts implemented providers")
+    func validationAcceptsImplementedProviders() throws {
+        let providers = ["aws", "fly", "local"]
+
+        for provider in providers {
+            let yaml = """
+                name: test-project
+                version: "1"
+                defaults:
+                  provider: \(provider)
+                  region: us-east-1
+                  memory: 512
+                  timeout: 30
+                actors: {}
+                """
+
+            let loader = ConfigLoader()
+            // Should not throw
+            let config = try loader.parse(yaml: yaml)
+            #expect(config.defaults.provider == provider)
+        }
+    }
+
+    @Test("Validation rejects unimplemented providers")
+    func validationRejectsUnimplementedProviders() throws {
+        let unimplementedProviders = ["gcp", "azure", "kubernetes"]
+
+        for provider in unimplementedProviders {
+            let yaml = """
+                name: test-project
+                version: "1"
+                defaults:
+                  provider: \(provider)
+                  region: us-east-1
+                  memory: 512
+                  timeout: 30
+                actors: {}
+                """
+
+            let loader = ConfigLoader()
+
+            do {
+                _ = try loader.parse(yaml: yaml)
+                Issue.record("Expected validation error for provider '\(provider)' but parsing succeeded")
+            } catch let error as ConfigError {
+                // Should fail with validation error
+                #expect(error.description.contains("not yet implemented"))
+                #expect(error.description.contains(provider))
+            }
+        }
+    }
+
+    @Test("Validation rejects unknown providers")
+    func validationRejectsUnknownProviders() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: invalid-provider
+              region: us-east-1
+              memory: 512
+              timeout: 30
+            actors: {}
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for unknown provider")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("Unknown provider"))
+        }
+    }
+
+    @Test("Validation requires AWS region")
+    func validationRequiresAWSRegion() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: ""
+              memory: 512
+              timeout: 30
+            actors: {}
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for missing AWS region")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("region"))
+        }
+    }
+
+    @Test("Validation checks state store compatibility")
+    func validationChecksStateStoreCompatibility() throws {
+        // Test incompatible: AWS + Firestore
+        let yaml1 = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 512
+              timeout: 30
+            actors: {}
+            state:
+              type: firestore
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml1)
+            Issue.record("Expected validation error for AWS + Firestore")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("firestore"))
+            #expect(error.description.contains("not compatible"))
+        }
+
+        // Test compatible: AWS + DynamoDB (should succeed)
+        let yaml2 = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 512
+              timeout: 30
+            actors: {}
+            state:
+              type: dynamodb
+            """
+
+        _ = try loader.parse(yaml: yaml2)  // Should not throw
+    }
+
+    @Test("Validation checks discovery compatibility")
+    func validationChecksDiscoveryCompatibility() throws {
+        // Test incompatible: GCP + CloudMap
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: gcp
+              region: us-central1
+              memory: 512
+              timeout: 30
+            actors: {}
+            discovery:
+              type: cloudmap
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for GCP + CloudMap")
+        } catch let error as ConfigError {
+            // Should fail on provider first, but if we fix that, should fail on discovery
+            #expect(error.description.contains("not yet implemented") || error.description.contains("cloudmap"))
+        }
+    }
+
+    @Test("Validation enforces minimum memory")
+    func validationEnforcesMinimumMemory() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 64
+              timeout: 30
+            actors: {}
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for memory < 128")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("at least 128"))
+        }
+    }
+
+    @Test("Validation enforces maximum memory")
+    func validationEnforcesMaximumMemory() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 20000
+              timeout: 30
+            actors: {}
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for memory > 10240")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("at most 10240"))
+        }
+    }
+
+    @Test("Validation enforces timeout limits")
+    func validationEnforcesTimeoutLimits() throws {
+        // Test minimum
+        let yaml1 = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 512
+              timeout: 0
+            actors: {}
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml1)
+            Issue.record("Expected validation error for timeout < 1")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("at least 1"))
+        }
+
+        // Test maximum
+        let yaml2 = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 512
+              timeout: 1000
+            actors: {}
+            """
+
+        do {
+            _ = try loader.parse(yaml: yaml2)
+            Issue.record("Expected validation error for timeout > 900")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("at most 900"))
+        }
+    }
+
+    @Test("Validation checks actor-specific resource limits")
+    func validationChecksActorResourceLimits() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 512
+              timeout: 30
+            actors:
+              BigActor:
+                memory: 20000
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for actor memory > 10240")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("BigActor"))
+            #expect(error.description.contains("memory"))
+        }
     }
 }
 
@@ -210,4 +498,326 @@ struct BuildSystemTests {
 
         #expect(result.sizeDescription.contains("MB") || result.sizeDescription.contains("KB"))
     }
+
+    // MARK: - BootstrapGenerator Tests
+
+    @Test("BootstrapGenerator basic bootstrap generation")
+    func bootstrapGeneratorBasic() {
+        let generator = BootstrapGenerator()
+        let config = ResolvedConfig(
+            projectName: "test-project",
+            provider: "aws",
+            region: "us-east-1",
+            actors: [],
+            stateTableName: "test-state",
+            discoveryNamespace: "test-namespace"
+        )
+        let actors: [ActorMetadata] = []
+
+        let bootstrap = generator.generate(config: config, actors: actors)
+
+        // Verify essential imports
+        #expect(bootstrap.contains("import Trebuchet"))
+        #expect(bootstrap.contains("import TrebuchetCloud"))
+        #expect(bootstrap.contains("import TrebuchetAWS"))
+        #expect(bootstrap.contains("import AWSLambdaRuntime"))
+        #expect(bootstrap.contains("import AWSLambdaEvents"))
+
+        // Verify main structure
+        #expect(bootstrap.contains("@main"))
+        #expect(bootstrap.contains("struct LambdaBootstrap"))
+        #expect(bootstrap.contains("LambdaHandler"))
+
+        // Verify configuration
+        #expect(bootstrap.contains("DynamoDBStateStore"))
+        #expect(bootstrap.contains("CloudMapRegistry"))
+        #expect(bootstrap.contains("CloudGateway"))
+    }
+
+    @Test("BootstrapGenerator with actors")
+    func bootstrapGeneratorWithActors() {
+        let generator = BootstrapGenerator()
+        let config = ResolvedConfig(
+            projectName: "game-server",
+            provider: "aws",
+            region: "us-west-2",
+            actors: [
+                ResolvedActorConfig(name: "GameRoom", memory: 1024, timeout: 60, stateful: true, isolated: false, environment: [:]),
+                ResolvedActorConfig(name: "Lobby", memory: 512, timeout: 30, stateful: false, isolated: false, environment: [:])
+            ],
+            stateTableName: "game-state",
+            discoveryNamespace: "game"
+        )
+        let actors: [ActorMetadata] = [
+            ActorMetadata(name: "GameRoom", filePath: "Test.swift", lineNumber: 1, methods: []),
+            ActorMetadata(name: "Lobby", filePath: "Test.swift", lineNumber: 2, methods: [])
+        ]
+
+        let bootstrap = generator.generate(config: config, actors: actors)
+
+        // Verify actor initializations
+        #expect(bootstrap.contains("let gameroom = GameRoom(actorSystem: gateway.system)"))
+        #expect(bootstrap.contains("let lobby = Lobby(actorSystem: gateway.system)"))
+
+        // Verify actor registrations
+        #expect(bootstrap.contains("try await gateway.expose(gameroom, as: \"gameroom\")"))
+        #expect(bootstrap.contains("try await gateway.expose(lobby, as: \"lobby\")"))
+
+        // Verify actor count
+        #expect(bootstrap.contains("actorCount: 2"))
+    }
+
+    @Test("BootstrapGenerator actor initialization helper")
+    func bootstrapGeneratorActorInitHelper() {
+        let actors: [ActorMetadata] = [
+            ActorMetadata(name: "TestActor", filePath: "Test.swift", lineNumber: 1, methods: []),
+            ActorMetadata(name: "AnotherActor", filePath: "Test.swift", lineNumber: 2, methods: [])
+        ]
+
+        let code = BootstrapGenerator.generateActorInitializations(
+            actors: actors,
+            indent: 4,
+            systemVariable: "system"
+        )
+
+        #expect(code.contains("let testactor = TestActor(actorSystem: system)"))
+        #expect(code.contains("let anotheractor = AnotherActor(actorSystem: system)"))
+        #expect(code.contains("    ")) // Check indentation
+    }
+
+    @Test("BootstrapGenerator actor registration helper")
+    func bootstrapGeneratorActorRegistrationHelper() {
+        let actors: [ActorMetadata] = [
+            ActorMetadata(name: "GameActor", filePath: "Test.swift", lineNumber: 1, methods: [])
+        ]
+
+        let code = BootstrapGenerator.generateActorRegistrations(
+            actors: actors,
+            indent: 4,
+            logStatement: #"print("Registered: %ACTOR%")"#
+        )
+
+        #expect(code.contains("try await gateway.expose(gameactor, as: \"gameactor\")"))
+        #expect(code.contains(#"print("Registered: GameActor")"#))
+    }
+
+    @Test("BootstrapGenerator Package.swift generation")
+    func bootstrapGeneratorPackageSwift() {
+        let generator = BootstrapGenerator()
+        let config = ResolvedConfig(
+            projectName: "my-actors",
+            provider: "aws",
+            region: "us-east-1",
+            actors: [],
+            stateTableName: "state",
+            discoveryNamespace: "ns"
+        )
+
+        let packageSwift = generator.generatePackageSwift(config: config)
+
+        #expect(packageSwift.contains("// swift-tools-version: 6.0"))
+        #expect(packageSwift.contains("name: \"my-actors-lambda\""))
+        #expect(packageSwift.contains("swift-aws-lambda-runtime"))
+        #expect(packageSwift.contains("swift-aws-lambda-events"))
+        #expect(packageSwift.contains("soto"))
+        #expect(packageSwift.contains("Trebuchet"))
+        #expect(packageSwift.contains("TrebuchetCloud"))
+        #expect(packageSwift.contains("TrebuchetAWS"))
+    }
+
+    // MARK: - TerraformGenerator Tests
+
+    @Test("TerraformGenerator basic generation")
+    func terraformGeneratorBasic() throws {
+        let fileManager = FileManager.default
+        let generator = TerraformGenerator(fileManager: fileManager)
+
+        let tempDir = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .path
+
+        defer {
+            try? fileManager.removeItem(atPath: tempDir)
+        }
+
+        let config = ResolvedConfig(
+            projectName: "test-infra",
+            provider: "aws",
+            region: "eu-west-1",
+            actors: [],
+            stateTableName: "test-state",
+            discoveryNamespace: "test"
+        )
+        let actors: [ActorMetadata] = []
+
+        let outputPath = try generator.generate(
+            config: config,
+            actors: actors,
+            outputDir: tempDir
+        )
+
+        #expect(outputPath == tempDir)
+
+        // Verify files were created
+        #expect(fileManager.fileExists(atPath: "\(tempDir)/main.tf"))
+        #expect(fileManager.fileExists(atPath: "\(tempDir)/variables.tf"))
+        #expect(fileManager.fileExists(atPath: "\(tempDir)/outputs.tf"))
+        #expect(fileManager.fileExists(atPath: "\(tempDir)/terraform.tfvars.example"))
+    }
+
+    @Test("TerraformGenerator main.tf content")
+    func terraformGeneratorMainContent() throws {
+        let fileManager = FileManager.default
+        let generator = TerraformGenerator(fileManager: fileManager)
+
+        let tempDir = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .path
+
+        defer {
+            try? fileManager.removeItem(atPath: tempDir)
+        }
+
+        let config = ResolvedConfig(
+            projectName: "my-project",
+            provider: "aws",
+            region: "ap-southeast-1",
+            actors: [
+                ResolvedActorConfig(name: "Actor1", memory: 512, timeout: 30, stateful: true, isolated: false, environment: [:])
+            ],
+            stateTableName: "state-table",
+            discoveryNamespace: "my-ns"
+        )
+        let actors: [ActorMetadata] = [
+            ActorMetadata(name: "Actor1", filePath: "Test.swift", lineNumber: 1, methods: [])
+        ]
+
+        _ = try generator.generate(
+            config: config,
+            actors: actors,
+            outputDir: tempDir
+        )
+
+        let mainContent = try String(contentsOfFile: "\(tempDir)/main.tf", encoding: .utf8)
+
+        // Verify Terraform structure
+        #expect(mainContent.contains("terraform {"))
+        #expect(mainContent.contains("required_version"))
+        #expect(mainContent.contains("required_providers"))
+        #expect(mainContent.contains("provider \"aws\""))
+
+        // Verify project name and region
+        #expect(mainContent.contains("my-project") || mainContent.contains("my_project"))
+        #expect(mainContent.contains("ap-southeast-1") || mainContent.contains("var.aws_region"))
+
+        // Verify AWS resources
+        #expect(mainContent.contains("aws_iam_role"))
+        #expect(mainContent.contains("aws_lambda_function"))
+        #expect(mainContent.contains("aws_dynamodb_table"))
+    }
+
+    @Test("TerraformGenerator variables.tf has required vars")
+    func terraformGeneratorVariables() throws {
+        let fileManager = FileManager.default
+        let generator = TerraformGenerator(fileManager: fileManager)
+
+        let tempDir = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .path
+
+        defer {
+            try? fileManager.removeItem(atPath: tempDir)
+        }
+
+        let config = ResolvedConfig(
+            projectName: "test",
+            provider: "aws",
+            region: "us-east-1",
+            actors: [],
+            stateTableName: "state",
+            discoveryNamespace: "ns"
+        )
+
+        _ = try generator.generate(
+            config: config,
+            actors: [],
+            outputDir: tempDir
+        )
+
+        let varsContent = try String(contentsOfFile: "\(tempDir)/variables.tf", encoding: .utf8)
+
+        // Verify essential variables are defined
+        #expect(varsContent.contains("variable"))
+        #expect(varsContent.contains("aws_region") || varsContent.contains("region"))
+    }
+
+    @Test("TerraformGenerator outputs.tf exists")
+    func terraformGeneratorOutputs() throws {
+        let fileManager = FileManager.default
+        let generator = TerraformGenerator(fileManager: fileManager)
+
+        let tempDir = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .path
+
+        defer {
+            try? fileManager.removeItem(atPath: tempDir)
+        }
+
+        let config = ResolvedConfig(
+            projectName: "test",
+            provider: "aws",
+            region: "us-east-1",
+            actors: [],
+            stateTableName: "state",
+            discoveryNamespace: "ns"
+        )
+
+        _ = try generator.generate(
+            config: config,
+            actors: [],
+            outputDir: tempDir
+        )
+
+        let outputsContent = try String(contentsOfFile: "\(tempDir)/outputs.tf", encoding: .utf8)
+
+        // Verify outputs are defined
+        #expect(outputsContent.contains("output"))
+    }
+
+    // MARK: - DockerBuilder Tests
+
+    @Test("BuildResult properties")
+    func buildResultProperties() {
+        let result = BuildResult(
+            binaryPath: "/tmp/bootstrap",
+            size: 25_000_000,
+            duration: .seconds(45)
+        )
+
+        #expect(result.binaryPath == "/tmp/bootstrap")
+        #expect(result.size == 25_000_000)
+        #expect(result.duration == .seconds(45))
+        #expect(result.sizeDescription.count > 0)
+    }
+
+    @Test("BuildResult size formatting")
+    func buildResultSizeFormatting() {
+        let smallResult = BuildResult(
+            binaryPath: "/tmp/small",
+            size: 100_000, // 100 KB
+            duration: .seconds(10)
+        )
+
+        let largeResult = BuildResult(
+            binaryPath: "/tmp/large",
+            size: 50_000_000, // ~50 MB
+            duration: .seconds(60)
+        )
+
+        // Verify size descriptions are human-readable
+        #expect(!smallResult.sizeDescription.isEmpty)
+        #expect(!largeResult.sizeDescription.isEmpty)
+    }
 }
+#endif

@@ -16,12 +16,13 @@ enum LocalStackTestHelpers {
 
     /// Check if LocalStack is available and healthy
     static func isLocalStackAvailable() async -> Bool {
+        // Check if LocalStack health endpoint is reachable
         guard let url = URL(string: "\(endpoint)/_localstack/health") else {
             return false
         }
 
         var request = URLRequest(url: url)
-        request.timeoutInterval = 2.0
+        request.timeoutInterval = 5.0
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -31,18 +32,22 @@ enum LocalStackTestHelpers {
                 return false
             }
 
-            // Check if services are running
-            // Note: LocalStack doesn't fully support servicediscovery, so we only check core services
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let services = json["services"] as? [String: Any] {
-                let requiredServices = ["dynamodb", "lambda", "iam"]
-                return requiredServices.allSatisfy { service in
-                    (services[service] as? String) == "running" ||
-                    (services[service] as? String) == "available"
-                }
+            // Parse the health response to check service status
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let services = json["services"] as? [String: Any] else {
+                // If we can't parse the response, but got 200, assume LocalStack is available
+                // The GitHub Actions workflow ensures services are initialized before tests
+                return true
             }
 
-            return false
+            // Check if DynamoDB service is present and not in "error" state
+            if let dynamoStatus = services["dynamodb"] as? String {
+                // Accept any status except "error" - LocalStack may report different statuses
+                return dynamoStatus != "error"
+            }
+
+            // If DynamoDB status is missing but we got a health response, assume available
+            return true
         } catch {
             return false
         }

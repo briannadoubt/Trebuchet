@@ -236,8 +236,9 @@ public struct DockerBuilder {
 
                     let envelope = try JSONDecoder().decode(InvocationEnvelope.self, from: data)
 
-                    // Create response handler
-                    let response = await gateway.handleInvocation(envelope)
+                    // Process invocation through CloudGateway
+                    // CloudGateway.process() handles actor routing, middleware execution, and error handling
+                    let response = await gateway.process(envelope)
 
                     let responseData = try JSONEncoder().encode(response)
                     let responseBody = String(data: responseData, encoding: .utf8) ?? "{}"
@@ -253,18 +254,6 @@ public struct DockerBuilder {
                         body: "{\\"error\\": \\"\\(error)\\"}"
                     )
                 }
-            }
-        }
-
-        // Extension to handle invocations
-        extension CloudGateway {
-            func handleInvocation(_ envelope: InvocationEnvelope) async -> ResponseEnvelope {
-                // This would use the internal message handling
-                // For now, return a placeholder
-                return ResponseEnvelope.failure(
-                    callID: envelope.callID,
-                    error: "Not implemented"
-                )
             }
         }
         """

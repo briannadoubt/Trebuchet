@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Debugging CI Failures
+
+**CRITICAL: Never guess when debugging CI failures.**
+
+When CI tests fail:
+1. **DO NOT guess** what the error might be
+2. **DO NOT make speculative fixes** without seeing actual error logs
+3. **ALWAYS ask the user** to provide the specific error message from the CI logs
+4. **WAIT for actual error details** before proposing solutions
+
+Example response to CI failure:
+```
+I see the CI failed. To fix this properly, I need to see the actual error from the logs.
+Could you share the error message from the GitHub Actions output?
+```
+
+**Only after seeing the actual error** should you propose a fix based on the specific failure.
+
 ## Build Commands
 
 ```bash
@@ -241,6 +259,8 @@ Sources/TrebuchetPostgreSQL/
 - **TrebuchetActorID**: Identifies actors (local or remote with host:port)
 - **TrebuchetServer/TrebuchetClient**: High-level API for exposing and resolving actors
 - **TrebuchetTransport**: Protocol for pluggable network transports
+  - **WebSocketTransport**: Browser-compatible, TLS support, production-ready
+  - **TCPTransport**: High-performance server-to-server, length-prefixed framing, production-ready
 - **@Trebuchet macro**: Adds `typealias ActorSystem = TrebuchetActorSystem` to distributed actors
 
 #### Streaming Types
@@ -437,6 +457,8 @@ let players = try await lobby.getPlayers()  // Invokes another Lambda
 - **postgres-nio**: PostgreSQL client (TrebuchetPostgreSQL)
 - **swift-crypto**: Cryptographic operations (TrebuchetSecurity, TrebuchetAWS)
 - **soto (AWS SDK)**: AWS service clients (Lambda, DynamoDB, IAM, CloudWatch, ServiceDiscovery, ApiGatewayManagementApi)
+- **swift-macro-testing**: Macro testing utilities (TrebuchetMacrosTests)
+- **swift-docc-plugin**: Documentation generation
 
 ### Tests
 
@@ -444,6 +466,7 @@ Tests use Swift Testing framework (`import Testing`). Run with `swift test`.
 
 Test suites:
 - `TrebuchetTests`: Core actor system, serialization, client-server
+- `TrebuchetMacrosTests`: Macro expansion and code generation tests
 - `TrebuchetCloudTests`: Cloud gateway, providers, state stores, registries
 - `TrebuchetAWSTests`: AWS-specific implementations
 - `TrebuchetCLITests`: CLI configuration, discovery, build system
