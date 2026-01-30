@@ -11,6 +11,12 @@ struct AWSIntegrationWorkflowTests {
         guard await LocalStackTestHelpers.isLocalStackAvailable() else {
             throw TestSkipError()
         }
+
+        // Skip all tests if ServiceDiscovery (Cloud Map) is not available
+        // Note: These workflow tests depend on Cloud Map registry
+        guard await LocalStackTestHelpers.isServiceDiscoveryAvailable() else {
+            throw TestSkipError()
+        }
     }
 
     @Test("Actor discovery workflow")

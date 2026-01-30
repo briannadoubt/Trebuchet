@@ -51,6 +51,37 @@ enum LocalStackTestHelpers {
         }
     }
 
+    /// Check if ServiceDiscovery (Cloud Map) is available
+    /// Note: Requires LocalStack Pro, not available in Community Edition
+    static func isServiceDiscoveryAvailable() async -> Bool {
+        guard let url = URL(string: "\(endpoint)/_localstack/health") else {
+            return false
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2.0
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                return false
+            }
+
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let services = json["services"] as? [String: Any] {
+                // Check if servicediscovery is actually running (not just present)
+                return (services["servicediscovery"] as? String) == "running" ||
+                       (services["servicediscovery"] as? String) == "available"
+            }
+
+            return false
+        } catch {
+            return false
+        }
+    }
+
     /// Create an AWS client configured for LocalStack
     static func createAWSClient() -> AWSClient {
         return AWSClient(

@@ -11,6 +11,12 @@ struct CloudMapRegistryIntegrationTests {
         guard await LocalStackTestHelpers.isLocalStackAvailable() else {
             throw TestSkipError()
         }
+
+        // Skip all tests if ServiceDiscovery (Cloud Map) is not available
+        // Note: Requires LocalStack Pro, not available in Community Edition
+        guard await LocalStackTestHelpers.isServiceDiscoveryAvailable() else {
+            throw TestSkipError()
+        }
     }
 
     @Test("Register and resolve actor endpoint")
