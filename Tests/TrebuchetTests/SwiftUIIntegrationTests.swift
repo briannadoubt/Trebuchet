@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Testing
 import Foundation
 @testable import Trebuchet
@@ -321,3 +322,4 @@ struct SwiftUIIntegrationScenarios {
         #expect(!failed.isResolved)
     }
 }
+#endif
