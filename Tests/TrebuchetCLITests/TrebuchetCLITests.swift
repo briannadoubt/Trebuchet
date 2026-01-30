@@ -1,3 +1,6 @@
+// TrebuchetCLI cannot be imported on Linux because it's an executable target
+// Swift Package Manager doesn't support importing executable targets in tests on Linux
+#if !os(Linux)
 import Testing
 import Foundation
 @testable import TrebuchetCLI
@@ -817,3 +820,4 @@ struct BuildSystemTests {
         #expect(!largeResult.sizeDescription.isEmpty)
     }
 }
+#endif
