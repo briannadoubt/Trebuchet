@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Debugging CI Failures
+
+**CRITICAL: Never guess when debugging CI failures.**
+
+When CI tests fail:
+1. **DO NOT guess** what the error might be
+2. **DO NOT make speculative fixes** without seeing actual error logs
+3. **ALWAYS ask the user** to provide the specific error message from the CI logs
+4. **WAIT for actual error details** before proposing solutions
+
+Example response to CI failure:
+```
+I see the CI failed. To fix this properly, I need to see the actual error from the logs.
+Could you share the error message from the GitHub Actions output?
+```
+
+**Only after seeing the actual error** should you propose a fix based on the specific failure.
+
 ## Build Commands
 
 ```bash
