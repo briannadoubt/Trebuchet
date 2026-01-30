@@ -51,3 +51,13 @@ try await gateway.expose(GameRoom(actorSystem: gateway.system), as: "game-room")
 
 - `TrebuchetCloudClient` - Client for resolving actors across Lambda functions
 - `CloudLambdaContext` - Context available to actors running in Lambda
+
+## Local Testing
+
+TrebuchetAWS includes comprehensive LocalStack integration for testing AWS services locally:
+
+- **DynamoDB integration tests** - State persistence, optimistic locking, concurrent operations
+- **Cloud Map integration tests** - Service discovery operations (requires LocalStack Pro)
+- **End-to-end workflow tests** - Multi-service coordination (requires LocalStack Pro)
+
+See <doc:CloudDeployment/LocalAWSTesting> for detailed testing guide.

@@ -26,6 +26,8 @@ docker --version
 terraform --version
 ```
 
+> Tip: Test your AWS integrations locally with LocalStack before deploying to production. See <doc:CloudDeployment/LocalAWSTesting> for details.
+
 ## Quick Start
 
 ### 1. Initialize Configuration
@@ -234,6 +236,7 @@ DynamoDB uses on-demand pricing:
 
 ## See Also
 
+- <doc:CloudDeployment/LocalAWSTesting>
 - <doc:AWSConfiguration>
 - ``AWSProvider``
 - ``DynamoDBStateStore``

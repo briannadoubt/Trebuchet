@@ -72,6 +72,7 @@ try await room.join(player: me)
 - <doc:CloudDeploymentOverview>
 - <doc:DeployingToAWS>
 - <doc:AWSConfiguration>
+- <doc:CloudDeployment/LocalAWSTesting>
 - <doc:CloudDeployment/AWSWebSocketStreaming>
 - <doc:CloudDeployment/AWSCosts>
 - <doc:DeployingToGCP>
