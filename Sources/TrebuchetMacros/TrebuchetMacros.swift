@@ -203,11 +203,11 @@ public struct StreamedStateMacro: AccessorMacro, PeerMacro {
     }
 }
 
-enum MacroError: Error, CustomStringConvertible {
+public enum MacroError: Error, CustomStringConvertible {
     case notDistributedActor
     case invalidStreamedStateUsage
 
-    var description: String {
+    public var description: String {
         switch self {
         case .notDistributedActor:
             return "@Trebuchet can only be applied to distributed actors"
