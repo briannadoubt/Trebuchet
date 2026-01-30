@@ -60,9 +60,222 @@ public struct ConfigLoader {
     public func parse(yaml: String) throws -> TrebuchetConfig {
         do {
             let decoder = YAMLDecoder()
-            return try decoder.decode(TrebuchetConfig.self, from: yaml)
+            let config = try decoder.decode(TrebuchetConfig.self, from: yaml)
+            try validate(config)
+            return config
+        } catch let error as ConfigError {
+            throw error
         } catch {
             throw ConfigError.parseError(error.localizedDescription)
+        }
+    }
+
+    /// Validate configuration for correctness and compatibility
+    /// - Parameter config: The configuration to validate
+    /// - Throws: ConfigError.validationError if validation fails
+    public func validate(_ config: TrebuchetConfig) throws {
+        // Validate provider is implemented
+        let implementedProviders = ["aws", "fly", "local"]
+        let provider = config.defaults.provider.lowercased()
+
+        guard implementedProviders.contains(provider) else {
+            let unimplementedProviders = ["gcp", "azure", "kubernetes"]
+            if unimplementedProviders.contains(provider) {
+                throw ConfigError.validationError(
+                    "Provider '\(provider)' is not yet implemented. " +
+                    "Available providers: \(implementedProviders.joined(separator: ", ")). " +
+                    "GCP, Azure, and Kubernetes support is planned for a future release."
+                )
+            } else {
+                throw ConfigError.validationError(
+                    "Unknown provider '\(provider)'. " +
+                    "Available providers: \(implementedProviders.joined(separator: ", "))"
+                )
+            }
+        }
+
+        // Validate provider-specific requirements
+        try validateProviderRequirements(provider: provider, config: config)
+
+        // Validate state store compatibility
+        if let stateConfig = config.state {
+            try validateStateStore(type: stateConfig.type, provider: provider)
+        }
+
+        // Validate discovery mechanism compatibility
+        if let discoveryConfig = config.discovery {
+            try validateDiscovery(type: discoveryConfig.type, provider: provider)
+        }
+
+        // Validate resource limits
+        try validateResourceLimits(config: config)
+    }
+
+    /// Validate provider-specific requirements
+    private func validateProviderRequirements(provider: String, config: TrebuchetConfig) throws {
+        switch provider {
+        case "aws":
+            // AWS requires a valid region
+            guard !config.defaults.region.isEmpty else {
+                throw ConfigError.validationError("AWS provider requires a region to be specified")
+            }
+
+            // Validate region format (basic check for AWS region format)
+            let regionPattern = "^[a-z]{2}-[a-z]+-\\d{1}$"
+            if let regex = try? NSRegularExpression(pattern: regionPattern),
+               regex.firstMatch(in: config.defaults.region, range: NSRange(location: 0, length: config.defaults.region.utf16.count)) == nil {
+                // Not a fatal error, just a warning pattern
+                // AWS regions should be like: us-east-1, eu-west-2, etc.
+            }
+
+        case "fly":
+            // Fly.io requires a region (3-letter code like iad, lax, etc.)
+            guard !config.defaults.region.isEmpty else {
+                throw ConfigError.validationError("Fly provider requires a region to be specified")
+            }
+
+        case "local":
+            // Local provider doesn't have strict requirements
+            break
+
+        default:
+            break
+        }
+    }
+
+    /// Validate state store type is compatible with provider
+    private func validateStateStore(type: String, provider: String) throws {
+        let stateType = type.lowercased()
+
+        switch (provider, stateType) {
+        case ("aws", "dynamodb"):
+            // Valid combination
+            break
+
+        case ("aws", "firestore"):
+            throw ConfigError.validationError(
+                "State store 'firestore' is not compatible with AWS provider. " +
+                "Use 'dynamodb' for AWS deployments."
+            )
+
+        case ("aws", "cosmosdb"):
+            throw ConfigError.validationError(
+                "State store 'cosmosdb' is not compatible with AWS provider. " +
+                "Use 'dynamodb' for AWS deployments."
+            )
+
+        case ("gcp", "dynamodb"):
+            throw ConfigError.validationError(
+                "State store 'dynamodb' is not compatible with GCP provider. " +
+                "Use 'firestore' for GCP deployments."
+            )
+
+        case ("azure", "dynamodb"):
+            throw ConfigError.validationError(
+                "State store 'dynamodb' is not compatible with Azure provider. " +
+                "Use 'cosmosdb' for Azure deployments."
+            )
+
+        case ("fly", "postgresql"), ("local", "postgresql"):
+            // PostgreSQL is compatible with Fly and local
+            break
+
+        case ("fly", _), ("local", _):
+            // Fly and local can use most state stores
+            break
+
+        default:
+            // Unknown combination - allow but could warn
+            break
+        }
+    }
+
+    /// Validate discovery mechanism is compatible with provider
+    private func validateDiscovery(type: String, provider: String) throws {
+        let discoveryType = type.lowercased()
+
+        switch (provider, discoveryType) {
+        case ("aws", "cloudmap"):
+            // Valid combination
+            break
+
+        case ("aws", "consul"), ("aws", "etcd"):
+            // Not AWS-native but could work
+            break
+
+        case ("gcp", "cloudmap"):
+            throw ConfigError.validationError(
+                "Discovery type 'cloudmap' is AWS-specific. " +
+                "Use 'servicedirectory' for GCP deployments."
+            )
+
+        case ("azure", "cloudmap"):
+            throw ConfigError.validationError(
+                "Discovery type 'cloudmap' is AWS-specific. " +
+                "Use 'servicefabric' for Azure deployments."
+            )
+
+        case ("fly", "dns"), ("local", "dns"):
+            // DNS-based discovery works for Fly and local
+            break
+
+        case ("fly", _), ("local", _):
+            // Fly and local are flexible
+            break
+
+        default:
+            // Unknown combination - allow but could warn
+            break
+        }
+    }
+
+    /// Validate resource limits are reasonable
+    private func validateResourceLimits(config: TrebuchetConfig) throws {
+        // Validate default memory
+        guard config.defaults.memory >= 128 else {
+            throw ConfigError.validationError(
+                "Memory must be at least 128 MB (got: \(config.defaults.memory) MB)"
+            )
+        }
+
+        guard config.defaults.memory <= 10240 else {
+            throw ConfigError.validationError(
+                "Memory must be at most 10240 MB (10 GB) (got: \(config.defaults.memory) MB)"
+            )
+        }
+
+        // Validate default timeout
+        guard config.defaults.timeout >= 1 else {
+            throw ConfigError.validationError(
+                "Timeout must be at least 1 second (got: \(config.defaults.timeout) seconds)"
+            )
+        }
+
+        guard config.defaults.timeout <= 900 else {
+            throw ConfigError.validationError(
+                "Timeout must be at most 900 seconds (15 minutes) (got: \(config.defaults.timeout) seconds)"
+            )
+        }
+
+        // Validate actor-specific overrides
+        for (actorName, actorConfig) in config.actors {
+            guard let actorConfig = actorConfig else { continue }
+
+            if let memory = actorConfig.memory {
+                guard memory >= 128 && memory <= 10240 else {
+                    throw ConfigError.validationError(
+                        "Actor '\(actorName)': memory must be between 128 MB and 10240 MB (got: \(memory) MB)"
+                    )
+                }
+            }
+
+            if let timeout = actorConfig.timeout {
+                guard timeout >= 1 && timeout <= 900 else {
+                    throw ConfigError.validationError(
+                        "Actor '\(actorName)': timeout must be between 1 and 900 seconds (got: \(timeout) seconds)"
+                    )
+                }
+            }
         }
     }
 

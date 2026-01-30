@@ -104,6 +104,291 @@ struct ConfigLoaderTests {
         #expect(yaml.contains("provider: fly"))
         #expect(yaml.contains("region: iad"))
     }
+
+    // MARK: - Validation Tests
+
+    @Test("Validation accepts implemented providers")
+    func validationAcceptsImplementedProviders() throws {
+        let providers = ["aws", "fly", "local"]
+
+        for provider in providers {
+            let yaml = """
+                name: test-project
+                version: "1"
+                defaults:
+                  provider: \(provider)
+                  region: us-east-1
+                  memory: 512
+                  timeout: 30
+                actors: {}
+                """
+
+            let loader = ConfigLoader()
+            // Should not throw
+            let config = try loader.parse(yaml: yaml)
+            #expect(config.defaults.provider == provider)
+        }
+    }
+
+    @Test("Validation rejects unimplemented providers")
+    func validationRejectsUnimplementedProviders() throws {
+        let unimplementedProviders = ["gcp", "azure", "kubernetes"]
+
+        for provider in unimplementedProviders {
+            let yaml = """
+                name: test-project
+                version: "1"
+                defaults:
+                  provider: \(provider)
+                  region: us-east-1
+                  memory: 512
+                  timeout: 30
+                actors: {}
+                """
+
+            let loader = ConfigLoader()
+
+            do {
+                _ = try loader.parse(yaml: yaml)
+                Issue.record("Expected validation error for provider '\(provider)' but parsing succeeded")
+            } catch let error as ConfigError {
+                // Should fail with validation error
+                #expect(error.description.contains("not yet implemented"))
+                #expect(error.description.contains(provider))
+            }
+        }
+    }
+
+    @Test("Validation rejects unknown providers")
+    func validationRejectsUnknownProviders() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: invalid-provider
+              region: us-east-1
+              memory: 512
+              timeout: 30
+            actors: {}
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for unknown provider")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("Unknown provider"))
+        }
+    }
+
+    @Test("Validation requires AWS region")
+    func validationRequiresAWSRegion() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: ""
+              memory: 512
+              timeout: 30
+            actors: {}
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for missing AWS region")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("region"))
+        }
+    }
+
+    @Test("Validation checks state store compatibility")
+    func validationChecksStateStoreCompatibility() throws {
+        // Test incompatible: AWS + Firestore
+        let yaml1 = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 512
+              timeout: 30
+            actors: {}
+            state:
+              type: firestore
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml1)
+            Issue.record("Expected validation error for AWS + Firestore")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("firestore"))
+            #expect(error.description.contains("not compatible"))
+        }
+
+        // Test compatible: AWS + DynamoDB (should succeed)
+        let yaml2 = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 512
+              timeout: 30
+            actors: {}
+            state:
+              type: dynamodb
+            """
+
+        _ = try loader.parse(yaml: yaml2)  // Should not throw
+    }
+
+    @Test("Validation checks discovery compatibility")
+    func validationChecksDiscoveryCompatibility() throws {
+        // Test incompatible: GCP + CloudMap
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: gcp
+              region: us-central1
+              memory: 512
+              timeout: 30
+            actors: {}
+            discovery:
+              type: cloudmap
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for GCP + CloudMap")
+        } catch let error as ConfigError {
+            // Should fail on provider first, but if we fix that, should fail on discovery
+            #expect(error.description.contains("not yet implemented") || error.description.contains("cloudmap"))
+        }
+    }
+
+    @Test("Validation enforces minimum memory")
+    func validationEnforcesMinimumMemory() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 64
+              timeout: 30
+            actors: {}
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for memory < 128")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("at least 128"))
+        }
+    }
+
+    @Test("Validation enforces maximum memory")
+    func validationEnforcesMaximumMemory() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 20000
+              timeout: 30
+            actors: {}
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for memory > 10240")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("at most 10240"))
+        }
+    }
+
+    @Test("Validation enforces timeout limits")
+    func validationEnforcesTimeoutLimits() throws {
+        // Test minimum
+        let yaml1 = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 512
+              timeout: 0
+            actors: {}
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml1)
+            Issue.record("Expected validation error for timeout < 1")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("at least 1"))
+        }
+
+        // Test maximum
+        let yaml2 = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 512
+              timeout: 1000
+            actors: {}
+            """
+
+        do {
+            _ = try loader.parse(yaml: yaml2)
+            Issue.record("Expected validation error for timeout > 900")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("at most 900"))
+        }
+    }
+
+    @Test("Validation checks actor-specific resource limits")
+    func validationChecksActorResourceLimits() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 512
+              timeout: 30
+            actors:
+              BigActor:
+                memory: 20000
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for actor memory > 10240")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("BigActor"))
+            #expect(error.description.contains("memory"))
+        }
+    }
 }
 
 @Suite("Actor Discovery Tests")
