@@ -20,8 +20,66 @@ swift test --filter TrebuchetTests.testName
 # Run CLI tests
 swift test --filter TrebuchetCLITests
 
-# Run AWS tests
+# Run AWS tests (unit tests only - use mocks)
 swift test --filter TrebuchetAWSTests
+
+# Run AWS integration tests with LocalStack
+docker-compose -f docker-compose.localstack.yml up -d
+swift test --filter TrebuchetAWSTests
+docker-compose -f docker-compose.localstack.yml down -v
+```
+
+## Running LocalStack Integration Tests
+
+### Prerequisites
+- Docker and Docker Compose
+- LocalStack 3.0 (started via docker-compose)
+
+### Start LocalStack
+```bash
+# Start LocalStack with all AWS services
+docker-compose -f docker-compose.localstack.yml up -d
+
+# Verify LocalStack is healthy
+curl http://localhost:4566/_localstack/health
+
+# Init scripts run automatically to create:
+# - DynamoDB tables (trebuchet-test-state, trebuchet-test-connections)
+# - Cloud Map namespace (trebuchet-test)
+# - IAM roles (trebuchet-test-lambda-role)
+```
+
+### Run Integration Tests
+```bash
+# All AWS integration tests
+swift test --filter TrebuchetAWSTests
+
+# Specific integration suite
+swift test --filter DynamoDBStateStoreIntegrationTests
+swift test --filter CloudMapRegistryIntegrationTests
+swift test --filter DynamoDBStreamAdapterIntegrationTests
+swift test --filter AWSIntegrationWorkflowTests
+```
+
+### Cleanup
+```bash
+docker-compose -f docker-compose.localstack.yml down -v
+```
+
+### Test Architecture
+Integration tests use Swift Testing framework with:
+- Graceful skipping when LocalStack unavailable (`.enabled(if:)` trait)
+- Automatic test isolation via unique actor IDs
+- Cleanup in defer blocks to prevent resource leaks
+- LocalStack service simulation for 6 AWS services:
+  - Lambda - function deployment/invocation
+  - DynamoDB - actor state persistence
+  - DynamoDB Streams - real-time state broadcasting
+  - Cloud Map - service discovery
+  - IAM - role management
+  - API Gateway WebSocket - connection management
+
+For detailed troubleshooting and LocalStack limitations, see [Tests/TrebuchetAWSTests/README.md](Tests/TrebuchetAWSTests/README.md).
 ```
 
 ## CLI Commands
