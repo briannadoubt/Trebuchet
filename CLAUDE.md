@@ -241,6 +241,8 @@ Sources/TrebuchetPostgreSQL/
 - **TrebuchetActorID**: Identifies actors (local or remote with host:port)
 - **TrebuchetServer/TrebuchetClient**: High-level API for exposing and resolving actors
 - **TrebuchetTransport**: Protocol for pluggable network transports
+  - **WebSocketTransport**: Browser-compatible, TLS support, production-ready
+  - **TCPTransport**: High-performance server-to-server, length-prefixed framing, production-ready
 - **@Trebuchet macro**: Adds `typealias ActorSystem = TrebuchetActorSystem` to distributed actors
 
 #### Streaming Types
