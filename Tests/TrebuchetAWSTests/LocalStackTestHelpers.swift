@@ -21,7 +21,7 @@ enum LocalStackTestHelpers {
         }
 
         var request = URLRequest(url: url)
-        request.timeoutInterval = 2.0
+        request.timeoutInterval = 5.0
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -31,18 +31,24 @@ enum LocalStackTestHelpers {
                 return false
             }
 
-            // Check if services are running
-            // Note: LocalStack doesn't fully support servicediscovery, so we only check core services
+            // Check if services are present in the response
+            // LocalStack 3.0 may report services differently, so we're lenient
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let services = json["services"] as? [String: Any] {
+                // Just check that required services are present (not necessarily "running")
                 let requiredServices = ["dynamodb", "lambda", "iam"]
-                return requiredServices.allSatisfy { service in
-                    (services[service] as? String) == "running" ||
-                    (services[service] as? String) == "available"
+                let hasRequiredServices = requiredServices.allSatisfy { services[$0] != nil }
+
+                // If services are present, consider LocalStack available
+                // The GitHub Actions workflow ensures services are initialized before tests run
+                if hasRequiredServices {
+                    return true
                 }
             }
 
-            return false
+            // Fallback: If we got a 200 response, LocalStack is at least reachable
+            // This is more permissive for CI environments where service status may vary
+            return true
         } catch {
             return false
         }
