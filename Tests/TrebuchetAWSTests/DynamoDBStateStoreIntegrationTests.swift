@@ -9,7 +9,6 @@ struct DynamoDBStateStoreIntegrationTests {
     @Test("Save and load actor state")
     func testSaveAndLoad() async throws {
         try #require(await LocalStackTestHelpers.isLocalStackAvailable())
-
         let client = LocalStackTestHelpers.createAWSClient()
 
 
@@ -35,8 +34,8 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Sequence numbers auto-increment")
     func testSequenceNumbersAutoIncrement() async throws {
-        let client = LocalStackTestHelpers.createAWSClient()
         try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        let client = LocalStackTestHelpers.createAWSClient()
 
         
 
@@ -68,8 +67,8 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Delete removes actor state")
     func testDelete() async throws {
-        let client = LocalStackTestHelpers.createAWSClient()
         try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        let client = LocalStackTestHelpers.createAWSClient()
 
         
 
@@ -99,8 +98,8 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Exists returns correct boolean")
     func testExists() async throws {
-        let client = LocalStackTestHelpers.createAWSClient()
         try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        let client = LocalStackTestHelpers.createAWSClient()
 
         
 
@@ -134,8 +133,8 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Save with version check succeeds on match")
     func testSaveWithVersionCheckSucceeds() async throws {
-        let client = LocalStackTestHelpers.createAWSClient()
         try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        let client = LocalStackTestHelpers.createAWSClient()
 
         
 
@@ -164,8 +163,8 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Save with version check fails on mismatch")
     func testSaveWithVersionCheckFails() async throws {
-        let client = LocalStackTestHelpers.createAWSClient()
         try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        let client = LocalStackTestHelpers.createAWSClient()
 
         
 
@@ -203,8 +202,8 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Concurrent saves to different actors")
     func testConcurrentSaves() async throws {
-        let client = LocalStackTestHelpers.createAWSClient()
         try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        let client = LocalStackTestHelpers.createAWSClient()
 
         
 
@@ -229,8 +228,8 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Update with transform function")
     func testUpdateWithTransform() async throws {
-        let client = LocalStackTestHelpers.createAWSClient()
         try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        let client = LocalStackTestHelpers.createAWSClient()
 
         
 
@@ -263,8 +262,8 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Load returns nil for non-existent actor")
     func testLoadNonExistent() async throws {
-        let client = LocalStackTestHelpers.createAWSClient()
         try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        let client = LocalStackTestHelpers.createAWSClient()
 
 
 
