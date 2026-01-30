@@ -199,12 +199,12 @@ let package = Package(
                 .product(name: "_CryptoExtras", package: "swift-crypto"),
             ]
         ),
-        // .testTarget(
-        //     name: "TrebuchetMacrosTests",
-        //     dependencies: [
-        //         "TrebuchetMacros",
-        //         .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
-        //     ]
-        // ),
+        .testTarget(
+            name: "TrebuchetMacrosTests",
+            dependencies: [
+                "TrebuchetMacros",
+                .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
+            ]
+        ),
     ]
 )
