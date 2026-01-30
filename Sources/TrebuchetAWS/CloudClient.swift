@@ -31,10 +31,16 @@ public actor TrebuchetCloudClient {
     /// Create a cloud client configured for AWS
     ///
     /// **Credential Handling:**
-    /// - CloudMapRegistry uses Soto SDK's credential provider chain (environment, IAM roles, instance profiles)
-    /// - LambdaInvokeTransport currently uses manual HTTP and needs credential migration to Soto SDK
+    /// Uses Soto SDK's full credential provider chain which supports:
+    /// - Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN)
+    /// - IAM roles (when running in Lambda, EC2, ECS)
+    /// - Instance profiles (EC2 instance metadata)
+    /// - ECS task roles
+    /// - Shared credentials file (~/.aws/credentials)
+    /// - AWS config file (~/.aws/config)
     ///
-    /// TODO: Migrate LambdaInvokeTransport to use SotoLambda for consistent credential handling
+    /// This is the recommended approach as it works automatically in all AWS environments
+    /// without requiring manual credential configuration.
     public static func aws(
         region: String,
         namespace: String
@@ -53,13 +59,12 @@ public actor TrebuchetCloudClient {
             actorSystem: actorSystem,
             registry: registry
         ) { endpoint in
-            // TODO: LambdaInvokeTransport needs Soto SDK migration for proper credentials
-            // Currently uses AWSCredentials.default (all-nil) which may fail in production
-            // Workaround: Set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY environment variables
+            // Use Soto SDK's default credential provider chain
+            // This automatically discovers credentials from environment, IAM roles, instance profiles, etc.
             LambdaInvokeTransport(
                 functionArn: endpoint.identifier,
                 region: region,
-                credentials: .fromEnvironment()
+                credentials: .default
             )
         }
     }

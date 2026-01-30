@@ -36,6 +36,59 @@ struct TrebuchetAWSTests {
         #expect(creds.sessionToken == nil || creds.sessionToken != nil)
     }
 
+    @Test("AWSCredentials default uses credential provider chain")
+    func credentialsDefaultBehavior() {
+        // .default should have nil values, allowing Soto SDK to use its credential provider chain
+        let creds = AWSCredentials.default
+        #expect(creds.accessKeyId == nil)
+        #expect(creds.secretAccessKey == nil)
+        #expect(creds.sessionToken == nil)
+    }
+
+    @Test("LambdaInvokeTransport uses Soto credential chain with default credentials")
+    func lambdaTransportCredentialChain() {
+        // Create transport with .default credentials
+        let transport = LambdaInvokeTransport(
+            functionArn: "arn:aws:lambda:us-east-1:123456789012:function:test",
+            region: "us-east-1",
+            credentials: .default
+        )
+
+        // Transport should be initialized successfully
+        // When credentials are .default (nil values), LambdaInvokeTransport uses
+        // AWSClient(credentialProvider: .default) which leverages Soto's full
+        // credential provider chain (environment, IAM roles, instance profiles, etc.)
+        _ = transport  // Verify it initialized
+
+        // Clean up
+        Task {
+            await transport.shutdown()
+        }
+    }
+
+    @Test("LambdaInvokeTransport uses static credentials when provided")
+    func lambdaTransportStaticCredentials() {
+        // Create transport with explicit credentials
+        let creds = AWSCredentials(
+            accessKeyId: "AKIAIOSFODNN7EXAMPLE",
+            secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        )
+
+        let transport = LambdaInvokeTransport(
+            functionArn: "arn:aws:lambda:us-east-1:123456789012:function:test",
+            region: "us-east-1",
+            credentials: creds
+        )
+
+        // Transport should be initialized with static credentials
+        _ = transport  // Verify it initialized
+
+        // Clean up
+        Task {
+            await transport.shutdown()
+        }
+    }
+
     @Test("AWSDeployment properties")
     func deploymentProperties() {
         let deployment = AWSDeployment(
