@@ -249,15 +249,15 @@ struct ConversationView: View {
     let conversationID: String
 
     @ObservedActor<ConversationActor, [Message]>
-    private var messages
+    private var messages: [Message]?
 
     // Custom initializer required for dynamic actor IDs
     init(conversationID: String) {
         self.conversationID = conversationID
 
-        // Compute actor ID and initialize property wrapper
+        // Compute actor ID and initialize property wrapper using property name
         let actorID = "conversation-\(conversationID)"
-        self._messages = ObservedActor(actorID, observe: \ConversationActor.observeMessages)
+        self._messages = ObservedActor(id: actorID, property: "messages")
     }
 
     var body: some View {
@@ -274,11 +274,21 @@ struct ConversationView: View {
 
 **Why this works:** Property wrappers initialize before `self` is available, so you cannot reference instance properties (like `conversationID`) in the property wrapper's initializer. Using a custom `init` lets you compute the actor ID first, then initialize the wrapper via `self._propertyName`.
 
+**Two initializer options:**
+```swift
+// Option 1: Using property name (recommended for dynamic IDs)
+self._messages = ObservedActor(id: actorID, property: "messages")
+
+// Option 2: Using keypath (only works with literal IDs in property wrapper syntax)
+@ObservedActor("static-id", observe: \ConversationActor.observeMessages)
+var messages: [Message]?
+```
+
 **Common mistake:**
 ```swift
 // ❌ This will NOT work - cannot use instance member in property initializer
-@ObservedActor("conversation-\(conversationID)", observe: \ConversationActor.observeMessages)
-var messages
+@ObservedActor(id: "conversation-\(conversationID)", property: "messages")
+var messages: [Message]?
 
 // ✅ Use a custom init instead (see example above)
 ```

@@ -32,6 +32,40 @@ distributed actor EchoActor {
     }
 }
 
+struct ChatMessage: Codable, Sendable, Equatable {
+    let author: String
+    let text: String
+    let timestamp: Date
+}
+
+@Trebuchet
+distributed actor ChatRoom {
+    private var participants: Set<String> = []
+    private var messages: [ChatMessage] = []
+
+    distributed func join(user: String) -> [ChatMessage] {
+        participants.insert(user)
+        return messages
+    }
+
+    distributed func sendMessage(text: String, from author: String) {
+        let message = ChatMessage(author: author, text: text, timestamp: Date())
+        messages.append(message)
+    }
+
+    distributed func getParticipants() -> Set<String> {
+        return participants
+    }
+
+    distributed func getMessages() -> [ChatMessage] {
+        return messages
+    }
+
+    distributed func getMessageCount() -> Int {
+        return messages.count
+    }
+}
+
 // MARK: - Local Actor Tests
 
 @Suite("Local Actor Tests")
@@ -264,6 +298,107 @@ struct ClientServerIntegrationTests {
         #expect(sum == 123)
 
         await client.disconnect()
+        await server.shutdown()
+        serverTask.cancel()
+    }
+
+    @Test("Multiple clients share same actor instance", .timeLimit(.minutes(1)))
+    func multipleClientsSameActor() async throws {
+        let port: UInt16 = 19013
+
+        // Setup server with a ChatRoom actor
+        let server = TrebuchetServer(transport: .webSocket(port: port))
+        let chatRoom = ChatRoom(actorSystem: server.actorSystem)
+        await server.expose(chatRoom, as: "main-chat")
+
+        let serverTask = Task {
+            try await server.run()
+        }
+
+        try await Task.sleep(for: .milliseconds(200))
+
+        // Connect first client (Alice)
+        let client1 = TrebuchetClient(transport: .webSocket(host: "127.0.0.1", port: port))
+        try await client1.connect()
+        let room1 = try client1.resolve(ChatRoom.self, id: "main-chat")
+
+        // Connect second client (Bob)
+        let client2 = TrebuchetClient(transport: .webSocket(host: "127.0.0.1", port: port))
+        try await client2.connect()
+        let room2 = try client2.resolve(ChatRoom.self, id: "main-chat")
+
+        // Connect third client (Charlie)
+        let client3 = TrebuchetClient(transport: .webSocket(host: "127.0.0.1", port: port))
+        try await client3.connect()
+        let room3 = try client3.resolve(ChatRoom.self, id: "main-chat")
+
+        // Alice joins
+        let aliceHistory = try await room1.join(user: "Alice")
+        #expect(aliceHistory.isEmpty) // No messages yet
+
+        // Bob joins
+        let bobHistory = try await room2.join(user: "Bob")
+        #expect(bobHistory.isEmpty) // Still no messages
+
+        // Verify participants from Alice's perspective
+        var participants = try await room1.getParticipants()
+        #expect(participants.contains("Alice"))
+        #expect(participants.contains("Bob"))
+        #expect(participants.count == 2)
+
+        // Alice sends a message
+        try await room1.sendMessage(text: "Hello everyone!", from: "Alice")
+
+        // Bob sees Alice's message
+        var messages = try await room2.getMessages()
+        #expect(messages.count == 1)
+        #expect(messages[0].author == "Alice")
+        #expect(messages[0].text == "Hello everyone!")
+
+        // Bob sends a reply
+        try await room2.sendMessage(text: "Hi Alice!", from: "Bob")
+
+        // Alice sees both messages
+        messages = try await room1.getMessages()
+        #expect(messages.count == 2)
+        #expect(messages[0].author == "Alice")
+        #expect(messages[1].author == "Bob")
+
+        // Charlie joins late and sees history
+        let charlieHistory = try await room3.join(user: "Charlie")
+        #expect(charlieHistory.count == 2) // Sees both previous messages
+        #expect(charlieHistory[0].author == "Alice")
+        #expect(charlieHistory[1].author == "Bob")
+
+        // Verify all participants from Charlie's perspective
+        participants = try await room3.getParticipants()
+        #expect(participants.contains("Alice"))
+        #expect(participants.contains("Bob"))
+        #expect(participants.contains("Charlie"))
+        #expect(participants.count == 3)
+
+        // Charlie sends a message
+        try await room3.sendMessage(text: "Hey folks!", from: "Charlie")
+
+        // All clients see the same message count
+        let count1 = try await room1.getMessageCount()
+        let count2 = try await room2.getMessageCount()
+        let count3 = try await room3.getMessageCount()
+        #expect(count1 == 3)
+        #expect(count2 == 3)
+        #expect(count3 == 3)
+
+        // Verify all messages from Alice's perspective
+        messages = try await room1.getMessages()
+        #expect(messages.count == 3)
+        #expect(messages[0].author == "Alice")
+        #expect(messages[1].author == "Bob")
+        #expect(messages[2].author == "Charlie")
+
+        // Cleanup
+        await client1.disconnect()
+        await client2.disconnect()
+        await client3.disconnect()
         await server.shutdown()
         serverTask.cancel()
     }
