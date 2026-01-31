@@ -29,6 +29,38 @@ let system = TrebuchetActorSystem.forServer(host: "0.0.0.0", port: 8080)
 let actor = MyActor(actorSystem: system)
 ```
 
+## Observability
+
+The actor system provides optional callbacks for observing activity:
+
+```swift
+let server = TrebuchetServer(transport: .webSocket(port: 8080))
+
+// Log method invocations
+server.actorSystem.onInvocation = { actorID, method in
+    print("📞 \(actorID).\(method)")
+}
+
+// Log stream lifecycle
+server.actorSystem.onStreamStart = { actorID, method in
+    print("🌊 Stream started: \(actorID).\(method)")
+}
+
+server.actorSystem.onStreamEnd = { actorID, method in
+    print("🏁 Stream ended: \(actorID).\(method)")
+}
+
+// Log errors
+server.actorSystem.onError = { actorID, error in
+    print("❌ Error in \(actorID): \(error)")
+}
+```
+
+These callbacks are useful for:
+- Development debugging and tracing
+- Production monitoring and metrics
+- Audit logging of actor interactions
+
 ## Topics
 
 ### Creating a System
@@ -41,6 +73,18 @@ let actor = MyActor(actorSystem: system)
 
 - ``host``
 - ``port``
+
+### Observability
+
+- ``onInvocation``
+- ``onStreamStart``
+- ``onStreamEnd``
+- ``onError``
+
+### Dynamic Actor Creation
+
+- ``onActorRequest``
+- ``nameToIDTranslator``
 
 ### Serialization Types
 

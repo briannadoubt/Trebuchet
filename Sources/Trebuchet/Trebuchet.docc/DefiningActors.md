@@ -20,12 +20,62 @@ distributed actor GameRoom {
 This is equivalent to:
 
 ```swift
-distributed actor GameRoom {
+distributed actor GameRoom: TrebuchetActor {
     typealias ActorSystem = TrebuchetActorSystem
 
     distributed func join(player: Player) -> RoomState
 }
 ```
+
+The macro adds two things:
+1. A `typealias ActorSystem = TrebuchetActorSystem` (if not already present)
+2. Conformance to the ``TrebuchetActor`` protocol
+
+## Actor Initialization
+
+All Trebuchet actors must provide an initializer that takes only a ``TrebuchetActorSystem``:
+
+```swift
+@Trebuchet
+public distributed actor GameRoom {
+    public init(actorSystem: TrebuchetActorSystem) {
+        self.actorSystem = actorSystem
+        // Initialize with defaults
+    }
+
+    distributed func join(player: Player) -> RoomState
+}
+```
+
+This standard initializer is required for:
+- The `trebuchet dev` command to create actors automatically
+- CLI-generated deployment code
+- Dynamic actor creation with ``TrebuchetServer/onActorRequest``
+
+### Actors with Custom Parameters
+
+For actors that need additional initialization parameters in production, provide both initializers:
+
+```swift
+@Trebuchet
+public distributed actor UserActor {
+    let userID: String
+
+    // Production initializer
+    public init(actorSystem: TrebuchetActorSystem, userID: String) {
+        self.actorSystem = actorSystem
+        self.userID = userID
+    }
+
+    // Development initializer (required by TrebuchetActor)
+    public init(actorSystem: TrebuchetActorSystem) {
+        self.actorSystem = actorSystem
+        self.userID = "dev-user-\(UUID())"
+    }
+}
+```
+
+> Important: Distributed actors do not support `convenience` initializers. Provide separate regular initializers for each use case.
 
 ## Method Requirements
 
@@ -124,6 +174,7 @@ distributed actor GameRoom {
 
 ## See Also
 
+- ``TrebuchetActor``
 - ``TrebuchetActorSystem``
 - ``TrebuchetActorID``
 - <doc:GettingStarted>

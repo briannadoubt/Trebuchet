@@ -37,6 +37,7 @@ try await room.join(player: me)
 
 ### Actor System
 
+- ``TrebuchetActor``
 - ``TrebuchetActorSystem``
 - ``TrebuchetActorID``
 - ``TrebuchetError``
