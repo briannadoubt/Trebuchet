@@ -16,6 +16,9 @@ public struct DevCommand: AsyncParsableCommand {
     @Flag(name: .shortAndLong, help: "Enable verbose output")
     public var verbose: Bool = false
 
+    @Option(name: .long, help: "Path to local Trebuchet for development (e.g., ~/dev/Trebuchet)")
+    public var local: String?
+
     public init() {}
 
     public mutating func run() async throws {
@@ -26,16 +29,38 @@ public struct DevCommand: AsyncParsableCommand {
         terminal.print("Starting local development server...", style: .header)
         terminal.print("")
 
-        // Discover actors
-        let discovery = ActorDiscovery()
-        let actors = try discovery.discover(in: cwd)
+        // Try to load config
+        let configLoader = ConfigLoader()
+        let config = try? configLoader.load(from: cwd)
 
-        if actors.isEmpty {
+        // Discover all actors
+        let discovery = ActorDiscovery()
+        let allActors = try discovery.discover(in: cwd)
+
+        if allActors.isEmpty {
             terminal.print("No distributed actors found.", style: .warning)
             throw ExitCode.failure
         }
 
-        terminal.print("Found actors:", style: .info)
+        // Filter actors based on config if available
+        let actors: [ActorMetadata]
+        if let config = config, !config.actors.isEmpty {
+            let configuredActorNames = Set(config.actors.keys)
+            actors = allActors.filter { configuredActorNames.contains($0.name) }
+
+            if actors.isEmpty {
+                terminal.print("No actors from trebuchet.yaml found in project.", style: .warning)
+                terminal.print("Configured actors: \(configuredActorNames.joined(separator: ", "))", style: .dim)
+                terminal.print("Available actors: \(allActors.map { $0.name }.joined(separator: ", "))", style: .dim)
+                throw ExitCode.failure
+            }
+
+            terminal.print("Using actors from trebuchet.yaml:", style: .info)
+        } else {
+            actors = allActors
+            terminal.print("No trebuchet.yaml found, using all discovered actors:", style: .info)
+        }
+
         for actor in actors {
             terminal.print("  • \(actor.name)", style: .dim)
         }
@@ -84,6 +109,16 @@ public struct DevCommand: AsyncParsableCommand {
         terminal.print("Generating development server...", style: .dim)
 
         let devPath = "\(cwd)/.trebuchet"
+
+        // Clean .trebuchet to avoid stale dependency issues
+        // TODO: Optimize to only clean sources once dependency resolution is stable
+        if FileManager.default.fileExists(atPath: devPath) {
+            if verbose {
+                terminal.print("  Cleaning old .trebuchet directory...", style: .dim)
+            }
+            try FileManager.default.removeItem(atPath: devPath)
+        }
+
         try FileManager.default.createDirectory(
             atPath: devPath,
             withIntermediateDirectories: true
@@ -95,11 +130,15 @@ public struct DevCommand: AsyncParsableCommand {
 
         if isXcodeProject {
             // For Xcode projects, copy actor sources and don't depend on parent
-            packageManifest = generateXcodeProjectPackageManifest()
-            actualModuleName = "ActorSources"
+            // Use the project's actual module name to ensure type identity matches between client and server
+            packageManifest = generateXcodeProjectPackageManifest(
+                moduleName: moduleName,
+                localTrebuchetPath: local
+            )
+            actualModuleName = moduleName
 
-            // Copy actor source files into .trebuchet/Sources/ActorSources/
-            let actorSourcesPath = "\(devPath)/Sources/ActorSources"
+            // Copy actor source files into .trebuchet/Sources/{ModuleName}/
+            let actorSourcesPath = "\(devPath)/Sources/\(moduleName)"
             try FileManager.default.createDirectory(
                 atPath: actorSourcesPath,
                 withIntermediateDirectories: true
@@ -110,7 +149,8 @@ public struct DevCommand: AsyncParsableCommand {
             // For Swift Packages, use existing approach
             packageManifest = generatePackageManifest(
                 projectName: moduleName,
-                parentPackageName: parentPackageName
+                parentPackageName: parentPackageName,
+                localTrebuchetPath: local
             )
             actualModuleName = moduleName
         }
@@ -219,8 +259,17 @@ public struct DevCommand: AsyncParsableCommand {
         return sanitizeSwiftIdentifier(dirName)
     }
 
-    private func generatePackageManifest(projectName: String, parentPackageName: String) -> String {
-        """
+    private func generatePackageManifest(projectName: String, parentPackageName: String, localTrebuchetPath: String?) -> String {
+        let trebuchetDependency: String
+        if let localPath = localTrebuchetPath {
+            // Expand ~ in path
+            let expandedPath = (localPath as NSString).expandingTildeInPath
+            trebuchetDependency = ".package(path: \"\(expandedPath)\")"
+        } else {
+            trebuchetDependency = ".package(url: \"https://github.com/briannadoubt/Trebuchet.git\", .upToNextMajor(from: \"0.3.0\"))"
+        }
+
+        return """
         // swift-tools-version: 6.0
         // Auto-generated Package.swift for local development server
         // Generated by: trebuchet dev
@@ -232,14 +281,13 @@ public struct DevCommand: AsyncParsableCommand {
             platforms: [.macOS(.v14)],
             dependencies: [
                 .package(path: ".."),
-                .package(url: "https://github.com/briannadoubt/Trebuchet.git", .upToNextMajor(from: "0.3.0"))
+                \(trebuchetDependency)
             ],
             targets: [
                 .executableTarget(
                     name: "LocalRunner",
                     dependencies: [
                         .product(name: "Trebuchet", package: "Trebuchet"),
-                        .product(name: "TrebuchetCloud", package: "Trebuchet"),
                         .product(name: "\(projectName)", package: "\(parentPackageName)")
                     ]
                 )
@@ -294,18 +342,16 @@ public struct DevCommand: AsyncParsableCommand {
         host: String,
         port: UInt16
     ) -> String {
-        // Use shared code generation helpers
-        let actorInits = BootstrapGenerator.generateActorInitializations(
-            actors: actors,
-            indent: 8,
-            systemVariable: "gateway.system"
-        )
-
-        let actorRegistrations = BootstrapGenerator.generateActorRegistrations(
-            actors: actors,
-            indent: 8,
-            logStatement: #"print("  ✓ Exposed: %ACTOR%")"#
-        )
+        // Generate dynamic actor creation cases
+        let dynamicActorCases = actors.map { actor in
+            let actorNameLower = actor.name.lowercased()
+            return """
+                    case let id where id == "\(actorNameLower)" || id.hasPrefix("\(actorNameLower)-"):
+                        let actor = \(actor.name)(actorSystem: server.actorSystem)
+                        await server.expose(actor, as: actorID.id)
+                        print("  ✓ Created: \(actor.name) (\\(actorID.id))")
+            """
+        }.joined(separator: "\n")
 
         return """
         // Auto-generated local development runner
@@ -313,7 +359,6 @@ public struct DevCommand: AsyncParsableCommand {
 
         import Foundation
         import Trebuchet
-        import TrebuchetCloud
         import \(moduleName)
 
         @main
@@ -322,26 +367,43 @@ public struct DevCommand: AsyncParsableCommand {
                 print("Starting local development server...")
                 print("")
 
-                let gateway = CloudGateway.development(
-                    host: "\(host)",
-                    port: \(port)
+                let server = TrebuchetServer(
+                    transport: .webSocket(host: "\(host)", port: \(port))
                 )
 
-                // Initialize actors
-        \(actorInits)
+                // Enable verbose logging
+                server.actorSystem.onInvocation = { actorID, method in
+                    let timestamp = ISO8601DateFormatter().string(from: Date())
+                    print("[\\(timestamp)] 📞 \\(actorID).\\(method)")
+                }
 
-                // Register actors
-        \(actorRegistrations)
+                server.actorSystem.onStreamStart = { actorID, method in
+                    let timestamp = ISO8601DateFormatter().string(from: Date())
+                    print("[\\(timestamp)] 🌊 Stream started: \\(actorID).\\(method)")
+                }
+
+                server.actorSystem.onStreamEnd = { actorID, method in
+                    let timestamp = ISO8601DateFormatter().string(from: Date())
+                    print("[\\(timestamp)] 🏁 Stream ended: \\(actorID).\\(method)")
+                }
+
+                // Dynamic actor creation
+                server.onActorRequest = { actorID in
+                    switch actorID.id {
+        \(dynamicActorCases)
+                    default:
+                        print("⚠️  Unknown actor type requested: \\(actorID.id)")
+                    }
+                }
 
                 print("")
-                print("Server running on http://\(host):\(port)")
-                print("Health check: http://\(host):\(port)/health")
-                print("Invocation endpoint: http://\(host):\(port)/invoke")
-                print("")
+                print("Server running on ws://\(host):\(port)")
+                print("Dynamic actor creation enabled")
+                print("Logging all activity...")
                 print("Press Ctrl+C to stop")
                 print("")
 
-                try await gateway.run()
+                try await server.run()
             }
         }
         """
@@ -358,11 +420,24 @@ public struct DevCommand: AsyncParsableCommand {
         return contents.contains { $0.hasSuffix(".xcodeproj") }
     }
 
-    private func generateXcodeProjectPackageManifest() -> String {
-        """
+    private func generateXcodeProjectPackageManifest(
+        moduleName: String,
+        localTrebuchetPath: String?
+    ) -> String {
+        let trebuchetDependency: String
+        if let localPath = localTrebuchetPath {
+            // Expand ~ in path
+            let expandedPath = (localPath as NSString).expandingTildeInPath
+            trebuchetDependency = ".package(path: \"\(expandedPath)\")"
+        } else {
+            trebuchetDependency = ".package(url: \"https://github.com/briannadoubt/Trebuchet.git\", .upToNextMajor(from: \"0.3.0\"))"
+        }
+
+        return """
         // swift-tools-version: 6.0
         // Auto-generated Package.swift for local development server
         // Generated by: trebuchet dev (Xcode project mode)
+        // Module name: \(moduleName) (matches Xcode project for type identity)
 
         import PackageDescription
 
@@ -370,11 +445,11 @@ public struct DevCommand: AsyncParsableCommand {
             name: "LocalRunner",
             platforms: [.macOS(.v14), .iOS(.v17)],
             dependencies: [
-                .package(url: "https://github.com/briannadoubt/Trebuchet.git", .upToNextMajor(from: "0.3.0"))
+                \(trebuchetDependency)
             ],
             targets: [
                 .target(
-                    name: "ActorSources",
+                    name: "\(moduleName)",
                     dependencies: [
                         .product(name: "Trebuchet", package: "Trebuchet")
                     ]
@@ -383,8 +458,7 @@ public struct DevCommand: AsyncParsableCommand {
                     name: "LocalRunner",
                     dependencies: [
                         .product(name: "Trebuchet", package: "Trebuchet"),
-                        .product(name: "TrebuchetCloud", package: "Trebuchet"),
-                        "ActorSources"
+                        "\(moduleName)"
                     ]
                 )
             ]

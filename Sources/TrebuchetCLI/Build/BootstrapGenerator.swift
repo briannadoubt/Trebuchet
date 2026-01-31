@@ -181,15 +181,18 @@ public struct BootstrapGenerator {
     public static func generateActorRegistrations(
         actors: [ActorMetadata],
         indent: Int = 8,
-        logStatement: String? = nil
+        logStatement: String? = nil,
+        serverVariable: String = "gateway",
+        includesTry: Bool = true
     ) -> String {
         var lines: [String] = []
         let indentation = String(repeating: " ", count: indent)
+        let tryKeyword = includesTry ? "try " : ""
 
         for actor in actors {
             let varName = actor.name.lowercased()
             let actorID = actor.name.lowercased()
-            lines.append("\(indentation)try await gateway.expose(\(varName), as: \"\(actorID)\")")
+            lines.append("\(indentation)\(tryKeyword)await \(serverVariable).expose(\(varName), as: \"\(actorID)\")")
 
             if let logFormat = logStatement {
                 let log = logFormat.replacingOccurrences(of: "%ACTOR%", with: actor.name)

@@ -25,6 +25,21 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
     /// This allows the server to use concrete actor types for streaming
     public var streamingHandler: (@Sendable (InvocationEnvelope, any DistributedActor) async throws -> AsyncStream<Data>)?
 
+    /// Optional logging callbacks for observing activity
+    public var onInvocation: (@Sendable (String, String) -> Void)?
+    public var onStreamStart: (@Sendable (String, String) -> Void)?
+    public var onStreamEnd: (@Sendable (String, String) -> Void)?
+    public var onError: (@Sendable (String, Error) -> Void)?
+
+    /// Optional callback for dynamic actor creation
+    /// Called when an invocation targets an actor that doesn't exist
+    /// The callback should create and expose the actor
+    public var onActorRequest: (@Sendable (TrebuchetActorID) async throws -> Void)?
+
+    /// Optional callback for translating exposed names to real actor IDs
+    /// Used when onActorRequest creates an actor with a name that needs to be resolved
+    public var nameToIDTranslator: (@Sendable (String) async -> TrebuchetActorID?)?
+
     /// The transport layer for network communication
     private var transport: (any TrebuchetTransport)?
 
@@ -99,6 +114,9 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
             targetIdentifier: target.identifier
         )
 
+        // Log invocation
+        onInvocation?(actor.id.id, target.identifier)
+
         // If it's a local actor, execute directly
         if actor.id.isLocal, let localActor = await localActors.get(id: actor.id, as: Act.self) {
             return try await executeLocalCall(
@@ -132,6 +150,9 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
             targetIdentifier: target.identifier
         )
 
+        // Log invocation
+        onInvocation?(actor.id.id, target.identifier)
+
         // If it's a local actor, execute directly
         if actor.id.isLocal, let localActor = await localActors.get(id: actor.id, as: Act.self) {
             try await executeLocalCallVoid(
@@ -158,7 +179,38 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
     /// Handle an incoming invocation from the network
     func handleIncomingInvocation(_ envelope: InvocationEnvelope) async -> ResponseEnvelope {
         // Find the local actor
-        guard let actor = await localActors.getAny(id: envelope.actorID) else {
+        var actor = await localActors.getAny(id: envelope.actorID)
+
+        // If not found and we have a request handler, try to create it
+        if actor == nil, let handler = self.onActorRequest {
+            do {
+                try await handler(envelope.actorID)
+
+                // Translate the name to the real actor ID if we have a translator
+                var lookupID = envelope.actorID
+                if let translator = self.nameToIDTranslator,
+                   let realID = await translator(envelope.actorID.id) {
+                    lookupID = realID
+                }
+
+                // Retry lookup with small delays to handle race condition in actorReady()
+                // The fire-and-forget Task in actorReady() may not have completed yet
+                for attempt in 0..<5 {
+                    actor = await localActors.getAny(id: lookupID)
+                    if actor != nil {
+                        break
+                    }
+                    // Exponential backoff: 1ms, 2ms, 4ms, 8ms, 16ms (total max 31ms)
+                    if attempt < 4 {
+                        try? await Task.sleep(for: .milliseconds(1 << attempt))
+                    }
+                }
+            } catch {
+                return .failure(callID: envelope.callID, error: "Failed to create actor: \(error)")
+            }
+        }
+
+        guard let actor = actor else {
             return .failure(callID: envelope.callID, error: "Actor not found: \(envelope.actorID)")
         }
 
@@ -212,6 +264,9 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
             actorID: actor.id,
             targetIdentifier: target.identifier
         )
+
+        // Log stream start
+        onStreamStart?(actor.id.id, target.identifier)
 
         guard let transport else {
             throw TrebuchetError.systemNotRunning

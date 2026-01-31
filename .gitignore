@@ -39,3 +39,4 @@ DerivedData
 
 # Local subdirectory builds
 /TrebucheDemo/Shared/.build
+/TrebuchetDemo/TrebuchetDemo/.trebuchet

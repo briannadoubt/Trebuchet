@@ -6,8 +6,14 @@ import NIOSSL
 
 // MARK: - Test Actor
 
+struct CustomStruct: Codable, Sendable {
+    let id: String
+    let value: Int
+    let timestamp: Date
+}
+
+@Trebuchet
 distributed actor EchoActor {
-    typealias ActorSystem = TrebuchetActorSystem
 
     distributed func echo(message: String) -> String {
         return "Echo: \(message)"
@@ -19,6 +25,10 @@ distributed actor EchoActor {
 
     distributed func greet(name: String, times: Int) -> [String] {
         (0..<times).map { "Hello \(name) #\($0 + 1)" }
+    }
+
+    distributed func getCustomStruct() -> CustomStruct {
+        return CustomStruct(id: "test-123", value: 42, timestamp: Date())
     }
 }
 
@@ -189,6 +199,35 @@ struct ClientServerIntegrationTests {
         // Make the actual remote call
         let result = try await remoteEcho.echo(message: "Hello Network!")
         #expect(result == "Echo: Hello Network!")
+
+        await client.disconnect()
+        await server.shutdown()
+        serverTask.cancel()
+    }
+
+    @Test("Remote custom struct return", .timeLimit(.minutes(1)))
+    func remoteCustomStructReturn() async throws {
+        let port: UInt16 = 19099
+
+        let server = TrebuchetServer(transport: .webSocket(port: port))
+        let echo = EchoActor(actorSystem: server.actorSystem)
+        await server.expose(echo, as: "echo")
+
+        let serverTask = Task {
+            try await server.run()
+        }
+
+        try await Task.sleep(for: .milliseconds(200))
+
+        let client = TrebuchetClient(transport: .webSocket(host: "127.0.0.1", port: port))
+        try await client.connect()
+
+        let remoteEcho = try client.resolve(EchoActor.self, id: "echo")
+
+        // Make the actual remote call with custom struct return
+        let result = try await remoteEcho.getCustomStruct()
+        #expect(result.id == "test-123")
+        #expect(result.value == 42)
 
         await client.disconnect()
         await server.shutdown()
