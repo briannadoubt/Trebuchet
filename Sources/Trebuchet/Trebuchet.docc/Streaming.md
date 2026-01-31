@@ -240,6 +240,49 @@ struct GameView: View {
 }
 ```
 
+### Dynamic Actor IDs
+
+When you need to observe actors with IDs computed at runtime (e.g., conversation-specific actors, user-specific actors), use a **custom initializer** to set up the property wrapper:
+
+```swift
+struct ConversationView: View {
+    let conversationID: String
+
+    @ObservedActor<ConversationActor, [Message]>
+    private var messages
+
+    // Custom initializer required for dynamic actor IDs
+    init(conversationID: String) {
+        self.conversationID = conversationID
+
+        // Compute actor ID and initialize property wrapper
+        let actorID = "conversation-\(conversationID)"
+        self._messages = ObservedActor(actorID, observe: \ConversationActor.observeMessages)
+    }
+
+    var body: some View {
+        if let messages = messages {
+            List(messages) { message in
+                MessageRow(message: message)
+            }
+        } else if $messages.isConnecting {
+            ProgressView("Loading...")
+        }
+    }
+}
+```
+
+**Why this works:** Property wrappers initialize before `self` is available, so you cannot reference instance properties (like `conversationID`) in the property wrapper's initializer. Using a custom `init` lets you compute the actor ID first, then initialize the wrapper via `self._propertyName`.
+
+**Common mistake:**
+```swift
+// ❌ This will NOT work - cannot use instance member in property initializer
+@ObservedActor("conversation-\(conversationID)", observe: \ConversationActor.observeMessages)
+var messages
+
+// ✅ Use a custom init instead (see example above)
+```
+
 ## Performance Considerations
 
 ### Bandwidth

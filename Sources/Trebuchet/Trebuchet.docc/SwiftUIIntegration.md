@@ -79,6 +79,32 @@ struct GameLobbyView: View {
 }
 ```
 
+### Dynamic Actor IDs with @RemoteActor
+
+For actor IDs computed at runtime, use a custom initializer:
+
+```swift
+struct PlayerProfileView: View {
+    let playerID: String
+
+    @RemoteActor
+    var player: Player?
+
+    init(playerID: String) {
+        self.playerID = playerID
+        self._player = RemoteActor(id: "player-\(playerID)")
+    }
+
+    var body: some View {
+        if let player {
+            ProfileContent(player: player)
+        }
+    }
+}
+```
+
+> **Note:** Property wrappers cannot reference instance properties during initialization. Use a custom `init` to compute the ID first, then initialize the wrapper via `self._propertyName`.
+
 ### Handling All States
 
 Access the projected value (`$wrapper`) for detailed state information:
