@@ -232,7 +232,7 @@ public struct DevCommand: AsyncParsableCommand {
             platforms: [.macOS(.v14)],
             dependencies: [
                 .package(path: ".."),
-                .package(url: "https://github.com/briannadoubt/Trebuchet.git", from: "1.0.0")
+                .package(url: "https://github.com/briannadoubt/Trebuchet.git", .upToNextMajor(from: "0.3.0"))
             ],
             targets: [
                 .executableTarget(
@@ -370,7 +370,7 @@ public struct DevCommand: AsyncParsableCommand {
             name: "LocalRunner",
             platforms: [.macOS(.v14), .iOS(.v17)],
             dependencies: [
-                .package(url: "https://github.com/briannadoubt/Trebuchet.git", from: "1.0.0")
+                .package(url: "https://github.com/briannadoubt/Trebuchet.git", .upToNextMajor(from: "0.3.0"))
             ],
             targets: [
                 .target(

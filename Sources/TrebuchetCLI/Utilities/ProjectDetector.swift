@@ -136,7 +136,7 @@ public struct ProjectDetector {
         platforms: String = ".macOS(.v14)"
     ) -> String {
         var dependencies: [String] = [
-            ".package(url: \"https://github.com/briannadoubt/Trebuchet.git\", branch: \"main\")"
+            ".package(url: \"https://github.com/briannadoubt/Trebuchet.git\", .upToNextMajor(from: \"0.3.0\"))"
         ]
 
         var targetDependencies: [String] = [
