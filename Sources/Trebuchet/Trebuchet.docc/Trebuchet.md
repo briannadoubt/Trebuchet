@@ -67,6 +67,11 @@ try await room.join(player: me)
 - ``TrebuchetConnectionManager``
 - ``ConnectionState``
 
+### CLI Tools
+
+- <doc:XCODE_PROJECT_SUPPORT>
+- <doc:DEPENDENCY_ANALYSIS>
+
 ### Cloud Deployment
 
 - <doc:CloudDeploymentOverview>
