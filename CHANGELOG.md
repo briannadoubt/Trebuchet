@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-01-31
+
 ### Added
 
 #### Xcode Project Support
@@ -58,6 +60,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ServerGenerator**: Automatic dependency copying for `generate server` command
 - **BootstrapGenerator**: Lambda bootstrap generation supports Xcode projects
 - **Updated Tests**: All 34 CLI tests pass with new functionality
+
+#### TrebuchetActor Protocol
+- **Standardized Actor Initialization**: New `TrebuchetActor` protocol enforces common initialization interface
+  - Requires `init(actorSystem: TrebuchetActorSystem)` for all distributed actors
+  - Enables CLI to automatically instantiate actors for dev server and deployment
+  - Supports custom initializers alongside protocol requirement for production use cases
+  - 60 lines of comprehensive documentation with examples
+
+- **@Trebuchet Macro Enhancement**: Automatic protocol conformance
+  - Now implements `ExtensionMacro` protocol to add `TrebuchetActor` conformance automatically
+  - Actors marked with `@Trebuchet` automatically conform without manual declaration
+  - Updated macro documentation to reflect new behavior
+  - Simplifies actor definition and ensures consistency
+
+- **ActorDiscovery Improvements**: Better handling of generated directories
+  - Skips `.build`, `.trebuchet`, `.git`, `.swiftpm`, `DerivedData`, `Pods`, `.xcodeproj`, `.xcworkspace`
+  - Prevents scanning thousands of unnecessary files
+  - Faster actor discovery in large projects
+
+- **BootstrapGenerator Flexibility**: Configurable code generation
+  - New `serverVariable` parameter for customizing server instance name
+  - New `includesTry` parameter for optional error handling
+  - Supports both CloudGateway and TrebuchetServer patterns
+
+### Fixed
+
+#### Dynamic Actor Creation
+- **Actor ID Mismatch**: Fixed critical bug preventing `onActorRequest` from working
+  - Added `nameToIDTranslator` callback to `TrebuchetActorSystem`
+  - Translates exposed names (e.g., "todolist") to real UUID-based IDs
+  - Server sets translator to use `exposedActors.getID(for:)` mapping
+  - Retry lookup now uses correct UUID-based ID after dynamic actor creation
+
+- **Race Condition**: Fixed intermittent actor lookup failures
+  - Added exponential backoff retry loop (5 attempts, max 31ms total)
+  - Delays: 1ms, 2ms, 4ms, 8ms, 16ms
+  - Allows fire-and-forget `actorReady()` Task to complete registration
+  - Prevents "Actor not found" errors under load or task scheduling delays
 
 ### Changed
 - **DevCommand**: Now skips `swift build` for Xcode projects (not applicable)
