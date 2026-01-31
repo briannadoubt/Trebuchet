@@ -5,9 +5,10 @@ import SwiftSyntaxMacros
 
 /// The @Trebuchet macro simplifies distributed actor declarations by:
 /// 1. Adding `typealias ActorSystem = TrebuchetActorSystem` if not present
-/// 2. Scanning for @StreamedState properties and generating observe methods
-/// 3. Providing integration with TrebuchetServer/TrebuchetClient
-public struct TrebuchetMacro: MemberMacro {
+/// 2. Adding conformance to `TrebuchetActor` protocol
+/// 3. Scanning for @StreamedState properties and generating observe methods
+/// 4. Providing integration with TrebuchetServer/TrebuchetClient
+public struct TrebuchetMacro: MemberMacro, ExtensionMacro {
     public static func expansion(
         of node: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
@@ -117,6 +118,31 @@ public struct TrebuchetMacro: MemberMacro {
         }
 
         return members
+    }
+
+    public static func expansion(
+        of node: AttributeSyntax,
+        attachedTo declaration: some DeclGroupSyntax,
+        providingExtensionsOf type: some TypeSyntaxProtocol,
+        conformingTo protocols: [TypeSyntax],
+        in context: some MacroExpansionContext
+    ) throws -> [ExtensionDeclSyntax] {
+        // Check if this is a distributed actor
+        guard let actorDecl = declaration.as(ActorDeclSyntax.self),
+              actorDecl.modifiers.contains(where: { $0.name.text == "distributed" }) else {
+            throw MacroError.notDistributedActor
+        }
+
+        // Add TrebuchetActor conformance via extension
+        let extensionDecl: DeclSyntax = """
+            extension \(type.trimmed): TrebuchetActor {}
+            """
+
+        guard let extensionDeclSyntax = extensionDecl.as(ExtensionDeclSyntax.self) else {
+            return []
+        }
+
+        return [extensionDeclSyntax]
     }
 }
 

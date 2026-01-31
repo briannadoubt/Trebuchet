@@ -43,8 +43,11 @@
 /// ```
 ///
 /// The macro will generate:
-/// - `public func observeState() -> AsyncStream<State>`
+/// - `public typealias ActorSystem = TrebuchetActorSystem` (if not present)
+/// - Conformance to `TrebuchetActor` protocol
+/// - `public func observeState() -> AsyncStream<State>` (for @StreamedState properties)
 @attached(member, names: named(ActorSystem), arbitrary)
+@attached(extension, conformances: TrebuchetActor)
 public macro Trebuchet() = #externalMacro(module: "TrebuchetMacros", type: "TrebuchetMacro")
 
 /// Marks a property for automatic state streaming.
