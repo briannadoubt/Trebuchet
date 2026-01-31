@@ -127,9 +127,64 @@ trebuchet dev --verbose
 
 The `dev` command:
 - Discovers all `@Trebuchet` actors in your project
+- **Works with both Swift Package Manager and Xcode projects**
+- Automatically analyzes and copies type dependencies
 - Builds and runs a local HTTP server
 - Exposes actors at `http://localhost:8080/invoke`
 - Provides health check at `http://localhost:8080/health`
+
+## Xcode Project Support
+
+Trebuchet CLI now fully supports Xcode projects with **automatic dependency analysis**:
+
+```bash
+cd /path/to/YourXcodeProject
+trebuchet dev --verbose
+
+# Output:
+# Detected Xcode project, will copy actor sources...
+# Found actors:
+#   • GameRoom
+# Analyzing dependencies...
+# Found 4 required file(s)
+# ✓ Copied 4 source files (including dependencies)
+# Starting server on localhost:8080...
+```
+
+### How It Works
+
+The CLI automatically:
+1. **Detects** `.xcodeproj` or `.xcworkspace` files
+2. **Analyzes** actor method signatures to extract types
+3. **Discovers** all type dependencies recursively
+4. **Copies** only the files you need (no cascade to unrelated code)
+5. **Generates** a standalone server package
+
+### Features
+
+✅ **Zero configuration** - Just run `trebuchet dev` in any Xcode project
+✅ **Smart dependency tracking** - Finds all types your actors use
+✅ **Cascade prevention** - Doesn't copy your entire app
+✅ **Works everywhere** - `dev`, `generate server`, `deploy` commands
+
+### Example
+
+```swift
+// Your Xcode project
+@Trebuchet
+distributed actor GameRoom {
+    distributed func join(player: PlayerInfo) -> RoomState
+}
+
+// Automatically discovers and copies:
+// - GameRoom.swift
+// - PlayerInfo.swift (used in signature)
+// - RoomState.swift (used in signature)
+// - GameStatus.swift (used by RoomState)
+// And nothing else!
+```
+
+See **[Xcode Project Support](Sources/Trebuchet/Trebuchet.docc/XCODE_PROJECT_SUPPORT.md)** for detailed documentation.
 
 ## Cloud Deployment
 

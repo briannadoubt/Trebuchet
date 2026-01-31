@@ -46,29 +46,39 @@ public struct DevCommand: AsyncParsableCommand {
         let parentPackageName = try getParentPackageName(from: cwd) ?? projectName
         let moduleName = inferModuleName(from: actors, projectName: projectName)
 
+        // Detect if parent is an Xcode project (vs Swift Package)
+        let isXcodeProject = detectXcodeProject(in: cwd)
+
         // Generate and run local bootstrap
-        terminal.print("Building project...", style: .dim)
-
-        let buildProcess = Process()
-        buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        buildProcess.arguments = ["swift", "build"]
-        buildProcess.currentDirectoryURL = URL(fileURLWithPath: cwd)
-
-        if !verbose {
-            buildProcess.standardOutput = FileHandle.nullDevice
-            buildProcess.standardError = FileHandle.nullDevice
+        if !isXcodeProject {
+            terminal.print("Building project...", style: .dim)
+        } else {
+            terminal.print("Detected Xcode project, will copy actor sources...", style: .dim)
         }
 
-        try buildProcess.run()
-        buildProcess.waitUntilExit()
+        // Only build if it's a Swift Package
+        if !isXcodeProject {
+            let buildProcess = Process()
+            buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            buildProcess.arguments = ["swift", "build"]
+            buildProcess.currentDirectoryURL = URL(fileURLWithPath: cwd)
 
-        guard buildProcess.terminationStatus == 0 else {
-            terminal.print("Build failed.", style: .error)
-            throw ExitCode.failure
+            if !verbose {
+                buildProcess.standardOutput = FileHandle.nullDevice
+                buildProcess.standardError = FileHandle.nullDevice
+            }
+
+            try buildProcess.run()
+            buildProcess.waitUntilExit()
+
+            guard buildProcess.terminationStatus == 0 else {
+                terminal.print("Build failed.", style: .error)
+                throw ExitCode.failure
+            }
+
+            terminal.print("✓ Build succeeded", style: .success)
+            terminal.print("")
         }
-
-        terminal.print("✓ Build succeeded", style: .success)
-        terminal.print("")
 
         // Generate development runner package
         terminal.print("Generating development server...", style: .dim)
@@ -80,10 +90,31 @@ public struct DevCommand: AsyncParsableCommand {
         )
 
         // Generate Package.swift
-        let packageManifest = generatePackageManifest(
-            projectName: moduleName,
-            parentPackageName: parentPackageName
-        )
+        let packageManifest: String
+        let actualModuleName: String
+
+        if isXcodeProject {
+            // For Xcode projects, copy actor sources and don't depend on parent
+            packageManifest = generateXcodeProjectPackageManifest()
+            actualModuleName = "ActorSources"
+
+            // Copy actor source files into .trebuchet/Sources/ActorSources/
+            let actorSourcesPath = "\(devPath)/Sources/ActorSources"
+            try FileManager.default.createDirectory(
+                atPath: actorSourcesPath,
+                withIntermediateDirectories: true
+            )
+
+            try copyActorSources(actors: actors, to: actorSourcesPath, terminal: terminal, verbose: verbose)
+        } else {
+            // For Swift Packages, use existing approach
+            packageManifest = generatePackageManifest(
+                projectName: moduleName,
+                parentPackageName: parentPackageName
+            )
+            actualModuleName = moduleName
+        }
+
         try packageManifest.write(
             toFile: "\(devPath)/Package.swift",
             atomically: true,
@@ -99,7 +130,7 @@ public struct DevCommand: AsyncParsableCommand {
 
         let mainScript = generateLocalRunner(
             actors: actors,
-            moduleName: moduleName,
+            moduleName: actualModuleName,
             host: host,
             port: port
         )
@@ -201,7 +232,7 @@ public struct DevCommand: AsyncParsableCommand {
             platforms: [.macOS(.v14)],
             dependencies: [
                 .package(path: ".."),
-                .package(url: "https://github.com/briannadoubt/Trebuchet.git", from: "1.0.0")
+                .package(url: "https://github.com/briannadoubt/Trebuchet.git", .upToNextMajor(from: "0.3.0"))
             ],
             targets: [
                 .executableTarget(
@@ -314,5 +345,88 @@ public struct DevCommand: AsyncParsableCommand {
             }
         }
         """
+    }
+
+    private func detectXcodeProject(in directory: String) -> Bool {
+        let fileManager = FileManager.default
+
+        // Check if directory contains .xcodeproj
+        guard let contents = try? fileManager.contentsOfDirectory(atPath: directory) else {
+            return false
+        }
+
+        return contents.contains { $0.hasSuffix(".xcodeproj") }
+    }
+
+    private func generateXcodeProjectPackageManifest() -> String {
+        """
+        // swift-tools-version: 6.0
+        // Auto-generated Package.swift for local development server
+        // Generated by: trebuchet dev (Xcode project mode)
+
+        import PackageDescription
+
+        let package = Package(
+            name: "LocalRunner",
+            platforms: [.macOS(.v14), .iOS(.v17)],
+            dependencies: [
+                .package(url: "https://github.com/briannadoubt/Trebuchet.git", .upToNextMajor(from: "0.3.0"))
+            ],
+            targets: [
+                .target(
+                    name: "ActorSources",
+                    dependencies: [
+                        .product(name: "Trebuchet", package: "Trebuchet")
+                    ]
+                ),
+                .executableTarget(
+                    name: "LocalRunner",
+                    dependencies: [
+                        .product(name: "Trebuchet", package: "Trebuchet"),
+                        .product(name: "TrebuchetCloud", package: "Trebuchet"),
+                        "ActorSources"
+                    ]
+                )
+            ]
+        )
+        """
+    }
+
+    private func copyActorSources(
+        actors: [ActorMetadata],
+        to targetPath: String,
+        terminal: Terminal,
+        verbose: Bool
+    ) throws {
+        // Track which files we've already copied to avoid duplicates
+        var copiedFiles = Set<String>()
+
+        for actor in actors {
+            let sourceFile = actor.filePath
+            let fileName = URL(fileURLWithPath: sourceFile).lastPathComponent
+
+            // Skip if already copied
+            guard !copiedFiles.contains(fileName) else {
+                continue
+            }
+
+            let targetFile = "\(targetPath)/\(fileName)"
+
+            // Read source file
+            guard let sourceContent = try? String(contentsOfFile: sourceFile, encoding: .utf8) else {
+                terminal.print("Warning: Could not read \(sourceFile)", style: .warning)
+                continue
+            }
+
+            // Write to target
+            try sourceContent.write(toFile: targetFile, atomically: true, encoding: .utf8)
+            copiedFiles.insert(fileName)
+
+            if verbose {
+                terminal.print("  Copied: \(fileName)", style: .dim)
+            }
+        }
+
+        terminal.print("✓ Copied \(copiedFiles.count) actor source file(s)", style: .success)
     }
 }

@@ -227,8 +227,57 @@ public struct BootstrapGenerator {
     }
 
     /// Generate a Package.swift for the Lambda target
-    public func generatePackageSwift(config: ResolvedConfig) -> String {
-        """
+    /// - Parameters:
+    ///   - config: Resolved configuration
+    ///   - projectPath: Path to the main project
+    /// - Returns: Package.swift content
+    public func generatePackageSwift(config: ResolvedConfig, projectPath: String) -> String {
+        let detector = ProjectDetector(projectPath: projectPath)
+
+        var dependencies: [String] = [
+            ".package(url: \"https://github.com/swift-server/swift-aws-lambda-runtime.git\", from: \"1.0.0\")",
+            ".package(url: \"https://github.com/swift-server/swift-aws-lambda-events.git\", from: \"0.4.0\")",
+            ".package(url: \"https://github.com/soto-project/soto.git\", from: \"7.0.0\")"
+        ]
+
+        var targetDependencies: [String] = [
+            ".product(name: \"AWSLambdaRuntime\", package: \"swift-aws-lambda-runtime\")",
+            ".product(name: \"AWSLambdaEvents\", package: \"swift-aws-lambda-events\")",
+            ".product(name: \"SotoDynamoDB\", package: \"soto\")",
+            ".product(name: \"SotoServiceDiscovery\", package: \"soto\")",
+            "\"Trebuchet\"",
+            "\"TrebuchetCloud\"",
+            "\"TrebuchetAWS\""
+        ]
+
+        // Add project dependency if it's a Swift Package
+        if detector.hasPackageSwift {
+            dependencies.append(".package(path: \"../..\")")
+            if let packageName = try? detector.getPackageName() {
+                targetDependencies.append("\"\(packageName)\"")
+            }
+        }
+
+        let dependenciesStr = dependencies.map { "            \($0)" }.joined(separator: ",\n")
+        let targetDepsStr = targetDependencies.map { "                    \($0)" }.joined(separator: ",\n")
+
+        // If we need to include copied sources, add an ActorSources target
+        let actorSourcesTarget = !detector.hasPackageSwift ? """
+
+                .target(
+                    name: "ActorSources",
+                    dependencies: [
+                        "Trebuchet"
+                    ]
+                ),
+        """ : ""
+
+        // Add ActorSources to dependencies if not using package
+        let finalTargetDeps = !detector.hasPackageSwift ?
+            targetDepsStr + ",\n                    \"ActorSources\"" :
+            targetDepsStr
+
+        return """
         // swift-tools-version: 6.0
         // Lambda bootstrap package for \(config.projectName)
 
@@ -238,26 +287,18 @@ public struct BootstrapGenerator {
             name: "\(config.projectName)-lambda",
             platforms: [.macOS(.v14)],
             dependencies: [
-                .package(url: "https://github.com/swift-server/swift-aws-lambda-runtime.git", from: "1.0.0"),
-                .package(url: "https://github.com/swift-server/swift-aws-lambda-events.git", from: "0.4.0"),
-                .package(url: "https://github.com/soto-project/soto.git", from: "7.0.0"),
-                .package(path: "../.."),  // Main project
+        \(dependenciesStr)
             ],
-            targets: [
+            targets: [\(actorSourcesTarget)
                 .executableTarget(
                     name: "Bootstrap",
                     dependencies: [
-                        .product(name: "AWSLambdaRuntime", package: "swift-aws-lambda-runtime"),
-                        .product(name: "AWSLambdaEvents", package: "swift-aws-lambda-events"),
-                        .product(name: "SotoDynamoDB", package: "soto"),
-                        .product(name: "SotoServiceDiscovery", package: "soto"),
-                        "Trebuchet",
-                        "TrebuchetCloud",
-                        "TrebuchetAWS",
+        \(finalTargetDeps)
                     ]
-                ),
+                )
             ]
         )
+
         """
     }
 }

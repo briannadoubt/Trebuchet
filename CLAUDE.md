@@ -20,6 +20,32 @@ Could you share the error message from the GitHub Actions output?
 
 **Only after seeing the actual error** should you propose a fix based on the specific failure.
 
+## Xcode Project Support
+
+Trebuchet CLI now supports both Swift Package Manager projects and Xcode projects.
+
+### Automatic Detection
+- Detects `.xcodeproj` or `.xcworkspace` files
+- Automatically adapts package generation and file copying
+- Works across all commands: `dev`, `generate server`, `deploy`
+
+### Automatic Dependency Analysis
+- Uses SwiftSyntax to analyze actor method signatures
+- Extracts all parameter and return types
+- Recursively discovers transitive dependencies
+- Prevents cascade through unrelated types (symbol-scoped analysis)
+
+### Documentation
+- `XCODE_PROJECT_SUPPORT.md` - User guide and feature overview
+- `DEPENDENCY_ANALYSIS.md` - How dependency analysis works
+- `CASCADE_PREVENTION.md` - Cascade prevention strategy
+- `COMPLEXITY_COMPARISON.md` - File-level vs symbol-level analysis
+- `SYMBOL_LEVEL_EXTRACTION.md` - Future enhancement design
+
+### Key Files
+- `Sources/TrebuchetCLI/Utilities/ProjectDetector.swift` - Project detection
+- `Sources/TrebuchetCLI/Discovery/DependencyAnalyzer.swift` - Dependency analysis
+
 ## Build Commands
 
 ```bash

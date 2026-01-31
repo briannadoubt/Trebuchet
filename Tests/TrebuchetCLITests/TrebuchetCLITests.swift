@@ -613,7 +613,8 @@ struct BuildSystemTests {
             discoveryNamespace: "ns"
         )
 
-        let packageSwift = generator.generatePackageSwift(config: config)
+        let projectPath = FileManager.default.currentDirectoryPath
+        let packageSwift = generator.generatePackageSwift(config: config, projectPath: projectPath)
 
         #expect(packageSwift.contains("// swift-tools-version: 6.0"))
         #expect(packageSwift.contains("name: \"my-actors-lambda\""))
