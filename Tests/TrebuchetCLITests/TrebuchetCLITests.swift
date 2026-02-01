@@ -46,6 +46,36 @@ struct ConfigurationTests {
         #expect(config.isolated == nil)
     }
 
+    @Test("CommandConfig initialization")
+    func commandConfigInit() {
+        let command = CommandConfig(title: "Run Locally", script: "trebuchet dev")
+        #expect(command.title == "Run Locally")
+        #expect(command.script == "trebuchet dev")
+    }
+
+    @Test("TrebuchetConfig with commands")
+    func configWithCommands() {
+        let config = TrebuchetConfig(
+            name: "test-project",
+            defaults: DefaultSettings(provider: "fly", region: "iad"),
+            commands: [
+                "runLocally": CommandConfig(title: "Run Locally", script: "trebuchet dev"),
+                "deploy": CommandConfig(title: "Deploy", script: "trebuchet deploy")
+            ]
+        )
+
+        #expect(config.commands?.count == 2)
+        #expect(config.commands?["runLocally"]?.title == "Run Locally")
+        #expect(config.commands?["runLocally"]?.script == "trebuchet dev")
+        #expect(config.commands?["deploy"]?.script == "trebuchet deploy")
+    }
+
+    @Test("TrebuchetConfig commands defaults to nil")
+    func configCommandsDefaultsToNil() {
+        let config = TrebuchetConfig(name: "test-project")
+        #expect(config.commands == nil)
+    }
+
     @Test("ResolvedConfig creation")
     func resolvedConfigCreation() {
         let actors = [
@@ -106,6 +136,59 @@ struct ConfigLoaderTests {
         #expect(yaml.contains("name: test-app"))
         #expect(yaml.contains("provider: fly"))
         #expect(yaml.contains("region: iad"))
+        #expect(yaml.contains("commands:"))
+        #expect(yaml.contains("runLocally:"))
+        #expect(yaml.contains("title: \"Run Locally\""))
+        #expect(yaml.contains("script: trebuchet dev"))
+    }
+
+    @Test("Parse YAML with commands section")
+    func parseYamlWithCommands() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: fly
+              region: iad
+              memory: 512
+              timeout: 30
+            actors: {}
+            commands:
+              runLocally:
+                title: "Run Locally"
+                script: trebuchet dev
+              deployStaging:
+                title: "Deploy Staging"
+                script: trebuchet deploy --environment staging
+            """
+
+        let loader = ConfigLoader()
+        let config = try loader.parse(yaml: yaml)
+
+        #expect(config.commands?.count == 2)
+        #expect(config.commands?["runLocally"]?.title == "Run Locally")
+        #expect(config.commands?["runLocally"]?.script == "trebuchet dev")
+        #expect(config.commands?["deployStaging"]?.title == "Deploy Staging")
+        #expect(config.commands?["deployStaging"]?.script == "trebuchet deploy --environment staging")
+    }
+
+    @Test("Parse YAML without commands section")
+    func parseYamlWithoutCommands() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 512
+              timeout: 30
+            actors: {}
+            """
+
+        let loader = ConfigLoader()
+        let config = try loader.parse(yaml: yaml)
+
+        #expect(config.commands == nil)
     }
 
     // MARK: - Validation Tests
@@ -487,6 +570,120 @@ struct TerminalTests {
 
 @Suite("Build System Tests")
 struct BuildSystemTests {
+
+    // MARK: - CommandPluginGenerator Tests
+
+    @Test("CommandPluginGenerator plugin target name from verb")
+    func commandPluginGeneratorTargetName() {
+        #expect(CommandPluginGenerator.pluginTargetName(from: "runLocally") == "RunLocallyPlugin")
+        #expect(CommandPluginGenerator.pluginTargetName(from: "deployStaging") == "DeployStagingPlugin")
+        #expect(CommandPluginGenerator.pluginTargetName(from: "runTests") == "RunTestsPlugin")
+    }
+
+    @Test("CommandPluginGenerator struct name from verb")
+    func commandPluginGeneratorStructName() {
+        #expect(CommandPluginGenerator.structName(from: "runLocally") == "RunLocallyCommand")
+        #expect(CommandPluginGenerator.structName(from: "deployStaging") == "DeployStagingCommand")
+    }
+
+    @Test("CommandPluginGenerator generates plugin files")
+    func commandPluginGeneratorGeneratesFiles() throws {
+        let fileManager = FileManager.default
+        let tempDir = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .path
+
+        defer {
+            try? fileManager.removeItem(atPath: tempDir)
+        }
+
+        let config = TrebuchetConfig(
+            name: "test-project",
+            defaults: DefaultSettings(provider: "fly", region: "iad"),
+            commands: [
+                "runLocally": CommandConfig(title: "Run Locally", script: "trebuchet dev"),
+                "deployStaging": CommandConfig(title: "Deploy Staging", script: "trebuchet deploy --environment staging")
+            ]
+        )
+
+        let generator = CommandPluginGenerator(terminal: Terminal(useColors: false))
+        let plugins = try generator.generate(
+            config: config,
+            outputPath: tempDir,
+            verbose: false
+        )
+
+        #expect(plugins.count == 2)
+
+        // Verify plugin files were created
+        #expect(fileManager.fileExists(atPath: "\(tempDir)/Plugins/DeployStagingPlugin/plugin.swift"))
+        #expect(fileManager.fileExists(atPath: "\(tempDir)/Plugins/RunLocallyPlugin/plugin.swift"))
+
+        // Verify "runLocally" plugin content
+        let runLocallyContent = try String(
+            contentsOfFile: "\(tempDir)/Plugins/RunLocallyPlugin/plugin.swift",
+            encoding: .utf8
+        )
+        #expect(runLocallyContent.contains("import PackagePlugin"))
+        #expect(runLocallyContent.contains("struct RunLocallyCommand: CommandPlugin"))
+        #expect(runLocallyContent.contains("trebuchet dev"))
+        #expect(runLocallyContent.contains("/bin/sh"))
+
+        // Verify "deployStaging" plugin content
+        let deployStagingContent = try String(
+            contentsOfFile: "\(tempDir)/Plugins/DeployStagingPlugin/plugin.swift",
+            encoding: .utf8
+        )
+        #expect(deployStagingContent.contains("struct DeployStagingCommand: CommandPlugin"))
+        #expect(deployStagingContent.contains("trebuchet deploy --environment staging"))
+    }
+
+    @Test("CommandPluginGenerator generates Package.swift snippet")
+    func commandPluginGeneratorPackageSnippet() {
+        let generator = CommandPluginGenerator(terminal: Terminal(useColors: false))
+        let plugins = [
+            GeneratedPlugin(
+                verb: "runLocally",
+                title: "Run Locally",
+                targetName: "RunLocallyPlugin",
+                script: "trebuchet dev"
+            )
+        ]
+
+        let snippet = generator.generatePackageSnippet(plugins: plugins)
+
+        #expect(snippet.contains("RunLocallyPlugin"))
+        #expect(snippet.contains("runLocally"))
+        #expect(snippet.contains("Run Locally"))
+        #expect(snippet.contains(".command("))
+        #expect(snippet.contains(".custom("))
+    }
+
+    @Test("CommandPluginGenerator handles empty commands")
+    func commandPluginGeneratorEmptyCommands() throws {
+        let fileManager = FileManager.default
+        let tempDir = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .path
+
+        defer {
+            try? fileManager.removeItem(atPath: tempDir)
+        }
+
+        let config = TrebuchetConfig(
+            name: "test-project",
+            defaults: DefaultSettings(provider: "fly", region: "iad")
+        )
+
+        let generator = CommandPluginGenerator(terminal: Terminal(useColors: false))
+        let plugins = try generator.generate(
+            config: config,
+            outputPath: tempDir,
+            verbose: false
+        )
+
+        #expect(plugins.isEmpty)
+    }
 
     @Test("BuildResult size description")
     func buildResultSize() {
