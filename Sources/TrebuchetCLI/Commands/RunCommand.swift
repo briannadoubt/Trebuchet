@@ -7,7 +7,7 @@ public struct RunCommand: AsyncParsableCommand {
         abstract: "Run a command defined in trebuchet.yaml"
     )
 
-    @Argument(help: "Name of the command to run (as defined in trebuchet.yaml commands section)")
+    @Argument(help: "Command verb to run (as defined in trebuchet.yaml commands section, e.g. 'runLocally')")
     public var name: String
 
     @Option(name: .long, help: "Path to trebuchet.yaml")
@@ -43,13 +43,13 @@ public struct RunCommand: AsyncParsableCommand {
             terminal.print("Unknown command: '\(name)'", style: .error)
             terminal.print("")
             terminal.print("Available commands:", style: .info)
-            for (cmdName, cmdConfig) in commands.sorted(by: { $0.key < $1.key }) {
-                terminal.print("  \(cmdName) → \(cmdConfig.script)", style: .dim)
+            for (verb, cmdConfig) in commands.sorted(by: { $0.key < $1.key }) {
+                terminal.print("  \(verb) (\(cmdConfig.title)) → \(cmdConfig.script)", style: .dim)
             }
             throw ExitCode.failure
         }
 
-        terminal.print("Running '\(name)'...", style: .header)
+        terminal.print("Running '\(command.title)'...", style: .header)
         terminal.print("  \(command.script)", style: .dim)
         terminal.print("")
 

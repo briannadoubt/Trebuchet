@@ -13,7 +13,7 @@ public struct CommandPluginGenerator {
     ///   - config: Trebuchet configuration containing commands
     ///   - outputPath: Root directory to generate plugins into (creates Plugins/ subdirectory)
     ///   - verbose: Enable verbose output
-    /// - Returns: List of generated plugin names and their verbs for Package.swift integration
+    /// - Returns: List of generated plugin metadata for Package.swift integration
     func generate(
         config: TrebuchetConfig,
         outputPath: String,
@@ -28,9 +28,8 @@ public struct CommandPluginGenerator {
 
         var generatedPlugins: [GeneratedPlugin] = []
 
-        for (name, command) in commands.sorted(by: { $0.key < $1.key }) {
-            let verb = Self.verbFromName(name)
-            let pluginTargetName = Self.pluginTargetName(from: name)
+        for (verb, command) in commands.sorted(by: { $0.key < $1.key }) {
+            let pluginTargetName = Self.pluginTargetName(from: verb)
             let pluginDir = "\(pluginsDir)/\(pluginTargetName)"
 
             try FileManager.default.createDirectory(
@@ -39,8 +38,8 @@ public struct CommandPluginGenerator {
             )
 
             let pluginSource = generatePluginSource(
-                name: name,
                 verb: verb,
+                title: command.title,
                 script: command.script
             )
 
@@ -55,9 +54,9 @@ public struct CommandPluginGenerator {
             }
 
             generatedPlugins.append(GeneratedPlugin(
-                name: name,
-                targetName: pluginTargetName,
                 verb: verb,
+                title: command.title,
+                targetName: pluginTargetName,
                 script: command.script
             ))
         }
@@ -91,7 +90,7 @@ public struct CommandPluginGenerator {
                 capability: .command(
                     intent: .custom(
                         verb: "\(plugin.verb)",
-                        description: "\(plugin.name)"
+                        description: "\(plugin.title)"
                     ),
                     permissions: [
                         .writeToPackageDirectory(
@@ -110,11 +109,11 @@ public struct CommandPluginGenerator {
     // MARK: - Plugin Source Generation
 
     private func generatePluginSource(
-        name: String,
         verb: String,
+        title: String,
         script: String
     ) -> String {
-        let structName = Self.structName(from: name)
+        let structName = Self.structName(from: verb)
 
         return """
         import Foundation
@@ -191,7 +190,7 @@ public struct CommandPluginGenerator {
             var description: String {
                 switch self {
                 case .scriptFailed(let exitCode):
-                    return "Command '\(name)' failed with exit code \\(exitCode)"
+                    return "\(title) failed with exit code \\(exitCode)"
                 }
             }
         }
@@ -201,31 +200,14 @@ public struct CommandPluginGenerator {
 
     // MARK: - Name Conversion Helpers
 
-    /// Convert a display name like "Run Locally" to a CLI verb like "run-locally"
-    static func verbFromName(_ name: String) -> String {
-        name
-            .lowercased()
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { !$0.isEmpty }
-            .joined(separator: "-")
+    /// Convert a verb like "runLocally" to a Swift-safe plugin target name like "RunLocallyPlugin"
+    static func pluginTargetName(from verb: String) -> String {
+        verb.prefix(1).uppercased() + verb.dropFirst() + "Plugin"
     }
 
-    /// Convert a display name to a Swift-safe plugin target name like "RunLocallyPlugin"
-    static func pluginTargetName(from name: String) -> String {
-        let words = name
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { !$0.isEmpty }
-            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-        return words.joined() + "Plugin"
-    }
-
-    /// Convert a display name to a Swift struct name like "RunLocallyCommand"
-    static func structName(from name: String) -> String {
-        let words = name
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { !$0.isEmpty }
-            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-        return words.joined() + "Command"
+    /// Convert a verb like "runLocally" to a Swift struct name like "RunLocallyCommand"
+    static func structName(from verb: String) -> String {
+        verb.prefix(1).uppercased() + verb.dropFirst() + "Command"
     }
 
     /// Escape a string for use inside a Swift string literal
@@ -239,8 +221,8 @@ public struct CommandPluginGenerator {
 
 /// Metadata about a generated command plugin
 public struct GeneratedPlugin: Sendable {
-    public let name: String
-    public let targetName: String
     public let verb: String
+    public let title: String
+    public let targetName: String
     public let script: String
 }

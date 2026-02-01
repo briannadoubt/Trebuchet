@@ -156,7 +156,8 @@ public struct GenerateCommandsCommand: AsyncParsableCommand {
             terminal.print("Add a commands section to your configuration:", style: .dim)
             terminal.print("", style: .dim)
             terminal.print("  commands:", style: .dim)
-            terminal.print("    \"Run Locally\":", style: .dim)
+            terminal.print("    runLocally:", style: .dim)
+            terminal.print("      title: \"Run Locally\"", style: .dim)
             terminal.print("      script: trebuchet dev", style: .dim)
             throw ExitCode.failure
         }

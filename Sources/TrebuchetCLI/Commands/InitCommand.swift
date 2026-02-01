@@ -77,7 +77,7 @@ public struct InitCommand: AsyncParsableCommand {
 
         // Add default commands
         config.commands = [
-            "Run Locally": CommandConfig(script: "trebuchet dev")
+            "runLocally": CommandConfig(title: "Run Locally", script: "trebuchet dev")
         ]
 
         // Generate YAML
@@ -165,14 +165,16 @@ public struct InitCommand: AsyncParsableCommand {
         // Commands section
         if let commands = config.commands, !commands.isEmpty {
             yaml += "commands:\n"
-            for (name, command) in commands.sorted(by: { $0.key < $1.key }) {
-                yaml += "  \"\(name)\":\n"
+            for (verb, command) in commands.sorted(by: { $0.key < $1.key }) {
+                yaml += "  \(verb):\n"
+                yaml += "    title: \"\(command.title)\"\n"
                 yaml += "    script: \(command.script)\n"
             }
         } else {
             yaml += """
             commands:
-              "Run Locally":
+              runLocally:
+                title: "Run Locally"
                 script: trebuchet dev
             """
         }
