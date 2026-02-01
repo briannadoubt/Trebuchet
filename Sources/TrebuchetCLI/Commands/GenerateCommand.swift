@@ -193,7 +193,7 @@ public struct GenerateCommandsCommand: AsyncParsableCommand {
 
         terminal.print("")
         for plugin in plugins {
-            terminal.print("  ✓ \(plugin.name) → swift package \(plugin.verb)", style: .success)
+            terminal.print("  ✓ \(plugin.title) → swift package \(plugin.verb)", style: .success)
         }
 
         terminal.print("")
