@@ -190,7 +190,7 @@ public struct CommandPluginGenerator {
             var description: String {
                 switch self {
                 case .scriptFailed(let exitCode):
-                    return "\(title) failed with exit code \\(exitCode)"
+                    return \(Self.escapeSwiftString(title)) + " failed with exit code \\(exitCode)"
                 }
             }
         }
@@ -215,6 +215,9 @@ public struct CommandPluginGenerator {
         let escaped = value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
         return "\"\(escaped)\""
     }
 }
