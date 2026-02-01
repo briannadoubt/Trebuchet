@@ -383,6 +383,10 @@ public struct ConfigLoader {
         discovery:
           type: dns
           namespace: \(projectName)
+
+        commands:
+          "Run Locally":
+            script: trebuchet dev
         """
     }
 }
