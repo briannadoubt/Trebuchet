@@ -385,7 +385,8 @@ public struct ConfigLoader {
           namespace: \(projectName)
 
         commands:
-          "Run Locally":
+          runLocally:
+            title: "Run Locally"
             script: trebuchet dev
         """
     }

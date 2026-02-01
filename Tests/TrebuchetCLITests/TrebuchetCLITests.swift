@@ -48,7 +48,8 @@ struct ConfigurationTests {
 
     @Test("CommandConfig initialization")
     func commandConfigInit() {
-        let command = CommandConfig(script: "trebuchet dev")
+        let command = CommandConfig(title: "Run Locally", script: "trebuchet dev")
+        #expect(command.title == "Run Locally")
         #expect(command.script == "trebuchet dev")
     }
 
@@ -58,14 +59,15 @@ struct ConfigurationTests {
             name: "test-project",
             defaults: DefaultSettings(provider: "fly", region: "iad"),
             commands: [
-                "Run Locally": CommandConfig(script: "trebuchet dev"),
-                "Deploy": CommandConfig(script: "trebuchet deploy")
+                "runLocally": CommandConfig(title: "Run Locally", script: "trebuchet dev"),
+                "deploy": CommandConfig(title: "Deploy", script: "trebuchet deploy")
             ]
         )
 
         #expect(config.commands?.count == 2)
-        #expect(config.commands?["Run Locally"]?.script == "trebuchet dev")
-        #expect(config.commands?["Deploy"]?.script == "trebuchet deploy")
+        #expect(config.commands?["runLocally"]?.title == "Run Locally")
+        #expect(config.commands?["runLocally"]?.script == "trebuchet dev")
+        #expect(config.commands?["deploy"]?.script == "trebuchet deploy")
     }
 
     @Test("TrebuchetConfig commands defaults to nil")
@@ -135,8 +137,9 @@ struct ConfigLoaderTests {
         #expect(yaml.contains("provider: fly"))
         #expect(yaml.contains("region: iad"))
         #expect(yaml.contains("commands:"))
-        #expect(yaml.contains("Run Locally"))
-        #expect(yaml.contains("trebuchet dev"))
+        #expect(yaml.contains("runLocally:"))
+        #expect(yaml.contains("title: \"Run Locally\""))
+        #expect(yaml.contains("script: trebuchet dev"))
     }
 
     @Test("Parse YAML with commands section")
@@ -151,9 +154,11 @@ struct ConfigLoaderTests {
               timeout: 30
             actors: {}
             commands:
-              "Run Locally":
+              runLocally:
+                title: "Run Locally"
                 script: trebuchet dev
-              "Deploy Staging":
+              deployStaging:
+                title: "Deploy Staging"
                 script: trebuchet deploy --environment staging
             """
 
@@ -161,8 +166,10 @@ struct ConfigLoaderTests {
         let config = try loader.parse(yaml: yaml)
 
         #expect(config.commands?.count == 2)
-        #expect(config.commands?["Run Locally"]?.script == "trebuchet dev")
-        #expect(config.commands?["Deploy Staging"]?.script == "trebuchet deploy --environment staging")
+        #expect(config.commands?["runLocally"]?.title == "Run Locally")
+        #expect(config.commands?["runLocally"]?.script == "trebuchet dev")
+        #expect(config.commands?["deployStaging"]?.title == "Deploy Staging")
+        #expect(config.commands?["deployStaging"]?.script == "trebuchet deploy --environment staging")
     }
 
     @Test("Parse YAML without commands section")
@@ -566,26 +573,17 @@ struct BuildSystemTests {
 
     // MARK: - CommandPluginGenerator Tests
 
-    @Test("CommandPluginGenerator verb from name")
-    func commandPluginGeneratorVerbFromName() {
-        #expect(CommandPluginGenerator.verbFromName("Run Locally") == "run-locally")
-        #expect(CommandPluginGenerator.verbFromName("Deploy Staging") == "deploy-staging")
-        #expect(CommandPluginGenerator.verbFromName("Run Tests") == "run-tests")
-        #expect(CommandPluginGenerator.verbFromName("my-custom-cmd") == "my-custom-cmd")
-        #expect(CommandPluginGenerator.verbFromName("Build & Deploy") == "build-deploy")
-    }
-
-    @Test("CommandPluginGenerator plugin target name from name")
+    @Test("CommandPluginGenerator plugin target name from verb")
     func commandPluginGeneratorTargetName() {
-        #expect(CommandPluginGenerator.pluginTargetName(from: "Run Locally") == "RunLocallyPlugin")
-        #expect(CommandPluginGenerator.pluginTargetName(from: "Deploy Staging") == "DeployStagingPlugin")
-        #expect(CommandPluginGenerator.pluginTargetName(from: "Run Tests") == "RunTestsPlugin")
+        #expect(CommandPluginGenerator.pluginTargetName(from: "runLocally") == "RunLocallyPlugin")
+        #expect(CommandPluginGenerator.pluginTargetName(from: "deployStaging") == "DeployStagingPlugin")
+        #expect(CommandPluginGenerator.pluginTargetName(from: "runTests") == "RunTestsPlugin")
     }
 
-    @Test("CommandPluginGenerator struct name from name")
+    @Test("CommandPluginGenerator struct name from verb")
     func commandPluginGeneratorStructName() {
-        #expect(CommandPluginGenerator.structName(from: "Run Locally") == "RunLocallyCommand")
-        #expect(CommandPluginGenerator.structName(from: "Deploy Staging") == "DeployStagingCommand")
+        #expect(CommandPluginGenerator.structName(from: "runLocally") == "RunLocallyCommand")
+        #expect(CommandPluginGenerator.structName(from: "deployStaging") == "DeployStagingCommand")
     }
 
     @Test("CommandPluginGenerator generates plugin files")
@@ -603,8 +601,8 @@ struct BuildSystemTests {
             name: "test-project",
             defaults: DefaultSettings(provider: "fly", region: "iad"),
             commands: [
-                "Run Locally": CommandConfig(script: "trebuchet dev"),
-                "Deploy Staging": CommandConfig(script: "trebuchet deploy --environment staging")
+                "runLocally": CommandConfig(title: "Run Locally", script: "trebuchet dev"),
+                "deployStaging": CommandConfig(title: "Deploy Staging", script: "trebuchet deploy --environment staging")
             ]
         )
 
@@ -621,7 +619,7 @@ struct BuildSystemTests {
         #expect(fileManager.fileExists(atPath: "\(tempDir)/Plugins/DeployStagingPlugin/plugin.swift"))
         #expect(fileManager.fileExists(atPath: "\(tempDir)/Plugins/RunLocallyPlugin/plugin.swift"))
 
-        // Verify "Run Locally" plugin content
+        // Verify "runLocally" plugin content
         let runLocallyContent = try String(
             contentsOfFile: "\(tempDir)/Plugins/RunLocallyPlugin/plugin.swift",
             encoding: .utf8
@@ -631,7 +629,7 @@ struct BuildSystemTests {
         #expect(runLocallyContent.contains("trebuchet dev"))
         #expect(runLocallyContent.contains("/bin/sh"))
 
-        // Verify "Deploy Staging" plugin content
+        // Verify "deployStaging" plugin content
         let deployStagingContent = try String(
             contentsOfFile: "\(tempDir)/Plugins/DeployStagingPlugin/plugin.swift",
             encoding: .utf8
@@ -645,9 +643,9 @@ struct BuildSystemTests {
         let generator = CommandPluginGenerator(terminal: Terminal(useColors: false))
         let plugins = [
             GeneratedPlugin(
-                name: "Run Locally",
+                verb: "runLocally",
+                title: "Run Locally",
                 targetName: "RunLocallyPlugin",
-                verb: "run-locally",
                 script: "trebuchet dev"
             )
         ]
@@ -655,7 +653,7 @@ struct BuildSystemTests {
         let snippet = generator.generatePackageSnippet(plugins: plugins)
 
         #expect(snippet.contains("RunLocallyPlugin"))
-        #expect(snippet.contains("run-locally"))
+        #expect(snippet.contains("runLocally"))
         #expect(snippet.contains("Run Locally"))
         #expect(snippet.contains(".command("))
         #expect(snippet.contains(".custom("))

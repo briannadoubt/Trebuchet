@@ -157,11 +157,18 @@ public struct DiscoveryConfig: Codable, Sendable {
 }
 
 /// Configuration for a custom command (generates a Swift Package Command Plugin)
+///
+/// The dictionary key in `commands` is the verb used for CLI invocation
+/// (e.g. `swift package runLocally`), while `title` is the human-readable name.
 public struct CommandConfig: Codable, Sendable {
+    /// Human-readable display name for the command
+    public var title: String
+
     /// The shell script to execute when this command is run
     public var script: String
 
-    public init(script: String) {
+    public init(title: String, script: String) {
+        self.title = title
         self.script = script
     }
 }
