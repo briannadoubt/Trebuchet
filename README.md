@@ -112,7 +112,7 @@ try await room.join(player: me)  // Looks local, works remotely!
 
 ## Local Development
 
-Run your actors locally with automatic discovery and hot reload:
+Run your actors locally with automatic dependency management:
 
 ```bash
 # Start local development server
@@ -121,6 +121,9 @@ trebuchet dev --port 8080
 # Customize host and port
 trebuchet dev --host 0.0.0.0 --port 3000
 
+# Skip automatic Docker containers
+trebuchet dev --no-deps
+
 # Enable verbose output
 trebuchet dev --verbose
 ```
@@ -128,10 +131,31 @@ trebuchet dev --verbose
 The `dev` command:
 - Discovers all `@Trebuchet` actors in your project
 - **Works with both Swift Package Manager and Xcode projects**
+- **Automatically starts required Docker containers** (databases, caches, etc.)
 - Automatically analyzes and copies type dependencies
 - Builds and runs a local HTTP server
 - Exposes actors at `http://localhost:8080/invoke`
 - Provides health check at `http://localhost:8080/health`
+
+### Automatic Dependency Management
+
+Declare dependencies in your `trebuchet.yaml` and they'll start automatically:
+
+```yaml
+name: my-app
+state:
+  type: surrealdb  # Auto-starts SurrealDB container
+
+dependencies:
+  - name: redis
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      port: 6379
+```
+
+Supports auto-detection for SurrealDB, PostgreSQL, and DynamoDB (LocalStack).
 
 ## Xcode Project Support
 
