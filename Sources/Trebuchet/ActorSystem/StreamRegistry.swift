@@ -11,8 +11,7 @@ public actor StreamRegistry {
             let metadataStr = metadata.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
             output += " | \(metadataStr)"
         }
-        fputs(output + "\n", stderr)
-        fflush(stderr)
+        FileHandle.standardError.write(Data((output + "\n").utf8))
         #endif
     }
 
