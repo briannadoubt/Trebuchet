@@ -50,22 +50,14 @@ public struct ActorDiscovery {
             return []
         }
 
-        // Directories to skip during traversal
-        let skipDirectories: Set<String> = [
-            ".build",
-            ".trebuchet",
-            ".git",
-            ".swiftpm",
-            "DerivedData",
-            "Pods",
-            ".xcodeproj",
-            ".xcworkspace"
-        ]
+        // Directories to skip
+        let skipDirectories: Set<String> = [".build", ".git", ".swiftpm", "DerivedData", ".trebuchet"]
 
         while let file = enumerator.nextObject() as? String {
-            // Skip files in excluded directories
-            let pathComponents = file.split(separator: "/").map(String.init)
-            if pathComponents.contains(where: { skipDirectories.contains($0) }) {
+            // Check if this path contains any skip directories
+            let components = file.components(separatedBy: "/")
+            if components.contains(where: { skipDirectories.contains($0) }) {
+                enumerator.skipDescendants()
                 continue
             }
 

@@ -176,11 +176,14 @@ public final class TrebuchetServer: Sendable {
         method: String,
         observe: @escaping @Sendable (T) async -> AsyncStream<State>
     ) async {
-        await configureStreaming(for: protocolType) { envelope, actor in
-            guard envelope.targetIdentifier == method else {
-                throw TrebuchetError.remoteInvocationFailed("Unknown streaming method: \(envelope.targetIdentifier)")
-            }
-            return Self.encodeStream(await observe(actor))
+        // Register handler with method name check
+        await streamingHandlers.registerTypedWithMethod(method: method) { envelope, actor in
+            print("[TrebuchetServer] 🌊 Handler called for method '\(method)' on actor type '\(T.self)'")
+            let stream = await observe(actor)
+            print("[TrebuchetServer] 🌊 Got stream, encoding...")
+            let encoded = Self.encodeStream(stream)
+            print("[TrebuchetServer] 🌊 Stream encoded, returning")
+            return encoded
         }
     }
 
@@ -463,7 +466,11 @@ public final class TrebuchetServer: Sendable {
             try await respond(startData)
 
             // Execute the streaming method through the actor system
+            print("🟡 [Server] Executing streaming target: \(envelope.targetIdentifier)")
+            print("🟡 [Server] About to call executeStreamingTarget...")
             let stream = try await actorSystem.executeStreamingTarget(envelope)
+            print("🟡 [Server] executeStreamingTarget returned!")
+            print("🟡 [Server] Stream obtained, starting iteration...")
 
             // Run stream iteration in background task to avoid blocking the message handler
             let buffer = streamBuffer
@@ -471,8 +478,10 @@ public final class TrebuchetServer: Sendable {
             let filter = envelope.streamFilter
             Task {
                 do {
+                    print("🟡 [Server] Stream iteration task started")
                     var sequenceNumber: UInt64 = 0
                     for try await data in stream {
+                        print("🟡 [Server] Received data from stream, sequence: \(sequenceNumber + 1)")
                         // Apply filter before sending (if specified)
                         if let filter = filter {
                             let passes = await filterStateManager.matches(filter, data: data, streamID: streamID)
@@ -498,6 +507,7 @@ public final class TrebuchetServer: Sendable {
                     }
 
                     // Stream completed successfully
+                    print("🟡 [Server] Stream iteration completed normally (no more data)")
                     let endEnvelope = TrebuchetEnvelope.streamEnd(
                         StreamEndEnvelope(streamID: streamID, reason: .completed)
                     )
@@ -613,9 +623,33 @@ private actor StreamingHandlerRegistry {
     /// The type checking happens within the closure, avoiding metatype transfer
     func registerTyped<T>(handler: @escaping @Sendable (InvocationEnvelope, T) async throws -> AsyncStream<Data>) {
         handlers.append { envelope, actor in
+            print("[StreamingHandlerRegistry] 🔷 Trying to cast actor of type '\(type(of: actor))' to '\(T.self)'")
+            guard let typedActor = actor as? T else {
+                print("[StreamingHandlerRegistry] ❌ Cast failed, returning nil")
+                return nil
+            }
+            print("[StreamingHandlerRegistry] ✅ Cast succeeded, calling handler")
+            return try await handler(envelope, typedActor)
+        }
+    }
+
+    /// Register a type-specific streaming handler with method name checking
+    /// This ensures that handlers are only invoked for the correct method name
+    func registerTypedWithMethod<T>(
+        method: String,
+        handler: @escaping @Sendable (InvocationEnvelope, T) async throws -> AsyncStream<Data>
+    ) {
+        handlers.append { envelope, actor in
+            // Check type first
             guard let typedActor = actor as? T else {
                 return nil
             }
+
+            // Check method name
+            guard envelope.targetIdentifier == method else {
+                return nil
+            }
+
             return try await handler(envelope, typedActor)
         }
     }

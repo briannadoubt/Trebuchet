@@ -348,6 +348,8 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
                     // The observe method name follows the pattern: observe + PropertyName
                     methodName = "observe\(propertyName.prefix(1).uppercased())\(propertyName.dropFirst())"
 
+                    print("🔵 [@ObservedActor] Calling remoteCallStream for \(methodName) on \(actor.id.id)")
+
                     // Create the invocation through the actor system
                     var encoder = actor.actorSystem.makeInvocationEncoder()
 
@@ -358,6 +360,8 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
                         invocation: &encoder,
                         returning: State.self
                     )
+
+                    print("🔵 [@ObservedActor] Stream created with ID: \(streamID)")
 
                     // The dataStream is already typed as AsyncStream<State>
                     stream = dataStream
@@ -375,10 +379,13 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
                 )
 
                 // Iterate the stream and update state
+                print("🔵 [@ObservedActor] Starting stream iteration...")
                 for await newState in stream {
                     guard !Task.isCancelled else {
+                        print("🔵 [@ObservedActor] Stream iteration cancelled")
                         break
                     }
+                    print("🔵 [@ObservedActor] Received state update from stream!")
                     currentState = newState
 
                     // Update checkpoint sequence number
@@ -391,6 +398,7 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
                         )
                     }
                 }
+                print("🔵 [@ObservedActor] Stream iteration ended")
             } catch is CancellationError {
                 // Task was cancelled - this is expected, don't set error
                 return

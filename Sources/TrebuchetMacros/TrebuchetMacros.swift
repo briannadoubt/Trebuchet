@@ -8,6 +8,8 @@ import SwiftSyntaxMacros
 /// 2. Adding conformance to `TrebuchetActor` protocol
 /// 3. Scanning for @StreamedState properties and generating observe methods
 /// 4. Providing integration with TrebuchetServer/TrebuchetClient
+///
+/// Note: Streaming protocols must be manually created for each actor.
 public struct TrebuchetMacro: MemberMacro, ExtensionMacro {
     public static func expansion(
         of node: AttributeSyntax,
@@ -69,19 +71,24 @@ public struct TrebuchetMacro: MemberMacro, ExtensionMacro {
             let observeMethodName = "observe\(propertyName.prefix(1).uppercased())\(propertyName.dropFirst())"
             let cleanupMethodName = "_cleanup\(propertyName.prefix(1).uppercased())\(propertyName.dropFirst())Continuation"
 
-            // Generate actor-isolated async observe method with cleanup
+            // Generate actor-isolated async observe method
+            // Actor isolation ensures safe access to continuations dictionary
             let observeMethod: DeclSyntax = """
                 public func \(raw: observeMethodName)() async -> AsyncStream<\(propertyType)> {
                     let id = UUID()
-                    _\(raw: propertyName)_continuations[id] = nil // Reserve slot
+                    print("🟠 [Actor.\(raw: observeMethodName)] Creating stream with ID: \\(id)")
 
                     return AsyncStream { continuation in
+                        print("🟠 [Actor.\(raw: observeMethodName)] Stream continuation created for ID: \\(id)")
                         _\(raw: propertyName)_continuations[id] = continuation
+                        print("🟠 [Actor.\(raw: observeMethodName)] Stored continuation, count: \\(_\(raw: propertyName)_continuations.count)")
                         continuation.yield(_\(raw: propertyName)_storage)
+                        print("🟠 [Actor.\(raw: observeMethodName)] Yielded initial value")
 
-                        continuation.onTermination = { @Sendable [id, self] _ in
+                        continuation.onTermination = { @Sendable [weak self, id] _ in
+                            print("🟠 [Actor.\(raw: observeMethodName)] Stream \\(id) terminating")
                             Task {
-                                try? await self.\(raw: cleanupMethodName)(id)
+                                try? await self?.\(raw: cleanupMethodName)(id)
                             }
                         }
                     }
@@ -102,8 +109,10 @@ public struct TrebuchetMacro: MemberMacro, ExtensionMacro {
         // Generate streaming method enum if there are streaming properties
         if !streamedProperties.isEmpty {
             var enumCases: [String] = []
+
             for (propertyName, _) in streamedProperties {
-                let observeMethodName = "observe\(propertyName.prefix(1).uppercased())\(propertyName.dropFirst())"
+                let capitalizedName = propertyName.prefix(1).uppercased() + propertyName.dropFirst()
+                let observeMethodName = "observe\(capitalizedName)"
                 enumCases.append("        case \(observeMethodName)")
             }
 
@@ -134,15 +143,16 @@ public struct TrebuchetMacro: MemberMacro, ExtensionMacro {
         }
 
         // Add TrebuchetActor conformance via extension
-        let extensionDecl: DeclSyntax = """
+        let trebuchetActorExtension: DeclSyntax = """
             extension \(type.trimmed): TrebuchetActor {}
             """
 
-        guard let extensionDeclSyntax = extensionDecl.as(ExtensionDeclSyntax.self) else {
+        guard let trebuchetActorExtensionSyntax = trebuchetActorExtension.as(ExtensionDeclSyntax.self) else {
             return []
         }
 
-        return [extensionDeclSyntax]
+        // Streaming protocol conformance is handled by PeerMacro to avoid ordering issues
+        return [trebuchetActorExtensionSyntax]
     }
 }
 
@@ -219,6 +229,7 @@ public struct StreamedStateMacro: AccessorMacro, PeerMacro {
         // Generate notification method
         peers.append("""
             private func _notify\(raw: propertyName.prefix(1).uppercased())\(raw: propertyName.dropFirst())Change() {
+                print("🟠 [Actor.notify\(raw: propertyName.prefix(1).uppercased())\(raw: propertyName.dropFirst())] Notifying \\(_\(raw: propertyName)_continuations.count) continuations")
                 for continuation in _\(raw: propertyName)_continuations.values {
                     continuation?.yield(_\(raw: propertyName)_storage)
                 }

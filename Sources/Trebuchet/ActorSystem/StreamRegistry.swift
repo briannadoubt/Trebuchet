@@ -4,7 +4,7 @@ import Foundation
 /// Manages active streams and their continuations
 public actor StreamRegistry {
     /// State for an active stream
-    private struct StreamState {
+    private class StreamState {
         var continuation: AsyncStream<Data>.Continuation?
         var sequenceNumber: UInt64
         let decoder: JSONDecoder
@@ -24,7 +24,7 @@ public actor StreamRegistry {
             self.lastActivity = Date()
         }
 
-        mutating func buffer(_ data: Data, sequence: UInt64, maxBufferSize: Int) {
+        func buffer(_ data: Data, sequence: UInt64, maxBufferSize: Int) {
             recentData.append((sequence, data))
             // Keep only recent items
             if recentData.count > maxBufferSize {
@@ -32,7 +32,7 @@ public actor StreamRegistry {
             }
         }
 
-        mutating func updateActivity() {
+        func updateActivity() {
             lastActivity = Date()
         }
     }
@@ -81,6 +81,8 @@ public actor StreamRegistry {
 
         let streamID = UUID()
 
+        print("🟢 [StreamRegistry] Creating remote stream with ID: \(streamID) for callID: \(callID)")
+
         // Pre-register the stream before creating the AsyncStream
         // This prevents race conditions where data arrives before registration
         let state = StreamState(streamID: streamID, callID: callID)
@@ -88,13 +90,24 @@ public actor StreamRegistry {
         callIDToStreamID[callID] = streamID
 
         let stream = AsyncStream<Data> { continuation in
-            Task {
-                self.registerContinuation(continuation, streamID: streamID)
+            print("🟢 [StreamRegistry] Registering continuation for stream \(streamID)")
 
-                continuation.onTermination = { @Sendable [weak self] _ in
-                    Task {
-                        await self?.removeStream(streamID: streamID)
-                    }
+            // CRITICAL: Register continuation SYNCHRONOUSLY
+            // We can't call the async registerContinuation method here because we're in the StreamContinuation closure
+            // Instead, we need to register directly
+
+            // Update activity timestamp
+            state.updateActivity()
+
+            // Set continuation IMMEDIATELY (synchronous)
+            state.continuation = continuation
+
+            // No pending data at this point since this is a new stream
+
+            continuation.onTermination = { @Sendable [weak self] _ in
+                print("🟢 [StreamRegistry] Stream \(streamID) terminated")
+                Task {
+                    await self?.removeStream(streamID: streamID)
                 }
             }
         }
@@ -117,13 +130,23 @@ public actor StreamRegistry {
         callIDToStreamID[callID] = streamID
 
         let stream = AsyncStream<Data> { continuation in
-            Task {
-                self.registerContinuation(continuation, streamID: streamID)
+            // CRITICAL: Register continuation SYNCHRONOUSLY
+            // Update activity timestamp
+            state.updateActivity()
 
-                continuation.onTermination = { @Sendable [weak self] _ in
-                    Task {
-                        await self?.removeStream(streamID: streamID)
-                    }
+            // Set continuation IMMEDIATELY (synchronous)
+            state.continuation = continuation
+
+            // Flush any pending data that arrived before the continuation was ready
+            let pendingData = state.pendingData
+            for (_, data) in pendingData {
+                continuation.yield(data)
+            }
+            state.pendingData.removeAll()
+
+            continuation.onTermination = { @Sendable [weak self] _ in
+                Task {
+                    await self?.removeStream(streamID: streamID)
                 }
             }
         }
@@ -154,26 +177,38 @@ public actor StreamRegistry {
 
     /// Handle a StreamStartEnvelope from the server
     public func handleStreamStart(_ envelope: StreamStartEnvelope) {
+        print("🟢 [StreamRegistry] Received StreamStart: callID=\(envelope.callID), serverStreamID=\(envelope.streamID)")
+
         // The server sends its own streamID, but we pre-registered with a client-generated streamID
-        // We need to remap from our streamID to the server's streamID
+        // We need to create an alias from the server's streamID to our existing stream state
 
         guard let clientStreamID = callIDToStreamID[envelope.callID] else {
+            print("🟢 [StreamRegistry] ⚠️  No client stream found for callID \(envelope.callID)")
             return
         }
 
-        guard let state = streams.removeValue(forKey: clientStreamID) else {
+        print("🟢 [StreamRegistry] Creating alias: serverStreamID \(envelope.streamID) -> clientStreamID \(clientStreamID)")
+
+        guard let state = streams[clientStreamID] else {
+            print("🟢 [StreamRegistry] ⚠️  No stream state found for clientStreamID \(clientStreamID)")
             return
         }
 
-        // Re-register under the server's streamID
+        // Add an alias under the server's streamID (don't remove the client entry!)
+        // Both IDs now point to the same stream state
         streams[envelope.streamID] = state
+        // Keep the mapping for future data that will use the server's streamID
         callIDToStreamID[envelope.callID] = envelope.streamID
+        print("🟢 [StreamRegistry] Stream aliased successfully (both IDs active)")
     }
 
     /// Handle a StreamDataEnvelope and yield to the appropriate stream
     public func handleStreamData(_ envelope: StreamDataEnvelope) {
+        print("🟢 [StreamRegistry] Received StreamDataEnvelope for stream \(envelope.streamID), sequence \(envelope.sequenceNumber)")
+
         guard streams[envelope.streamID] != nil else {
             // Stream not found, possibly already terminated
+            print("🟢 [StreamRegistry] ⚠️  Stream not found!")
             return
         }
 
@@ -181,6 +216,7 @@ public actor StreamRegistry {
         if let currentSeq = streams[envelope.streamID]?.sequenceNumber,
            envelope.sequenceNumber <= currentSeq {
             // Duplicate or out-of-order message, ignore
+            print("🟢 [StreamRegistry] Ignoring duplicate/out-of-order data")
             return
         }
 
@@ -195,19 +231,25 @@ public actor StreamRegistry {
 
         // If continuation is ready, yield immediately
         if let continuation = streams[envelope.streamID]?.continuation {
+            print("🟢 [StreamRegistry] Yielding data to continuation")
             continuation.yield(envelope.data)
         } else {
             // Continuation not ready yet, buffer the data
+            print("🟢 [StreamRegistry] Buffering data (continuation not ready)")
             streams[envelope.streamID]?.pendingData.append((envelope.sequenceNumber, envelope.data))
         }
     }
 
     /// Handle a StreamEndEnvelope and finish the stream
     public func handleStreamEnd(_ envelope: StreamEndEnvelope) {
+        print("🟢 [StreamRegistry] Received StreamEnd for stream \(envelope.streamID), reason: \(envelope.reason)")
+
         guard let state = streams[envelope.streamID] else {
+            print("🟢 [StreamRegistry] ⚠️  No stream found for StreamEnd")
             return
         }
 
+        print("🟢 [StreamRegistry] Finishing stream continuation")
         state.continuation?.finish()
         removeStreamInternal(streamID: envelope.streamID)
     }

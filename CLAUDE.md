@@ -10,15 +10,55 @@ When CI tests fail:
 1. **DO NOT guess** what the error might be
 2. **DO NOT make speculative fixes** without seeing actual error logs
 3. **ALWAYS ask the user** to provide the specific error message from the CI logs
-4. **WAIT for actual error details** before proposing solutions
+4. **CHECK for actual error details** before proposing solutions using the `gh` CLI tool.
 
 Example response to CI failure:
 ```
 I see the CI failed. To fix this properly, I need to see the actual error from the logs.
-Could you share the error message from the GitHub Actions output?
+```
+‰
+**Only after seeing the actual error** should you propose a fix based on the specific failure.
+
+## Task Management and Monitoring
+
+**CRITICAL: Use proper task management tools instead of sleep.**
+
+When running and monitoring long-running processes (like dev servers):
+
+### DO NOT:
+- Use `sleep` commands to wait for processes
+- Poll files repeatedly with tail commands
+- Run commands in foreground and block execution
+
+### DO:
+- Use `run_in_background: true` parameter for Bash commands
+- Use `TaskOutput` tool to check on background tasks without blocking
+- Use Task tool to delegate work to specialized agents
+- Monitor task progress through the task output files
+- Let background tasks run while continuing other work
+
+### Example Pattern:
+```swift
+// Start server in background
+Bash(command: "start-server", run_in_background: true)
+// Returns immediately with task_id
+
+// Continue other work...
+
+// Check on it later (non-blocking)
+TaskOutput(task_id: "abc123", block: false)
+
+// Or wait for completion when needed
+TaskOutput(task_id: "abc123", block: true, timeout: 60000)
 ```
 
-**Only after seeing the actual error** should you propose a fix based on the specific failure.
+### Delegation with Task Tool:
+- Use Task tool with appropriate subagent_type for complex workflows
+- Agents can run in parallel when using multiple Task calls in one message
+- Each agent has access to specific tools based on its role
+- Use `run_in_background: true` for agents that take time
+
+For detailed information on task management, subtasks, and agent delegation patterns, consult the claude-code-guide agent.
 
 ## Xcode Project Support
 

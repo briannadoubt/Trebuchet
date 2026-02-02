@@ -65,13 +65,14 @@ public struct ServerGenerator {
         // Generate main.swift
         terminal.print("  Generating main.swift...", style: .dim)
         let actualModuleName = detector.hasPackageSwift ? projectName : "ActorSources"
+        let serverPackageName = config.packageName ?? "TrebuchetAutoServer"
         let mainSwift = generateMainSwift(
             actors: actors,
             projectName: actualModuleName,
             config: config
         )
 
-        let sourcesDir = "\(outputPath)/Sources/TrebuchetAutoServer"
+        let sourcesDir = "\(outputPath)/Sources/\(serverPackageName)"
         try FileManager.default.createDirectory(
             atPath: sourcesDir,
             withIntermediateDirectories: true
@@ -139,12 +140,15 @@ public struct ServerGenerator {
         // Determine if we need PostgreSQL
         let needsPostgreSQL = config.state?.type == "postgresql" || config.state?.type == "postgres"
 
+        // Get package name from config or use default
+        let serverPackageName = config.packageName ?? "TrebuchetAutoServer"
+
         // Calculate relative path from output to project
         let relativePath = projectPath
 
         return detector.generateStandalonePackageManifest(
-            packageName: "TrebuchetAutoServer",
-            targetName: "TrebuchetAutoServer",
+            packageName: serverPackageName,
+            targetName: serverPackageName,
             moduleName: projectName,
             needsPostgreSQL: needsPostgreSQL,
             relativePath: relativePath,

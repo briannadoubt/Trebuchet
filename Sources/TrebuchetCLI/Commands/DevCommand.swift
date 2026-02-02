@@ -29,13 +29,59 @@ public struct DevCommand: AsyncParsableCommand {
         terminal.print("Starting local development server...", style: .header)
         terminal.print("")
 
+        // Check if port is already in use
+        let portCheckProcess = Process()
+        portCheckProcess.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        portCheckProcess.arguments = ["lsof", "-i", ":\(port)"]
+
+        let pipe = Pipe()
+        portCheckProcess.standardOutput = pipe
+        portCheckProcess.standardError = FileHandle.nullDevice
+
+        try portCheckProcess.run()
+        portCheckProcess.waitUntilExit()
+
+        if portCheckProcess.terminationStatus == 0 {
+            // Port is in use
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+
+            terminal.print("Error: Port \(port) is already in use.", style: .error)
+            terminal.print("")
+            terminal.print("Process using the port:", style: .info)
+            terminal.print(output, style: .dim)
+            terminal.print("")
+            terminal.print("To review the process:", style: .info)
+            terminal.print("  lsof -i:\(port)", style: .dim)
+            terminal.print("")
+            terminal.print("To kill the process and try again:", style: .info)
+            terminal.print("  lsof -ti:\(port) | xargs kill -9", style: .dim)
+            terminal.print("")
+
+            throw ExitCode.failure
+        }
+
         // Try to load config
         let configLoader = ConfigLoader()
         let config = try? configLoader.load(from: cwd)
 
+        // Get package name from config, or use default
+        let packageName = config?.packageName ?? "LocalRunner"
+
+        // Get output directory from config, or use default
+        let outputDirectory = config?.outputDirectory ?? ".trebuchet"
+
         // Discover all actors
+        terminal.print("Discovering actors in \(cwd)...", style: .dim)
         let discovery = ActorDiscovery()
-        let allActors = try discovery.discover(in: cwd)
+        let allActors: [ActorMetadata]
+        do {
+            allActors = try discovery.discover(in: cwd)
+            terminal.print("Found \(allActors.count) actors", style: .dim)
+        } catch {
+            terminal.print("Error during discovery: \(error)", style: .error)
+            throw error
+        }
 
         if allActors.isEmpty {
             terminal.print("No distributed actors found.", style: .warning)
@@ -88,16 +134,72 @@ public struct DevCommand: AsyncParsableCommand {
             buildProcess.arguments = ["swift", "build"]
             buildProcess.currentDirectoryURL = URL(fileURLWithPath: cwd)
 
-            if !verbose {
-                buildProcess.standardOutput = FileHandle.nullDevice
-                buildProcess.standardError = FileHandle.nullDevice
+            let outputPipe = Pipe()
+            let errorPipe = Pipe()
+
+            if verbose {
+                buildProcess.standardOutput = FileHandle.standardOutput
+                buildProcess.standardError = FileHandle.standardError
+            } else {
+                buildProcess.standardOutput = outputPipe
+                buildProcess.standardError = errorPipe
             }
 
             try buildProcess.run()
-            buildProcess.waitUntilExit()
+
+            // Wait with timeout to prevent hanging indefinitely
+            let buildTimeout: TimeInterval = 300 // 5 minutes
+            let timedOut = try await withThrowingTaskGroup(of: Bool.self) { group in
+                // Task to wait for process completion
+                group.addTask {
+                    await Task.detached {
+                        buildProcess.waitUntilExit()
+                    }.value
+                    return false
+                }
+
+                // Timeout task
+                group.addTask {
+                    try await Task.sleep(nanoseconds: UInt64(buildTimeout * 1_000_000_000))
+                    return true
+                }
+
+                // Return result of whichever completes first
+                let result = try await group.next() ?? false
+                group.cancelAll()
+                return result
+            }
+
+            if timedOut {
+                buildProcess.terminate()
+                terminal.print("")
+                terminal.print("Project build timed out after \(Int(buildTimeout)) seconds", style: .error)
+                terminal.print("The build process may be hanging. Try:", style: .dim)
+                terminal.print("  • Running with --verbose to see build progress", style: .dim)
+                terminal.print("  • Checking for build errors in your project", style: .dim)
+                terminal.print("  • Running 'swift build' directly to diagnose the issue", style: .dim)
+                terminal.print("")
+                throw ExitCode.failure
+            }
 
             guard buildProcess.terminationStatus == 0 else {
-                terminal.print("Build failed.", style: .error)
+                terminal.print("")
+                terminal.print("Project build failed:", style: .error)
+                terminal.print("")
+
+                // Show the captured error output
+                if !verbose {
+                    let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    if let errorOutput = String(data: errorData, encoding: .utf8), !errorOutput.isEmpty {
+                        print(errorOutput)
+                    }
+
+                    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    if let output = String(data: outputData, encoding: .utf8), !output.isEmpty {
+                        print(output)
+                    }
+                }
+
                 throw ExitCode.failure
             }
 
@@ -108,13 +210,13 @@ public struct DevCommand: AsyncParsableCommand {
         // Generate development runner package
         terminal.print("Generating development server...", style: .dim)
 
-        let devPath = "\(cwd)/.trebuchet"
+        let devPath = "\(cwd)/\(outputDirectory)"
 
-        // Clean .trebuchet to avoid stale dependency issues
+        // Clean output directory to avoid stale dependency issues
         // TODO: Optimize to only clean sources once dependency resolution is stable
         if FileManager.default.fileExists(atPath: devPath) {
             if verbose {
-                terminal.print("  Cleaning old .trebuchet directory...", style: .dim)
+                terminal.print("  Cleaning old \(outputDirectory) directory...", style: .dim)
             }
             try FileManager.default.removeItem(atPath: devPath)
         }
@@ -132,6 +234,7 @@ public struct DevCommand: AsyncParsableCommand {
             // For Xcode projects, copy actor sources and don't depend on parent
             // Use the project's actual module name to ensure type identity matches between client and server
             packageManifest = generateXcodeProjectPackageManifest(
+                packageName: packageName,
                 moduleName: moduleName,
                 localTrebuchetPath: local
             )
@@ -148,6 +251,7 @@ public struct DevCommand: AsyncParsableCommand {
         } else {
             // For Swift Packages, use existing approach
             packageManifest = generatePackageManifest(
+                packageName: packageName,
                 projectName: moduleName,
                 parentPackageName: parentPackageName,
                 localTrebuchetPath: local
@@ -162,7 +266,7 @@ public struct DevCommand: AsyncParsableCommand {
         )
 
         // Generate main.swift
-        let sourcesPath = "\(devPath)/Sources/LocalRunner"
+        let sourcesPath = "\(devPath)/Sources/\(packageName)"
         try FileManager.default.createDirectory(
             atPath: sourcesPath,
             withIntermediateDirectories: true
@@ -183,21 +287,125 @@ public struct DevCommand: AsyncParsableCommand {
         terminal.print("✓ Runner generated", style: .success)
         terminal.print("")
 
+        // Build first (capture output to show only on error)
+        if !verbose {
+            terminal.print("Building server...", style: .dim)
+        }
+
+        let buildProcess = Process()
+        buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        buildProcess.arguments = ["swift", "build", "--package-path", devPath]
+        buildProcess.currentDirectoryURL = URL(fileURLWithPath: cwd)
+
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+
+        if verbose {
+            buildProcess.standardOutput = FileHandle.standardOutput
+            buildProcess.standardError = FileHandle.standardError
+        } else {
+            buildProcess.standardOutput = outputPipe
+            buildProcess.standardError = errorPipe
+        }
+
+        try buildProcess.run()
+
+        // Wait with timeout to prevent hanging indefinitely
+        let serverBuildTimeout: TimeInterval = 300 // 5 minutes
+        let timedOut = try await withThrowingTaskGroup(of: Bool.self) { group in
+            // Task to wait for process completion
+            group.addTask {
+                await Task.detached {
+                    buildProcess.waitUntilExit()
+                }.value
+                return false
+            }
+
+            // Timeout task
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(serverBuildTimeout * 1_000_000_000))
+                return true
+            }
+
+            // Return result of whichever completes first
+            let result = try await group.next() ?? false
+            group.cancelAll()
+            return result
+        }
+
+        if timedOut {
+            buildProcess.terminate()
+            terminal.print("")
+            terminal.print("Server build timed out after \(Int(serverBuildTimeout)) seconds", style: .error)
+            terminal.print("The build process may be hanging. Try:", style: .dim)
+            terminal.print("  • Running with --verbose to see build progress", style: .dim)
+            terminal.print("  • Checking the generated package at: \(devPath)", style: .dim)
+            terminal.print("  • Running 'swift build --package-path \(devPath)' directly", style: .dim)
+            terminal.print("")
+            throw ExitCode.failure
+        }
+
+        guard buildProcess.terminationStatus == 0 else {
+            terminal.print("")
+            terminal.print("Server build failed:", style: .error)
+            terminal.print("")
+
+            // Show the captured error output
+            if !verbose {
+                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                if let errorOutput = String(data: errorData, encoding: .utf8), !errorOutput.isEmpty {
+                    print(errorOutput)
+                }
+
+                let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: outputData, encoding: .utf8), !output.isEmpty {
+                    print(output)
+                }
+            }
+
+            throw ExitCode.failure
+        }
+
+        if !verbose {
+            terminal.print("✓ Build succeeded", style: .success)
+        }
+
         // Start the local server
         terminal.print("Starting server on \(host):\(port)...", style: .info)
         terminal.print("")
 
+        // Determine the binary path
+        // The .build/debug symlink works for both Xcode projects and Swift Packages
+        let serverBinaryName = "\(projectName)Server"
+        let binaryPath = "\(devPath)/.build/debug/\(serverBinaryName)"
+
         let runProcess = Process()
-        runProcess.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        runProcess.arguments = ["swift", "run", "--package-path", devPath]
+        runProcess.executableURL = URL(fileURLWithPath: binaryPath)
+        runProcess.arguments = []
         runProcess.currentDirectoryURL = URL(fileURLWithPath: cwd)
 
-        // Always show server output
+        // Always show server output - explicitly set to ensure inheritance
         runProcess.standardOutput = FileHandle.standardOutput
         runProcess.standardError = FileHandle.standardError
 
+        // Set up signal handling for graceful shutdown
+        let signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        signalSource.setEventHandler {
+            print("\nReceived interrupt signal, stopping server...")
+            runProcess.terminate()
+            signalSource.cancel()
+        }
+        signalSource.resume()
+
+        // Block SIGINT from default handler so our DispatchSource can handle it
+        signal(SIGINT, SIG_IGN)
+
         try runProcess.run()
         runProcess.waitUntilExit()
+
+        // Clean up signal handler
+        signalSource.cancel()
+        signal(SIGINT, SIG_DFL)
 
         // If the process exits (e.g., Ctrl+C), clean up
         if runProcess.terminationStatus != 0 {
@@ -259,7 +467,7 @@ public struct DevCommand: AsyncParsableCommand {
         return sanitizeSwiftIdentifier(dirName)
     }
 
-    private func generatePackageManifest(projectName: String, parentPackageName: String, localTrebuchetPath: String?) -> String {
+    private func generatePackageManifest(packageName: String, projectName: String, parentPackageName: String, localTrebuchetPath: String?) -> String {
         let trebuchetDependency: String
         if let localPath = localTrebuchetPath {
             // Expand ~ in path
@@ -277,7 +485,7 @@ public struct DevCommand: AsyncParsableCommand {
         import PackageDescription
 
         let package = Package(
-            name: "LocalRunner",
+            name: "\(packageName)",
             platforms: [.macOS(.v14)],
             dependencies: [
                 .package(path: ".."),
@@ -285,7 +493,7 @@ public struct DevCommand: AsyncParsableCommand {
             ],
             targets: [
                 .executableTarget(
-                    name: "LocalRunner",
+                    name: "\(packageName)",
                     dependencies: [
                         .product(name: "Trebuchet", package: "Trebuchet"),
                         .product(name: "\(projectName)", package: "\(parentPackageName)")
@@ -353,6 +561,59 @@ public struct DevCommand: AsyncParsableCommand {
             """
         }.joined(separator: "\n")
 
+        // Generate streaming handler configuration for actors with streaming methods
+        let streamingConfigs = actors.compactMap { actor -> String? in
+            // Detect @StreamedState properties by reading the source file
+            guard let sourceContent = try? String(contentsOfFile: actor.filePath, encoding: .utf8) else {
+                return nil
+            }
+
+            // Find @StreamedState properties
+            let streamedStatePattern = "@StreamedState\\s+public\\s+var\\s+([a-zA-Z_][a-zA-Z0-9_]*):"
+            guard let regex = try? NSRegularExpression(pattern: streamedStatePattern, options: []) else {
+                return nil
+            }
+
+            let nsString = sourceContent as NSString
+            let matches = regex.matches(in: sourceContent, options: [], range: NSRange(location: 0, length: nsString.length))
+
+            var streamedProperties: [String] = []
+            for match in matches {
+                guard match.numberOfRanges >= 2 else { continue }
+                let propertyNameRange = match.range(at: 1)
+                guard propertyNameRange.location != NSNotFound else { continue }
+                let propertyName = nsString.substring(with: propertyNameRange)
+                streamedProperties.append(propertyName)
+            }
+
+            guard !streamedProperties.isEmpty else { return nil }
+
+            // Generate observe method registrations using streaming protocol
+            let protocolName = "\(actor.name)Streaming"
+            let methodRegistrations = streamedProperties.map { propertyName in
+                let capitalizedName = propertyName.prefix(1).uppercased() + propertyName.dropFirst()
+                let methodName = "observe\(capitalizedName)"
+                return """
+                await server.configureStreaming(
+                    for: \(protocolName).self,
+                    method: "\(methodName)"
+                ) { (actor: \(protocolName)) in await actor.\(methodName)() }
+                """
+            }.joined(separator: "\n")
+
+            return """
+                // Configure streaming for \(actor.name)
+            \(methodRegistrations)
+            """
+        }.joined(separator: "\n\n                ")
+
+        let streamingSetup = streamingConfigs.isEmpty ? "" : """
+
+                // Configure streaming handlers
+                \(streamingConfigs)
+
+        """
+
         return """
         // Auto-generated local development runner
         // Generated by: trebuchet dev
@@ -364,6 +625,10 @@ public struct DevCommand: AsyncParsableCommand {
         @main
         struct LocalRunner {
             static func main() async throws {
+                // Disable stdout buffering to ensure logs appear immediately
+                setbuf(stdout, nil)
+                setbuf(stderr, nil)
+
                 print("Starting local development server...")
                 print("")
 
@@ -386,7 +651,7 @@ public struct DevCommand: AsyncParsableCommand {
                     let timestamp = ISO8601DateFormatter().string(from: Date())
                     print("[\\(timestamp)] 🏁 Stream ended: \\(actorID).\\(method)")
                 }
-
+                \(streamingSetup)
                 // Dynamic actor creation
                 server.onActorRequest = { actorID in
                     switch actorID.id {
@@ -421,6 +686,7 @@ public struct DevCommand: AsyncParsableCommand {
     }
 
     private func generateXcodeProjectPackageManifest(
+        packageName: String,
         moduleName: String,
         localTrebuchetPath: String?
     ) -> String {
@@ -442,7 +708,7 @@ public struct DevCommand: AsyncParsableCommand {
         import PackageDescription
 
         let package = Package(
-            name: "LocalRunner",
+            name: "\(packageName)",
             platforms: [.macOS(.v14), .iOS(.v17)],
             dependencies: [
                 \(trebuchetDependency)
@@ -455,7 +721,7 @@ public struct DevCommand: AsyncParsableCommand {
                     ]
                 ),
                 .executableTarget(
-                    name: "LocalRunner",
+                    name: "\(packageName)",
                     dependencies: [
                         .product(name: "Trebuchet", package: "Trebuchet"),
                         "\(moduleName)"
@@ -486,18 +752,29 @@ public struct DevCommand: AsyncParsableCommand {
 
             let targetFile = "\(targetPath)/\(fileName)"
 
-            // Read source file
-            guard let sourceContent = try? String(contentsOfFile: sourceFile, encoding: .utf8) else {
-                terminal.print("Warning: Could not read \(sourceFile)", style: .warning)
-                continue
-            }
-
-            // Write to target
-            try sourceContent.write(toFile: targetFile, atomically: true, encoding: .utf8)
+            // Copy source file as-is - macros will expand during build
+            try FileManager.default.copyItem(atPath: sourceFile, toPath: targetFile)
             copiedFiles.insert(fileName)
 
             if verbose {
                 terminal.print("  Copied: \(fileName)", style: .dim)
+            }
+
+            // Also copy streaming protocol file if it exists
+            let actorBaseName = fileName.replacingOccurrences(of: ".swift", with: "")
+            let streamingProtocolName = "\(actorBaseName)Streaming.swift"
+            let sourceDir = URL(fileURLWithPath: sourceFile).deletingLastPathComponent().path
+            let streamingProtocolPath = "\(sourceDir)/\(streamingProtocolName)"
+
+            if FileManager.default.fileExists(atPath: streamingProtocolPath),
+               !copiedFiles.contains(streamingProtocolName) {
+                let targetStreamingFile = "\(targetPath)/\(streamingProtocolName)"
+                try FileManager.default.copyItem(atPath: streamingProtocolPath, toPath: targetStreamingFile)
+                copiedFiles.insert(streamingProtocolName)
+
+                if verbose {
+                    terminal.print("  Copied: \(streamingProtocolName)", style: .dim)
+                }
             }
         }
 

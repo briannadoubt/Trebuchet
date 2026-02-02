@@ -8,6 +8,15 @@ public struct TrebuchetConfig: Codable, Sendable {
     /// Configuration version
     public var version: String
 
+    /// Custom package name for generated servers (optional)
+    /// Defaults to "LocalRunner" for dev, "TrebuchetAutoServer" for generated servers
+    public var packageName: String?
+
+    /// Custom directory name for generated dev server (optional)
+    /// Defaults to ".trebuchet" (hidden). Use a non-hidden name to add to Xcode workspace.
+    /// Example: "TrebuchetServer", "DevServer", etc.
+    public var outputDirectory: String?
+
     /// Default settings
     public var defaults: DefaultSettings
 
@@ -26,6 +35,8 @@ public struct TrebuchetConfig: Codable, Sendable {
     public init(
         name: String,
         version: String = "1",
+        packageName: String? = nil,
+        outputDirectory: String? = nil,
         defaults: DefaultSettings = DefaultSettings(),
         actors: [String: ActorConfig?] = [:],
         environments: [String: EnvironmentConfig]? = nil,
@@ -34,6 +45,8 @@ public struct TrebuchetConfig: Codable, Sendable {
     ) {
         self.name = name
         self.version = version
+        self.packageName = packageName
+        self.outputDirectory = outputDirectory
         self.defaults = defaults
         self.actors = actors
         self.environments = environments
