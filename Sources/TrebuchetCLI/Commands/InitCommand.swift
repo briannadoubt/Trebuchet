@@ -75,6 +75,11 @@ public struct InitCommand: AsyncParsableCommand {
             config.discovery = DiscoveryConfig(type: "cloudmap", namespace: projectName)
         }
 
+        // Add default commands
+        config.commands = [
+            "runLocally": CommandConfig(title: "Run Locally", script: "trebuchet dev")
+        ]
+
         // Generate YAML
         let yamlContent = generateYAML(config: config, actors: actors)
         try yamlContent.write(toFile: configPath, atomically: true, encoding: .utf8)
@@ -154,7 +159,25 @@ public struct InitCommand: AsyncParsableCommand {
         discovery:
           type: \(config.discovery?.type ?? "cloudmap")
           namespace: \(config.name)
+
         """
+
+        // Commands section
+        if let commands = config.commands, !commands.isEmpty {
+            yaml += "commands:\n"
+            for (verb, command) in commands.sorted(by: { $0.key < $1.key }) {
+                yaml += "  \(verb):\n"
+                yaml += "    title: \"\(command.title)\"\n"
+                yaml += "    script: \(command.script)\n"
+            }
+        } else {
+            yaml += """
+            commands:
+              runLocally:
+                title: "Run Locally"
+                script: trebuchet dev
+            """
+        }
 
         return yaml
     }

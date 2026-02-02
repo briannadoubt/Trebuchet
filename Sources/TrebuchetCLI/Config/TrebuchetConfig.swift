@@ -35,6 +35,9 @@ public struct TrebuchetConfig: Codable, Sendable {
     /// Custom development dependencies (Docker containers)
     public var dependencies: [DependencyConfig]?
 
+    /// Custom commands that generate Swift Package Command Plugins
+    public var commands: [String: CommandConfig]?
+
     public init(
         name: String,
         version: String = "1",
@@ -45,7 +48,8 @@ public struct TrebuchetConfig: Codable, Sendable {
         environments: [String: EnvironmentConfig]? = nil,
         state: StateConfig? = nil,
         discovery: DiscoveryConfig? = nil,
-        dependencies: [DependencyConfig]? = nil
+        dependencies: [DependencyConfig]? = nil,
+        commands: [String: CommandConfig]? = nil
     ) {
         self.name = name
         self.version = version
@@ -57,6 +61,7 @@ public struct TrebuchetConfig: Codable, Sendable {
         self.state = state
         self.discovery = discovery
         self.dependencies = dependencies
+        self.commands = commands
     }
 }
 
@@ -235,6 +240,23 @@ public struct HealthCheckConfig: Codable, Sendable {
         self.port = port
         self.interval = interval
         self.retries = retries
+    }
+}
+
+/// Configuration for a custom command (generates a Swift Package Command Plugin)
+///
+/// The dictionary key in `commands` is the verb used for CLI invocation
+/// (e.g. `swift package runLocally`), while `title` is the human-readable name.
+public struct CommandConfig: Codable, Sendable {
+    /// Human-readable display name for the command
+    public var title: String
+
+    /// The shell script to execute when this command is run
+    public var script: String
+
+    public init(title: String, script: String) {
+        self.title = title
+        self.script = script
     }
 }
 
