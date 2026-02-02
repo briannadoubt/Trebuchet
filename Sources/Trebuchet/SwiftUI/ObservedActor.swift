@@ -42,6 +42,18 @@ import Foundation
 public struct ObservedActor<Act: DistributedActor, State: Codable & Sendable>: DynamicProperty
 where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
 
+    /// Debug logging helper (automatically enabled in DEBUG builds)
+    private static func debugLog(_ message: String, metadata: [String: String] = [:]) {
+        #if DEBUG
+        var output = "[ObservedActor] \(message)"
+        if !metadata.isEmpty {
+            let metadataStr = metadata.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+            output += " | \(metadataStr)"
+        }
+        FileHandle.standardError.write(Data((output + "\n").utf8))
+        #endif
+    }
+
     // MARK: - Configuration
 
     private let actorID: String
@@ -348,7 +360,10 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
                     // The observe method name follows the pattern: observe + PropertyName
                     methodName = "observe\(propertyName.prefix(1).uppercased())\(propertyName.dropFirst())"
 
-                    print("🔵 [@ObservedActor] Calling remoteCallStream for \(methodName) on \(actor.id.id)")
+                    Self.debugLog("Calling remoteCallStream", metadata: [
+                        "method": methodName,
+                        "actorID": actor.id.id
+                    ])
 
                     // Create the invocation through the actor system
                     var encoder = actor.actorSystem.makeInvocationEncoder()
@@ -361,7 +376,7 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
                         returning: State.self
                     )
 
-                    print("🔵 [@ObservedActor] Stream created with ID: \(streamID)")
+                    Self.debugLog("Stream created", metadata: ["streamID": streamID.uuidString])
 
                     // The dataStream is already typed as AsyncStream<State>
                     stream = dataStream
@@ -379,13 +394,13 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
                 )
 
                 // Iterate the stream and update state
-                print("🔵 [@ObservedActor] Starting stream iteration...")
+                Self.debugLog("Starting stream iteration", metadata: ["actorID": actorID])
                 for await newState in stream {
                     guard !Task.isCancelled else {
-                        print("🔵 [@ObservedActor] Stream iteration cancelled")
+                        Self.debugLog("Stream iteration cancelled", metadata: ["actorID": actorID])
                         break
                     }
-                    print("🔵 [@ObservedActor] Received state update from stream!")
+                    Self.debugLog("Received state update from stream", metadata: ["actorID": actorID])
                     currentState = newState
 
                     // Update checkpoint sequence number
@@ -398,7 +413,7 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
                         )
                     }
                 }
-                print("🔵 [@ObservedActor] Stream iteration ended")
+                Self.debugLog("Stream iteration ended", metadata: ["actorID": actorID])
             } catch is CancellationError {
                 // Task was cancelled - this is expected, don't set error
                 return

@@ -6,6 +6,18 @@ import Foundation
 /// This system manages the lifecycle of distributed actors and handles
 /// remote method invocations across the network.
 public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Sendable {
+    /// Debug logging helper (automatically enabled in DEBUG builds)
+    private static func debugLog(_ message: String, metadata: [String: String] = [:]) {
+        #if DEBUG
+        var output = "[TrebuchetActorSystem] \(message)"
+        if !metadata.isEmpty {
+            let metadataStr = metadata.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+            output += " | \(metadataStr)"
+        }
+        FileHandle.standardError.write(Data((output + "\n").utf8))
+        #endif
+    }
+
     public typealias ActorID = TrebuchetActorID
     public typealias SerializationRequirement = Codable
     public typealias InvocationEncoder = TrebuchetEncoder
@@ -327,50 +339,61 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
 
     /// Execute a streaming target and return a stream of encoded data
     func executeStreamingTarget(_ envelope: InvocationEnvelope) async throws -> AsyncStream<Data> {
-        print("🔴 [executeStreamingTarget] Starting for actorID: \(envelope.actorID)")
+        Self.debugLog("Starting executeStreamingTarget", metadata: [
+            "actorID": envelope.actorID.id,
+            "method": envelope.targetIdentifier
+        ])
 
         // Find the local actor, triggering dynamic creation if needed
-        print("🔴 [executeStreamingTarget] About to get actor from localActors with ID: \(envelope.actorID)...")
         var actor = await localActors.getAny(id: envelope.actorID)
 
         if actor == nil {
-            print("🔴 [executeStreamingTarget] Actor not found, checking for onActorRequest...")
+            Self.debugLog("Actor not found, checking for dynamic creation", metadata: ["actorID": envelope.actorID.id])
+
             // Try dynamic actor creation
             if let onActorRequest = onActorRequest {
-                print("🔴 [executeStreamingTarget] Calling onActorRequest to create actor...")
+                Self.debugLog("Calling onActorRequest to create actor", metadata: ["actorID": envelope.actorID.id])
                 try await onActorRequest(envelope.actorID)
-                print("🔴 [executeStreamingTarget] onActorRequest completed, now translating name to real ID...")
 
                 // After creating the actor, we need to translate the name to the real actor ID
                 // because the actor was assigned a new UUID when created
                 if let translator = nameToIDTranslator,
                    let realID = await translator(envelope.actorID.id) {
-                    print("🔴 [executeStreamingTarget] Translated '\(envelope.actorID.id)' to real ID: \(realID)")
+                    Self.debugLog("Translated name to real actor ID", metadata: [
+                        "name": envelope.actorID.id,
+                        "realID": realID.id
+                    ])
                     actor = await localActors.getAny(id: realID)
                 } else {
-                    print("🔴 [executeStreamingTarget] No translator available or translation failed, trying original ID again...")
+                    Self.debugLog("No translator or translation failed, retrying with original ID", metadata: ["actorID": envelope.actorID.id])
                     actor = await localActors.getAny(id: envelope.actorID)
                 }
             }
 
             guard actor != nil else {
-                print("🔴 [executeStreamingTarget] Actor still not found after dynamic creation attempt!")
+                Self.debugLog("Actor not found after dynamic creation attempt", metadata: ["actorID": envelope.actorID.id])
                 throw TrebuchetError.actorNotFound(envelope.actorID)
             }
         }
-        print("🔴 [executeStreamingTarget] Got actor: \(type(of: actor!))")
+
+        Self.debugLog("Actor resolved", metadata: [
+            "actorID": envelope.actorID.id,
+            "actorType": String(describing: type(of: actor!))
+        ])
 
         // Use the streaming handler if set
-        print("🔴 [executeStreamingTarget] Checking for streaming handler...")
         if let handler = streamingHandler {
-            print("🔴 [executeStreamingTarget] Handler found, calling it...")
+            Self.debugLog("Calling streaming handler", metadata: [
+                "actorID": envelope.actorID.id,
+                "method": envelope.targetIdentifier
+            ])
             let result = try await handler(envelope, actor!)
-            print("🔴 [executeStreamingTarget] Handler returned!")
+            Self.debugLog("Streaming handler returned successfully", metadata: ["actorID": envelope.actorID.id])
             return result
         }
 
         // No streaming handler configured
-        print("🔴 [executeStreamingTarget] No handler configured!")
+        Self.debugLog("No streaming handler configured", metadata: ["actorID": envelope.actorID.id])
         throw TrebuchetError.remoteInvocationFailed("No streaming handler configured for actor")
     }
 
