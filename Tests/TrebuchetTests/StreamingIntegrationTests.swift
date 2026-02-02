@@ -88,6 +88,38 @@ actor ResultCollector<T: Sendable> {
     }
 }
 
+/// Helper to run async work with a timeout
+func withTimeout<T: Sendable>(
+    seconds: TimeInterval,
+    _ work: @escaping @Sendable () async throws -> T
+) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask {
+            try await work()
+        }
+
+        group.addTask {
+            try await Task.sleep(for: .seconds(seconds))
+            throw TestTimeoutError(seconds: seconds)
+        }
+
+        guard let result = try await group.next() else {
+            throw TestTimeoutError(seconds: seconds)
+        }
+
+        group.cancelAll()
+        return result
+    }
+}
+
+struct TestTimeoutError: Error {
+    let seconds: TimeInterval
+
+    var description: String {
+        "Test timed out after \(seconds) seconds"
+    }
+}
+
 /// Helper to run a test with a configured server
 func withTestServer<T>(
     port: UInt16 = 0,
@@ -145,7 +177,8 @@ struct StreamingIntegrationTests {
     /// This test would have caught the bug we just fixed where registerTyped didn't check method names
     @Test("Multiple @StreamedState properties route correctly")
     func testMultipleStreamedStateHandlers() async throws {
-        try await withTestServer { server, port in
+        try await withTimeout(seconds: 5) {
+            try await withTestServer { server, port in
             // Create and expose a GameRoom with two @StreamedState properties
             let room = GameRoom(actorSystem: server.actorSystem)
             await server.expose(room, as: "game-room")
@@ -246,72 +279,76 @@ struct StreamingIntegrationTests {
                 #expect(receivedPlayerLists[1].count == 2, "Updated list should have 2 players")
                 #expect(receivedPlayerLists[1][0].name == "Alice", "First player should be Alice")
             }
+            }
         }
     }
 
     /// Test dynamic actor creation during stream subscription
     @Test("Dynamic actor creation during streaming")
     func testDynamicActorStreamingCreation() async throws {
-        try await withTestServer { server, port in
-            // Configure dynamic actor creation
-            server.onActorRequest = { actorID in
-                // Create and expose the actor when requested
-                let counter = TestCounter(actorSystem: server.actorSystem)
-                await server.expose(counter, as: actorID.id)
-            }
+        try await withTimeout(seconds: 5) {
+            try await withTestServer { server, port in
+                // Configure dynamic actor creation
+                server.onActorRequest = { actorID in
+                    // Create and expose the actor when requested
+                    let counter = TestCounter(actorSystem: server.actorSystem)
+                    await server.expose(counter, as: actorID.id)
+                }
 
-            // Configure streaming
-            await server.configureStreaming(
-                for: CounterStreaming.self,
-                method: "observeCount"
-            ) { await $0.observeCount() }
+                // Configure streaming
+                await server.configureStreaming(
+                    for: CounterStreaming.self,
+                    method: "observeCount"
+                ) { await $0.observeCount() }
 
-            try await withTestClient(port: port) { client in
-                // Try to resolve and subscribe to non-existent actor
-                // This should trigger dynamic creation
-                let counter = try client.resolve(TestCounter.self, id: "dynamic-counter")
+                try await withTestClient(port: port) { client in
+                    // Try to resolve and subscribe to non-existent actor
+                    // This should trigger dynamic creation
+                    let counter = try client.resolve(TestCounter.self, id: "dynamic-counter")
 
-                // Give server time to create the actor via onActorRequest
-                try await Task.sleep(for: .milliseconds(300))
+                    // Give server time to create the actor via onActorRequest
+                    try await Task.sleep(for: .milliseconds(300))
 
-                var encoder = counter.actorSystem.makeInvocationEncoder()
-                let (_, stream) = try await counter.actorSystem.remoteCallStream(
-                    on: counter,
-                    target: RemoteCallTarget("observeCount"),
-                    invocation: &encoder,
-                    returning: Int.self
-                )
+                    var encoder = counter.actorSystem.makeInvocationEncoder()
+                    let (_, stream) = try await counter.actorSystem.remoteCallStream(
+                        on: counter,
+                        target: RemoteCallTarget("observeCount"),
+                        invocation: &encoder,
+                        returning: Int.self
+                    )
 
-                let collector = ResultCollector<Int>()
-                let task = Task {
-                    var count = 0
-                    for await value in stream {
-                        await collector.append(value)
-                        count += 1
-                        if count >= 2 { break }
+                    let collector = ResultCollector<Int>()
+                    let task = Task {
+                        var count = 0
+                        for await value in stream {
+                            await collector.append(value)
+                            count += 1
+                            if count >= 2 { break }
+                        }
                     }
-                }
 
-                // Wait for initial state to arrive
-                try await Task.sleep(for: .milliseconds(400))
+                    defer { task.cancel() }
 
-                // Update the counter
-                try await counter.increment()
+                    // Wait for initial state to arrive
+                    try await Task.sleep(for: .milliseconds(400))
 
-                // Wait for update to propagate
-                try await Task.sleep(for: .milliseconds(400))
-                task.cancel()
+                    // Update the counter
+                    try await counter.increment()
 
-                // Get collected results
-                let receivedValues = await collector.getAll()
+                    // Wait for update to propagate
+                    try await Task.sleep(for: .milliseconds(400))
 
-                // Verify we received both initial state and update
-                #expect(receivedValues.count >= 1, "Should receive at least initial state, got \(receivedValues.count)")
-                if receivedValues.count >= 1 {
-                    #expect(receivedValues[0] == 0, "Initial count should be 0")
-                }
-                if receivedValues.count >= 2 {
-                    #expect(receivedValues[1] == 1, "Updated count should be 1")
+                    // Get collected results
+                    let receivedValues = await collector.getAll()
+
+                    // Verify we received both initial state and update
+                    #expect(receivedValues.count >= 1, "Should receive at least initial state, got \(receivedValues.count)")
+                    if receivedValues.count >= 1 {
+                        #expect(receivedValues[0] == 0, "Initial count should be 0")
+                    }
+                    if receivedValues.count >= 2 {
+                        #expect(receivedValues[1] == 1, "Updated count should be 1")
+                    }
                 }
             }
         }
@@ -320,7 +357,8 @@ struct StreamingIntegrationTests {
     /// Test end-to-end streaming with state updates
     @Test("End-to-end streaming flow")
     func testEndToEndStreaming() async throws {
-        try await withTestServer { server, port in
+        try await withTimeout(seconds: 5) {
+            try await withTestServer { server, port in
             let counter = TestCounter(actorSystem: server.actorSystem)
             await server.expose(counter, as: "counter")
 
@@ -372,6 +410,7 @@ struct StreamingIntegrationTests {
                 #expect(receivedValues[3] == 10, "After setCount")
                 #expect(receivedValues[4] == 11, "After final increment")
             }
+            }
         }
     }
 
@@ -381,7 +420,8 @@ struct StreamingIntegrationTests {
     func testStreamResumption() async throws {
         // This test verifies that the stream buffering and resumption infrastructure exists
         // A full end-to-end test of resumption requires more complex setup
-        try await withTestServer { server, port in
+        try await withTimeout(seconds: 5) {
+            try await withTestServer { server, port in
             let counter = TestCounter(actorSystem: server.actorSystem)
             await server.expose(counter, as: "counter")
 
@@ -422,70 +462,26 @@ struct StreamingIntegrationTests {
                 let lastSeq = await remoteCounter.actorSystem.streamRegistry.getLastSequence(streamID: streamID)
                 #expect(lastSeq != nil, "Should track sequence numbers for resumption")
             }
+            }
         }
     }
 
     /// Test connection drop during streaming
     @Test("Connection drop during streaming")
     func testConnectionDropDuringStreaming() async throws {
-        try await withTestServer { server, port in
-            let counter = TestCounter(actorSystem: server.actorSystem)
-            await server.expose(counter, as: "counter")
+        try await withTimeout(seconds: 5) {
+            try await withTestServer { server, port in
+                let counter = TestCounter(actorSystem: server.actorSystem)
+                await server.expose(counter, as: "counter")
 
-            await server.configureStreaming(
-                for: CounterStreaming.self,
-                method: "observeCount"
-            ) { await $0.observeCount() }
+                await server.configureStreaming(
+                    for: CounterStreaming.self,
+                    method: "observeCount"
+                ) { await $0.observeCount() }
 
-            let client = TrebuchetClient(transport: .webSocket(host: "localhost", port: port))
-            try await client.connect()
+                let client = TrebuchetClient(transport: .webSocket(host: "localhost", port: port))
+                try await client.connect()
 
-            let remoteCounter = try client.resolve(TestCounter.self, id: "counter")
-            var encoder = remoteCounter.actorSystem.makeInvocationEncoder()
-            let (_, stream) = try await remoteCounter.actorSystem.remoteCallStream(
-                on: remoteCounter,
-                target: RemoteCallTarget("observeCount"),
-                invocation: &encoder,
-                returning: Int.self
-            )
-
-            let collector = ResultCollector<Int>()
-            let task = Task {
-                for await value in stream {
-                    await collector.append(value)
-                }
-            }
-
-            try await Task.sleep(for: .milliseconds(50))
-            try await remoteCounter.increment()
-            try await Task.sleep(for: .milliseconds(50))
-
-            // Disconnect abruptly
-            await client.disconnect()
-
-            try await Task.sleep(for: .milliseconds(100))
-
-            // Task should complete naturally
-            task.cancel()
-
-            let receivedValues = await collector.getAll()
-            #expect(receivedValues.count >= 1, "Should have received at least initial state")
-        }
-    }
-
-    /// Test actor termination during streaming
-    @Test("Actor termination during streaming")
-    func testActorTerminationDuringStreaming() async throws {
-        try await withTestServer { server, port in
-            var counter: TestCounter? = TestCounter(actorSystem: server.actorSystem)
-            await server.expose(counter!, as: "counter")
-
-            await server.configureStreaming(
-                for: CounterStreaming.self,
-                method: "observeCount"
-            ) { await $0.observeCount() }
-
-            try await withTestClient(port: port) { client in
                 let remoteCounter = try client.resolve(TestCounter.self, id: "counter")
                 var encoder = remoteCounter.actorSystem.makeInvocationEncoder()
                 let (_, stream) = try await remoteCounter.actorSystem.remoteCallStream(
@@ -497,23 +493,78 @@ struct StreamingIntegrationTests {
 
                 let collector = ResultCollector<Int>()
                 let task = Task {
+                    var count = 0
                     for await value in stream {
                         await collector.append(value)
+                        count += 1
+                        // Break after a reasonable number to prevent hanging
+                        if count >= 10 { break }
                     }
                 }
 
+                defer { task.cancel() }
+
+                try await Task.sleep(for: .milliseconds(50))
+                try await remoteCounter.increment()
                 try await Task.sleep(for: .milliseconds(50))
 
-                // Terminate the actor by setting it to nil
-                counter = nil
+                // Disconnect abruptly
+                await client.disconnect()
 
                 try await Task.sleep(for: .milliseconds(100))
 
-                // Stream should eventually end
-                task.cancel()
-
                 let receivedValues = await collector.getAll()
-                #expect(receivedValues.count >= 1, "Should receive initial state before termination")
+                #expect(receivedValues.count >= 1, "Should have received at least initial state")
+            }
+        }
+    }
+
+    /// Test actor termination during streaming
+    @Test("Actor termination during streaming")
+    func testActorTerminationDuringStreaming() async throws {
+        try await withTimeout(seconds: 5) {
+            try await withTestServer { server, port in
+                var counter: TestCounter? = TestCounter(actorSystem: server.actorSystem)
+                await server.expose(counter!, as: "counter")
+
+                await server.configureStreaming(
+                    for: CounterStreaming.self,
+                    method: "observeCount"
+                ) { await $0.observeCount() }
+
+                try await withTestClient(port: port) { client in
+                    let remoteCounter = try client.resolve(TestCounter.self, id: "counter")
+                    var encoder = remoteCounter.actorSystem.makeInvocationEncoder()
+                    let (_, stream) = try await remoteCounter.actorSystem.remoteCallStream(
+                        on: remoteCounter,
+                        target: RemoteCallTarget("observeCount"),
+                        invocation: &encoder,
+                        returning: Int.self
+                    )
+
+                    let collector = ResultCollector<Int>()
+                    let task = Task {
+                        var count = 0
+                        for await value in stream {
+                            await collector.append(value)
+                            count += 1
+                            // Break after a reasonable number to prevent hanging
+                            if count >= 10 { break }
+                        }
+                    }
+
+                    defer { task.cancel() }
+
+                    try await Task.sleep(for: .milliseconds(50))
+
+                    // Terminate the actor by setting it to nil
+                    counter = nil
+
+                    try await Task.sleep(for: .milliseconds(100))
+
+                    let receivedValues = await collector.getAll()
+                    #expect(receivedValues.count >= 1, "Should receive initial state before termination")
+                }
             }
         }
     }
