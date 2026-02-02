@@ -342,6 +342,42 @@ var messages: [Message]?
 - Verify `@StreamedState` is applied to property
 - Clean build folder and rebuild
 
+### Debug Logging
+
+**Problem**: Need to trace streaming execution flow for troubleshooting
+
+**Solution**: Trebuchet includes structured debug logging that automatically activates in DEBUG builds:
+
+```bash
+# Run your app in debug mode to see streaming logs
+swift run -c debug
+
+# Example output:
+# [StreamRegistry] Creating remote stream | streamID=xyz-789 callID=abc-123
+# [TrebuchetActorSystem] Actor resolved | actorID=todos actorType=TodoList
+# [TrebuchetServer] Handler called for streaming method | method=observeState
+# [StreamRegistry] Received StreamData | streamID=xyz-789 sequence=1
+# [ObservedActor] Received state update from stream | actorID=todos
+```
+
+Debug logs are written to stderr and include structured metadata for filtering. They are:
+- Automatically enabled in DEBUG builds (`#if DEBUG`)
+- Zero overhead in release builds (completely compiled out)
+- Cross-platform (macOS and Linux)
+
+**What gets logged**:
+- Stream creation and registration
+- Actor resolution and handler routing
+- Data envelope processing
+- Sequence number tracking
+- Stream termination
+
+This is particularly useful for debugging:
+- Multiple `@StreamedState` properties on the same actor
+- Dynamic actor creation during streaming
+- Connection drop scenarios
+- Stream resumption behavior
+
 ## See Also
 
 - <doc:AdvancedStreaming> - Stream resumption, filtering, and delta encoding
