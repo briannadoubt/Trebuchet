@@ -96,8 +96,25 @@ struct CounterView: View {
 }
 ```
 
+## Using the CLI
+
+Trebuchet provides a powerful CLI for local development and cloud deployment:
+
+```bash
+# Initialize a new project
+trebuchet init --name my-project --provider aws
+
+# Run a local development server
+trebuchet dev --port 8080
+
+# Deploy to the cloud
+trebuchet deploy --provider aws --region us-east-1
+```
+
+See <doc:CLIReference> for complete CLI documentation.
+
 ## Next Steps
 
 - Learn about <doc:DefiningActors> for best practices
-- Explore cloud deployment with ``TrebuchetCloud`` and ``TrebuchetAWS``
-- Use the `trebuchet` CLI for serverless deployment
+- Explore the <doc:CLIReference> for development and deployment tools
+- Read about cloud deployment with ``TrebuchetCloud`` and ``TrebuchetAWS``

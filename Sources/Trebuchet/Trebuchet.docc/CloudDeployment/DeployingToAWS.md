@@ -109,6 +109,48 @@ Deploying to AWS...
 Ready! Actors can discover each other automatically.
 ```
 
+## Workflow Automation with Commands
+
+You can define custom commands in `trebuchet.yaml` to automate common workflows:
+
+```yaml
+commands:
+  runLocally:
+    title: "Run Locally"
+    script: trebuchet dev --verbose
+  deployStaging:
+    title: "Deploy Staging"
+    script: trebuchet deploy --environment staging
+  deployProduction:
+    title: "Deploy Production"
+    script: trebuchet deploy --environment production --region us-west-2
+```
+
+### Running Commands
+
+Execute commands directly with the `run` command:
+
+```bash
+trebuchet run deployStaging
+```
+
+### Generating Swift Package Plugins
+
+Generate Swift Package Command Plugins from your commands:
+
+```bash
+trebuchet generate commands
+```
+
+This creates plugin targets that can be invoked with:
+
+```bash
+swift package deployStaging
+swift package deployProduction
+```
+
+Add the generated plugins to your `Package.swift` using the provided snippet. See <doc:CLIReference> for details.
+
 ## AWS Resources Created
 
 The deployment creates:
@@ -234,7 +276,8 @@ DynamoDB uses on-demand pricing:
 
 ## See Also
 
-- <doc:AWSConfiguration>
-- ``AWSProvider``
-- ``DynamoDBStateStore``
-- ``CloudMapRegistry``
+- <doc:CLIReference> - Complete CLI command reference
+- <doc:AWSConfiguration> - Detailed AWS configuration guide
+- ``AWSProvider`` - AWS provider implementation
+- ``DynamoDBStateStore`` - DynamoDB state storage
+- ``CloudMapRegistry`` - AWS Cloud Map service discovery

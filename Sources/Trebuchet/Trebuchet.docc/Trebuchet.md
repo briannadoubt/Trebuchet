@@ -31,6 +31,7 @@ try await room.join(player: me)
 
 - <doc:GettingStarted>
 - <doc:DefiningActors>
+- <doc:CLIReference>
 - <doc:SwiftUIIntegration>
 - <doc:Streaming>
 - <doc:AdvancedStreaming>
