@@ -831,13 +831,13 @@ struct DependencyConfigTests {
             name: "surrealdb",
             image: "surrealdb/surrealdb:latest",
             ports: ["8000:8000"],
-            command: "start --log info --user root --pass root memory"
+            command: ["start", "--log", "info", "--user", "root", "--pass", "root", "memory"]
         )
 
         #expect(dep.name == "surrealdb")
         #expect(dep.image == "surrealdb/surrealdb:latest")
         #expect(dep.ports == ["8000:8000"])
-        #expect(dep.command == "start --log info --user root --pass root memory")
+        #expect(dep.command == ["start", "--log", "info", "--user", "root", "--pass", "root", "memory"])
         #expect(dep.environment == nil)
         #expect(dep.healthcheck == nil)
         #expect(dep.volumes == nil)
@@ -924,7 +924,11 @@ struct DependencyConfigParsingTests {
                 image: surrealdb/surrealdb:latest
                 ports:
                   - "8000:8000"
-                command: "start --log info memory"
+                command:
+                  - start
+                  - "--log"
+                  - info
+                  - memory
                 healthcheck:
                   port: 8000
                   interval: 2
@@ -939,7 +943,7 @@ struct DependencyConfigParsingTests {
         #expect(dep?.name == "surrealdb")
         #expect(dep?.image == "surrealdb/surrealdb:latest")
         #expect(dep?.ports == ["8000:8000"])
-        #expect(dep?.command == "start --log info memory")
+        #expect(dep?.command == ["start", "--log", "info", "memory"])
         #expect(dep?.healthcheck?.port == 8000)
         #expect(dep?.healthcheck?.interval == 2)
         #expect(dep?.healthcheck?.retries == 15)
@@ -1214,7 +1218,9 @@ struct DependencyValidationTests {
                 image: surrealdb/surrealdb:latest
                 ports:
                   - "8000:8000"
-                command: "start memory"
+                command:
+                  - start
+                  - memory
                 healthcheck:
                   port: 8000
                   interval: 2
@@ -1346,11 +1352,11 @@ struct DependencyOrchestratorTests {
 
         let deps = orchestrator.resolveDependencies(config: config)
         #expect(deps.count == 2)
-        #expect(deps[0].name == "surrealdb")  // auto-detected first
-        #expect(deps[1].name == "redis")       // explicit second
+        #expect(deps[0].name == "redis")       // explicit first
+        #expect(deps[1].name == "surrealdb")   // auto-detected second
     }
 
-    @Test("Orchestrator deduplicates dependencies by name")
+    @Test("Orchestrator deduplicates dependencies by name, explicit wins")
     func deduplicatesDependencies() {
         let config = TrebuchetConfig(
             name: "test",
@@ -1372,10 +1378,11 @@ struct DependencyOrchestratorTests {
         )
 
         let deps = orchestrator.resolveDependencies(config: config)
-        // Auto-detected one should win since it comes first
+        // Explicit config should win over auto-detected
         #expect(deps.count == 1)
         #expect(deps[0].name == "surrealdb")
-        #expect(deps[0].image == "surrealdb/surrealdb:latest")
+        #expect(deps[0].image == "surrealdb/surrealdb:v1.5.0")
+        #expect(deps[0].ports == ["9000:8000"])
     }
 
     @Test("Orchestrator with only explicit dependencies")

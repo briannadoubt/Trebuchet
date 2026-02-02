@@ -180,8 +180,8 @@ public struct DependencyConfig: Codable, Sendable {
     /// Port mappings (host:container format, e.g., "8000:8000")
     public var ports: [String]?
 
-    /// Command to pass to the container
-    public var command: String?
+    /// Command arguments to pass to the container (e.g., ["start", "--log", "info"])
+    public var command: [String]?
 
     /// Environment variables for the container
     public var environment: [String: String]?
@@ -196,7 +196,7 @@ public struct DependencyConfig: Codable, Sendable {
         name: String,
         image: String,
         ports: [String]? = nil,
-        command: String? = nil,
+        command: [String]? = nil,
         environment: [String: String]? = nil,
         healthcheck: HealthCheckConfig? = nil,
         volumes: [String]? = nil

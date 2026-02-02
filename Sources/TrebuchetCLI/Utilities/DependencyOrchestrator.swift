@@ -22,26 +22,28 @@ public struct DependencyOrchestrator: Sendable {
 
     // MARK: - Public API
 
-    /// Resolve all dependencies that need to be started, combining auto-detected and explicit ones
+    /// Resolve all dependencies that need to be started, combining auto-detected and explicit ones.
+    /// Explicit dependencies take priority over auto-detected ones with the same name.
     public func resolveDependencies(config: TrebuchetConfig?) -> [DependencyConfig] {
         var dependencies: [DependencyConfig] = []
         var addedNames = Set<String>()
 
-        // Auto-detect dependencies from state store configuration
-        if let stateType = config?.state?.type.lowercased() {
-            if let dep = autoDetectedDependency(for: stateType), !addedNames.contains(dep.name) {
-                dependencies.append(dep)
-                addedNames.insert(dep.name)
-            }
-        }
-
-        // Add explicit dependencies from config
+        // Add explicit dependencies first so user config takes priority
         if let explicit = config?.dependencies {
             for dep in explicit {
                 if !addedNames.contains(dep.name) {
                     dependencies.append(dep)
                     addedNames.insert(dep.name)
                 }
+            }
+        }
+
+        // Auto-detect dependencies from state store configuration,
+        // skipping any already provided explicitly
+        if let stateType = config?.state?.type.lowercased() {
+            if let dep = autoDetectedDependency(for: stateType), !addedNames.contains(dep.name) {
+                dependencies.append(dep)
+                addedNames.insert(dep.name)
             }
         }
 
@@ -112,7 +114,7 @@ public struct DependencyOrchestrator: Sendable {
                 name: "surrealdb",
                 image: "surrealdb/surrealdb:latest",
                 ports: ["8000:8000"],
-                command: "start --log info --user root --pass root memory",
+                command: ["start", "--log", "info", "--user", "root", "--pass", "root", "memory"],
                 healthcheck: HealthCheckConfig(
                     port: 8000,
                     interval: 2,
@@ -211,7 +213,7 @@ public struct DependencyOrchestrator: Sendable {
 
         // Add command if specified
         if let command = dep.command {
-            args += command.split(separator: " ").map(String.init)
+            args += command
         }
 
         // Pull image first (in case it's not available locally)
@@ -338,10 +340,11 @@ public struct DependencyOrchestrator: Sendable {
     }
 
     private func checkTCPHealth(port: UInt16) async -> Bool {
-        // Use bash to test TCP connectivity
+        // Use nc (netcat) for portable TCP connectivity check.
+        // The -z flag scans without sending data; works on macOS and Linux.
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["bash", "-c", "echo > /dev/tcp/localhost/\(port)"]
+        process.arguments = ["nc", "-z", "localhost", "\(port)"]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
 
@@ -425,6 +428,10 @@ public struct DependencyOrchestrator: Sendable {
         process.standardError = FileHandle.nullDevice
 
         try process.run()
+
+        // Read pipe data before waitUntilExit to avoid deadlock when
+        // output exceeds the pipe buffer (~64KB)
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
@@ -434,7 +441,6 @@ public struct DependencyOrchestrator: Sendable {
             )
         }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 }

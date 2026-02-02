@@ -427,24 +427,11 @@ public struct DevCommand: AsyncParsableCommand {
         runProcess.standardError = FileHandle.standardError
 
         // Set up signal handling for graceful shutdown
-        let containersToStop = managedContainers
-        let cleanupOrchestrator = orchestrator
-        let cleanupTerminal = terminal
-
+        // Container cleanup happens after waitUntilExit returns (lines below)
         let signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
         signalSource.setEventHandler {
             print("\nShutting down...")
             runProcess.terminate()
-
-            // Stop containers in a detached task
-            if !containersToStop.isEmpty {
-                Task {
-                    cleanupTerminal.print("Stopping dependencies...", style: .dim)
-                    await cleanupOrchestrator.stopContainers(containersToStop)
-                    cleanupTerminal.print("", style: .info)
-                }
-            }
-
             signalSource.cancel()
         }
         signalSource.resume()
