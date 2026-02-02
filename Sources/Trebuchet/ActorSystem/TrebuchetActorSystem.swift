@@ -355,18 +355,28 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
                 Self.debugLog("Calling onActorRequest to create actor", metadata: ["actorID": envelope.actorID.id])
                 try await onActorRequest(envelope.actorID)
 
-                // After creating the actor, we need to translate the name to the real actor ID
-                // because the actor was assigned a new UUID when created
+                // Translate the name to the real actor ID if we have a translator
+                var lookupID = envelope.actorID
                 if let translator = nameToIDTranslator,
                    let realID = await translator(envelope.actorID.id) {
                     Self.debugLog("Translated name to real actor ID", metadata: [
                         "name": envelope.actorID.id,
                         "realID": realID.id
                     ])
-                    actor = await localActors.getAny(id: realID)
-                } else {
-                    Self.debugLog("No translator or translation failed, retrying with original ID", metadata: ["actorID": envelope.actorID.id])
-                    actor = await localActors.getAny(id: envelope.actorID)
+                    lookupID = realID
+                }
+
+                // Retry lookup with small delays to handle race condition in actorReady()
+                // The fire-and-forget Task in actorReady() may not have completed yet
+                for attempt in 0..<5 {
+                    actor = await localActors.getAny(id: lookupID)
+                    if actor != nil {
+                        break
+                    }
+                    // Exponential backoff: 1ms, 2ms, 4ms, 8ms, 16ms (total max 31ms)
+                    if attempt < 4 {
+                        try? await Task.sleep(for: .milliseconds(1 << attempt))
+                    }
                 }
             }
 
@@ -387,9 +397,7 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
                 "actorID": envelope.actorID.id,
                 "method": envelope.targetIdentifier
             ])
-            let result = try await handler(envelope, actor!)
-            Self.debugLog("Streaming handler returned successfully", metadata: ["actorID": envelope.actorID.id])
-            return result
+            return try await handler(envelope, actor!)
         }
 
         // No streaming handler configured

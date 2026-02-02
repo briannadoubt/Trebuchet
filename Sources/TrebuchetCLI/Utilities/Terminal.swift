@@ -1,7 +1,7 @@
 import Foundation
 
 /// Terminal output utilities with styling
-public struct Terminal {
+public struct Terminal: Sendable {
     public enum Style {
         case header
         case info

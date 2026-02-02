@@ -109,6 +109,11 @@ public struct ConfigLoader {
 
         // Validate resource limits
         try validateResourceLimits(config: config)
+
+        // Validate dependencies
+        if let dependencies = config.dependencies {
+            try validateDependencies(dependencies)
+        }
     }
 
     /// Validate provider-specific requirements
@@ -178,6 +183,10 @@ public struct ConfigLoader {
 
         case ("fly", "postgresql"), ("local", "postgresql"):
             // PostgreSQL is compatible with Fly and local
+            break
+
+        case ("fly", "surrealdb"), ("local", "surrealdb"):
+            // SurrealDB is compatible with Fly and local
             break
 
         case ("fly", _), ("local", _):
@@ -273,6 +282,75 @@ public struct ConfigLoader {
                 guard timeout >= 1 && timeout <= 900 else {
                     throw ConfigError.validationError(
                         "Actor '\(actorName)': timeout must be between 1 and 900 seconds (got: \(timeout) seconds)"
+                    )
+                }
+            }
+        }
+    }
+
+    /// Validate dependency configurations
+    private func validateDependencies(_ dependencies: [DependencyConfig]) throws {
+        var names = Set<String>()
+
+        for dep in dependencies {
+            // Check for duplicate names
+            guard !names.contains(dep.name) else {
+                throw ConfigError.validationError(
+                    "Duplicate dependency name '\(dep.name)'. Each dependency must have a unique name."
+                )
+            }
+            names.insert(dep.name)
+
+            // Validate name format (alphanumeric, hyphens, underscores)
+            let namePattern = "^[a-zA-Z][a-zA-Z0-9_-]*$"
+            if let regex = try? NSRegularExpression(pattern: namePattern),
+               regex.firstMatch(in: dep.name, range: NSRange(location: 0, length: dep.name.utf16.count)) == nil {
+                throw ConfigError.validationError(
+                    "Dependency name '\(dep.name)' is invalid. " +
+                    "Names must start with a letter and contain only letters, numbers, hyphens, and underscores."
+                )
+            }
+
+            // Validate image is not empty
+            guard !dep.image.isEmpty else {
+                throw ConfigError.validationError(
+                    "Dependency '\(dep.name)': image must not be empty."
+                )
+            }
+
+            // Validate port mappings format
+            if let ports = dep.ports {
+                for port in ports {
+                    let parts = port.split(separator: ":")
+                    guard parts.count == 2,
+                          let hostPort = UInt16(parts[0]),
+                          let _ = UInt16(parts[1]),
+                          hostPort > 0 else {
+                        throw ConfigError.validationError(
+                            "Dependency '\(dep.name)': invalid port mapping '\(port)'. " +
+                            "Expected format: 'hostPort:containerPort' (e.g., '8000:8000')."
+                        )
+                    }
+                }
+            }
+
+            // Validate health check
+            if let healthcheck = dep.healthcheck {
+                if healthcheck.url == nil && healthcheck.port == nil {
+                    throw ConfigError.validationError(
+                        "Dependency '\(dep.name)': healthcheck must specify either 'url' or 'port'."
+                    )
+                }
+
+                if let interval = healthcheck.interval, interval < 1 {
+                    throw ConfigError.validationError(
+                        "Dependency '\(dep.name)': healthcheck interval must be at least 1 second."
+                    )
+                }
+
+                if let retries = healthcheck.retries, retries < 1 {
+                    throw ConfigError.validationError(
+                        "Dependency '\(dep.name)': healthcheck retries must be at least 1."
                     )
                 }
             }

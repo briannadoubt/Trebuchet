@@ -32,6 +32,9 @@ public struct TrebuchetConfig: Codable, Sendable {
     /// Service discovery configuration
     public var discovery: DiscoveryConfig?
 
+    /// Custom development dependencies (Docker containers)
+    public var dependencies: [DependencyConfig]?
+
     /// Custom commands that generate Swift Package Command Plugins
     public var commands: [String: CommandConfig]?
 
@@ -45,6 +48,7 @@ public struct TrebuchetConfig: Codable, Sendable {
         environments: [String: EnvironmentConfig]? = nil,
         state: StateConfig? = nil,
         discovery: DiscoveryConfig? = nil,
+        dependencies: [DependencyConfig]? = nil,
         commands: [String: CommandConfig]? = nil
     ) {
         self.name = name
@@ -56,6 +60,7 @@ public struct TrebuchetConfig: Codable, Sendable {
         self.environments = environments
         self.state = state
         self.discovery = discovery
+        self.dependencies = dependencies
         self.commands = commands
     }
 }
@@ -166,6 +171,75 @@ public struct DiscoveryConfig: Codable, Sendable {
     public init(type: String = "cloudmap", namespace: String? = nil) {
         self.type = type
         self.namespace = namespace
+    }
+}
+
+/// Configuration for a development dependency (Docker container)
+public struct DependencyConfig: Codable, Sendable {
+    /// Name of the dependency (used for container naming)
+    public var name: String
+
+    /// Docker image to use
+    public var image: String
+
+    /// Port mappings (host:container format, e.g., "8000:8000")
+    public var ports: [String]?
+
+    /// Command arguments to pass to the container (e.g., ["start", "--log", "info"])
+    public var command: [String]?
+
+    /// Environment variables for the container
+    public var environment: [String: String]?
+
+    /// Health check configuration
+    public var healthcheck: HealthCheckConfig?
+
+    /// Docker volumes (host:container format)
+    public var volumes: [String]?
+
+    public init(
+        name: String,
+        image: String,
+        ports: [String]? = nil,
+        command: [String]? = nil,
+        environment: [String: String]? = nil,
+        healthcheck: HealthCheckConfig? = nil,
+        volumes: [String]? = nil
+    ) {
+        self.name = name
+        self.image = image
+        self.ports = ports
+        self.command = command
+        self.environment = environment
+        self.healthcheck = healthcheck
+        self.volumes = volumes
+    }
+}
+
+/// Health check configuration for a dependency
+public struct HealthCheckConfig: Codable, Sendable {
+    /// URL to check for readiness (HTTP GET, expects 2xx)
+    public var url: String?
+
+    /// TCP port to check for readiness (on localhost)
+    public var port: UInt16?
+
+    /// Seconds between health check attempts
+    public var interval: Int?
+
+    /// Maximum number of retry attempts
+    public var retries: Int?
+
+    public init(
+        url: String? = nil,
+        port: UInt16? = nil,
+        interval: Int? = nil,
+        retries: Int? = nil
+    ) {
+        self.url = url
+        self.port = port
+        self.interval = interval
+        self.retries = retries
     }
 }
 
