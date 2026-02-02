@@ -821,4 +821,612 @@ struct BuildSystemTests {
         #expect(!largeResult.sizeDescription.isEmpty)
     }
 }
+
+@Suite("Dependency Config Tests")
+struct DependencyConfigTests {
+
+    @Test("DependencyConfig initialization")
+    func dependencyConfigInit() {
+        let dep = DependencyConfig(
+            name: "surrealdb",
+            image: "surrealdb/surrealdb:latest",
+            ports: ["8000:8000"],
+            command: "start --log info --user root --pass root memory"
+        )
+
+        #expect(dep.name == "surrealdb")
+        #expect(dep.image == "surrealdb/surrealdb:latest")
+        #expect(dep.ports == ["8000:8000"])
+        #expect(dep.command == "start --log info --user root --pass root memory")
+        #expect(dep.environment == nil)
+        #expect(dep.healthcheck == nil)
+        #expect(dep.volumes == nil)
+    }
+
+    @Test("DependencyConfig with all properties")
+    func dependencyConfigFull() {
+        let dep = DependencyConfig(
+            name: "postgresql",
+            image: "postgres:16-alpine",
+            ports: ["5432:5432"],
+            environment: ["POSTGRES_USER": "test", "POSTGRES_PASSWORD": "test"],
+            healthcheck: HealthCheckConfig(port: 5432, interval: 2, retries: 10),
+            volumes: ["/data:/var/lib/postgresql/data"]
+        )
+
+        #expect(dep.name == "postgresql")
+        #expect(dep.environment?["POSTGRES_USER"] == "test")
+        #expect(dep.healthcheck?.port == 5432)
+        #expect(dep.healthcheck?.interval == 2)
+        #expect(dep.healthcheck?.retries == 10)
+        #expect(dep.volumes?.count == 1)
+    }
+
+    @Test("HealthCheckConfig with URL")
+    func healthCheckConfigURL() {
+        let hc = HealthCheckConfig(
+            url: "http://localhost:4566/_localstack/health",
+            interval: 3,
+            retries: 20
+        )
+
+        #expect(hc.url == "http://localhost:4566/_localstack/health")
+        #expect(hc.port == nil)
+        #expect(hc.interval == 3)
+        #expect(hc.retries == 20)
+    }
+
+    @Test("HealthCheckConfig with port")
+    func healthCheckConfigPort() {
+        let hc = HealthCheckConfig(port: 8000, interval: 1, retries: 5)
+
+        #expect(hc.url == nil)
+        #expect(hc.port == 8000)
+        #expect(hc.interval == 1)
+        #expect(hc.retries == 5)
+    }
+
+    @Test("TrebuchetConfig with dependencies")
+    func configWithDependencies() {
+        let config = TrebuchetConfig(
+            name: "test-project",
+            defaults: DefaultSettings(provider: "local", region: "local"),
+            dependencies: [
+                DependencyConfig(
+                    name: "redis",
+                    image: "redis:7-alpine",
+                    ports: ["6379:6379"]
+                )
+            ]
+        )
+
+        #expect(config.dependencies?.count == 1)
+        #expect(config.dependencies?.first?.name == "redis")
+    }
+}
+
+@Suite("Dependency Config Parsing Tests")
+struct DependencyConfigParsingTests {
+
+    @Test("Parse YAML with dependencies")
+    func parseYamlWithDependencies() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: local
+              region: local
+              memory: 512
+              timeout: 30
+            actors: {}
+            dependencies:
+              - name: surrealdb
+                image: surrealdb/surrealdb:latest
+                ports:
+                  - "8000:8000"
+                command: "start --log info memory"
+                healthcheck:
+                  port: 8000
+                  interval: 2
+                  retries: 15
+            """
+
+        let loader = ConfigLoader()
+        let config = try loader.parse(yaml: yaml)
+
+        #expect(config.dependencies?.count == 1)
+        let dep = config.dependencies?.first
+        #expect(dep?.name == "surrealdb")
+        #expect(dep?.image == "surrealdb/surrealdb:latest")
+        #expect(dep?.ports == ["8000:8000"])
+        #expect(dep?.command == "start --log info memory")
+        #expect(dep?.healthcheck?.port == 8000)
+        #expect(dep?.healthcheck?.interval == 2)
+        #expect(dep?.healthcheck?.retries == 15)
+    }
+
+    @Test("Parse YAML with multiple dependencies")
+    func parseYamlMultipleDependencies() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: local
+              region: local
+              memory: 512
+              timeout: 30
+            actors: {}
+            dependencies:
+              - name: surrealdb
+                image: surrealdb/surrealdb:latest
+                ports:
+                  - "8000:8000"
+              - name: redis
+                image: redis:7-alpine
+                ports:
+                  - "6379:6379"
+                healthcheck:
+                  port: 6379
+            """
+
+        let loader = ConfigLoader()
+        let config = try loader.parse(yaml: yaml)
+
+        #expect(config.dependencies?.count == 2)
+        #expect(config.dependencies?[0].name == "surrealdb")
+        #expect(config.dependencies?[1].name == "redis")
+    }
+
+    @Test("Parse YAML with dependency environment variables")
+    func parseYamlDependencyEnvironment() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: local
+              region: local
+              memory: 512
+              timeout: 30
+            actors: {}
+            dependencies:
+              - name: postgresql
+                image: postgres:16-alpine
+                ports:
+                  - "5432:5432"
+                environment:
+                  POSTGRES_USER: trebuchet
+                  POSTGRES_PASSWORD: secret
+                  POSTGRES_DB: mydb
+            """
+
+        let loader = ConfigLoader()
+        let config = try loader.parse(yaml: yaml)
+
+        let dep = config.dependencies?.first
+        #expect(dep?.environment?["POSTGRES_USER"] == "trebuchet")
+        #expect(dep?.environment?["POSTGRES_PASSWORD"] == "secret")
+        #expect(dep?.environment?["POSTGRES_DB"] == "mydb")
+    }
+
+    @Test("Parse YAML without dependencies (backward compatibility)")
+    func parseYamlWithoutDependencies() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: aws
+              region: us-east-1
+              memory: 512
+              timeout: 30
+            actors: {}
+            """
+
+        let loader = ConfigLoader()
+        let config = try loader.parse(yaml: yaml)
+
+        #expect(config.dependencies == nil)
+    }
+}
+
+@Suite("Dependency Validation Tests")
+struct DependencyValidationTests {
+
+    @Test("Validation rejects duplicate dependency names")
+    func rejectsDuplicateNames() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: local
+              region: local
+              memory: 512
+              timeout: 30
+            actors: {}
+            dependencies:
+              - name: redis
+                image: redis:7-alpine
+              - name: redis
+                image: redis:6-alpine
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for duplicate dependency names")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("Duplicate dependency name"))
+            #expect(error.description.contains("redis"))
+        }
+    }
+
+    @Test("Validation rejects invalid dependency name")
+    func rejectsInvalidName() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: local
+              region: local
+              memory: 512
+              timeout: 30
+            actors: {}
+            dependencies:
+              - name: "123invalid"
+                image: redis:latest
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for invalid dependency name")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("invalid"))
+        }
+    }
+
+    @Test("Validation rejects empty image")
+    func rejectsEmptyImage() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: local
+              region: local
+              memory: 512
+              timeout: 30
+            actors: {}
+            dependencies:
+              - name: myservice
+                image: ""
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for empty image")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("image must not be empty"))
+        }
+    }
+
+    @Test("Validation rejects invalid port mapping")
+    func rejectsInvalidPortMapping() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: local
+              region: local
+              memory: 512
+              timeout: 30
+            actors: {}
+            dependencies:
+              - name: myservice
+                image: nginx:latest
+                ports:
+                  - "invalid"
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for invalid port mapping")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("invalid port mapping"))
+        }
+    }
+
+    @Test("Validation rejects healthcheck without url or port")
+    func rejectsHealthcheckWithoutTarget() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: local
+              region: local
+              memory: 512
+              timeout: 30
+            actors: {}
+            dependencies:
+              - name: myservice
+                image: nginx:latest
+                healthcheck:
+                  interval: 2
+                  retries: 5
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for healthcheck without url or port")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("healthcheck must specify either"))
+        }
+    }
+
+    @Test("Validation rejects healthcheck with invalid interval")
+    func rejectsInvalidHealthcheckInterval() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: local
+              region: local
+              memory: 512
+              timeout: 30
+            actors: {}
+            dependencies:
+              - name: myservice
+                image: nginx:latest
+                healthcheck:
+                  port: 80
+                  interval: 0
+            """
+
+        let loader = ConfigLoader()
+
+        do {
+            _ = try loader.parse(yaml: yaml)
+            Issue.record("Expected validation error for invalid healthcheck interval")
+        } catch let error as ConfigError {
+            #expect(error.description.contains("healthcheck interval must be at least 1"))
+        }
+    }
+
+    @Test("Validation accepts valid dependency config")
+    func acceptsValidDependency() throws {
+        let yaml = """
+            name: test-project
+            version: "1"
+            defaults:
+              provider: local
+              region: local
+              memory: 512
+              timeout: 30
+            actors: {}
+            dependencies:
+              - name: surrealdb
+                image: surrealdb/surrealdb:latest
+                ports:
+                  - "8000:8000"
+                command: "start memory"
+                healthcheck:
+                  port: 8000
+                  interval: 2
+                  retries: 15
+            """
+
+        let loader = ConfigLoader()
+        let config = try loader.parse(yaml: yaml)
+        #expect(config.dependencies?.count == 1)
+    }
+}
+
+@Suite("Dependency Orchestrator Tests")
+struct DependencyOrchestratorTests {
+
+    @Test("Orchestrator resolves no dependencies without config")
+    func resolvesNoDependenciesWithoutConfig() {
+        let orchestrator = DependencyOrchestrator(
+            terminal: Terminal(useColors: false),
+            verbose: false,
+            projectName: "test"
+        )
+
+        let deps = orchestrator.resolveDependencies(config: nil)
+        #expect(deps.isEmpty)
+    }
+
+    @Test("Orchestrator resolves no dependencies when state store has no default")
+    func resolvesNoDependenciesForUnknownStateStore() {
+        let config = TrebuchetConfig(
+            name: "test",
+            defaults: DefaultSettings(provider: "local", region: "local"),
+            state: StateConfig(type: "memory")
+        )
+
+        let orchestrator = DependencyOrchestrator(
+            terminal: Terminal(useColors: false),
+            verbose: false,
+            projectName: "test"
+        )
+
+        let deps = orchestrator.resolveDependencies(config: config)
+        #expect(deps.isEmpty)
+    }
+
+    @Test("Orchestrator auto-detects SurrealDB dependency")
+    func autoDetectsSurrealDB() {
+        let config = TrebuchetConfig(
+            name: "test",
+            defaults: DefaultSettings(provider: "local", region: "local"),
+            state: StateConfig(type: "surrealdb")
+        )
+
+        let orchestrator = DependencyOrchestrator(
+            terminal: Terminal(useColors: false),
+            verbose: false,
+            projectName: "test"
+        )
+
+        let deps = orchestrator.resolveDependencies(config: config)
+        #expect(deps.count == 1)
+        #expect(deps[0].name == "surrealdb")
+        #expect(deps[0].image == "surrealdb/surrealdb:latest")
+        #expect(deps[0].ports == ["8000:8000"])
+    }
+
+    @Test("Orchestrator auto-detects PostgreSQL dependency")
+    func autoDetectsPostgreSQL() {
+        let config = TrebuchetConfig(
+            name: "test",
+            defaults: DefaultSettings(provider: "local", region: "local"),
+            state: StateConfig(type: "postgresql")
+        )
+
+        let orchestrator = DependencyOrchestrator(
+            terminal: Terminal(useColors: false),
+            verbose: false,
+            projectName: "test"
+        )
+
+        let deps = orchestrator.resolveDependencies(config: config)
+        #expect(deps.count == 1)
+        #expect(deps[0].name == "postgresql")
+        #expect(deps[0].image == "postgres:16-alpine")
+        #expect(deps[0].environment?["POSTGRES_USER"] == "trebuchet")
+    }
+
+    @Test("Orchestrator auto-detects DynamoDB/LocalStack dependency")
+    func autoDetectsDynamoDB() {
+        let config = TrebuchetConfig(
+            name: "test",
+            defaults: DefaultSettings(provider: "aws", region: "us-east-1"),
+            state: StateConfig(type: "dynamodb")
+        )
+
+        let orchestrator = DependencyOrchestrator(
+            terminal: Terminal(useColors: false),
+            verbose: false,
+            projectName: "test"
+        )
+
+        let deps = orchestrator.resolveDependencies(config: config)
+        #expect(deps.count == 1)
+        #expect(deps[0].name == "localstack")
+        #expect(deps[0].image == "localstack/localstack:3.0")
+        #expect(deps[0].healthcheck?.url == "http://localhost:4566/_localstack/health")
+    }
+
+    @Test("Orchestrator combines auto-detected and explicit dependencies")
+    func combinesAutoAndExplicit() {
+        let config = TrebuchetConfig(
+            name: "test",
+            defaults: DefaultSettings(provider: "local", region: "local"),
+            state: StateConfig(type: "surrealdb"),
+            dependencies: [
+                DependencyConfig(
+                    name: "redis",
+                    image: "redis:7-alpine",
+                    ports: ["6379:6379"]
+                )
+            ]
+        )
+
+        let orchestrator = DependencyOrchestrator(
+            terminal: Terminal(useColors: false),
+            verbose: false,
+            projectName: "test"
+        )
+
+        let deps = orchestrator.resolveDependencies(config: config)
+        #expect(deps.count == 2)
+        #expect(deps[0].name == "surrealdb")  // auto-detected first
+        #expect(deps[1].name == "redis")       // explicit second
+    }
+
+    @Test("Orchestrator deduplicates dependencies by name")
+    func deduplicatesDependencies() {
+        let config = TrebuchetConfig(
+            name: "test",
+            defaults: DefaultSettings(provider: "local", region: "local"),
+            state: StateConfig(type: "surrealdb"),
+            dependencies: [
+                DependencyConfig(
+                    name: "surrealdb",
+                    image: "surrealdb/surrealdb:v1.5.0",
+                    ports: ["9000:8000"]
+                )
+            ]
+        )
+
+        let orchestrator = DependencyOrchestrator(
+            terminal: Terminal(useColors: false),
+            verbose: false,
+            projectName: "test"
+        )
+
+        let deps = orchestrator.resolveDependencies(config: config)
+        // Auto-detected one should win since it comes first
+        #expect(deps.count == 1)
+        #expect(deps[0].name == "surrealdb")
+        #expect(deps[0].image == "surrealdb/surrealdb:latest")
+    }
+
+    @Test("Orchestrator with only explicit dependencies")
+    func onlyExplicitDependencies() {
+        let config = TrebuchetConfig(
+            name: "test",
+            defaults: DefaultSettings(provider: "local", region: "local"),
+            dependencies: [
+                DependencyConfig(
+                    name: "meilisearch",
+                    image: "getmeili/meilisearch:latest",
+                    ports: ["7700:7700"],
+                    healthcheck: HealthCheckConfig(
+                        url: "http://localhost:7700/health",
+                        interval: 2,
+                        retries: 10
+                    )
+                )
+            ]
+        )
+
+        let orchestrator = DependencyOrchestrator(
+            terminal: Terminal(useColors: false),
+            verbose: false,
+            projectName: "test"
+        )
+
+        let deps = orchestrator.resolveDependencies(config: config)
+        #expect(deps.count == 1)
+        #expect(deps[0].name == "meilisearch")
+        #expect(deps[0].healthcheck?.url == "http://localhost:7700/health")
+    }
+}
+
+@Suite("Orchestrator Error Tests")
+struct OrchestratorErrorTests {
+
+    @Test("OrchestratorError descriptions")
+    func errorDescriptions() {
+        let errors: [(OrchestratorError, String)] = [
+            (.dockerNotAvailable, "Docker is not installed"),
+            (.portConflict(port: 8080, dependency: "redis"), "Port 8080"),
+            (.healthCheckFailed(dependency: "surrealdb", attempts: 10), "surrealdb failed to become ready"),
+            (.containerExited(dependency: "postgres", message: "Exit code 1"), "postgres container exited"),
+            (.dockerCommandFailed(command: "docker run test", exitCode: 1), "Docker command failed"),
+        ]
+
+        for (error, expectedSubstring) in errors {
+            #expect(error.description.contains(expectedSubstring),
+                    "Expected '\(expectedSubstring)' in: \(error.description)")
+        }
+    }
+}
 #endif

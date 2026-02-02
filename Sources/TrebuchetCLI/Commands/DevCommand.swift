@@ -19,6 +19,9 @@ public struct DevCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Path to local Trebuchet for development (e.g., ~/dev/Trebuchet)")
     public var local: String?
 
+    @Flag(name: .long, help: "Skip automatic dependency management (Docker containers)")
+    public var noDeps: Bool = false
+
     public init() {}
 
     public mutating func run() async throws {
@@ -112,6 +115,37 @@ public struct DevCommand: AsyncParsableCommand {
         }
         terminal.print("")
 
+        // Start dependencies (Docker containers) if needed
+        let orchestrator = DependencyOrchestrator(
+            terminal: terminal,
+            verbose: verbose,
+            projectName: config?.name ?? "trebuchet"
+        )
+
+        var managedContainers: [DependencyOrchestrator.ManagedContainer] = []
+        if !noDeps {
+            let dependencies = orchestrator.resolveDependencies(config: config)
+            if !dependencies.isEmpty {
+                terminal.print("Analyzing dependencies...", style: .dim)
+                if let stateType = config?.state?.type {
+                    terminal.print("  Detected state store: \(stateType)", style: .dim)
+                }
+                if let deps = config?.dependencies, !deps.isEmpty {
+                    terminal.print("  Custom dependencies: \(deps.map(\.name).joined(separator: ", "))", style: .dim)
+                }
+                terminal.print("")
+
+                do {
+                    managedContainers = try await orchestrator.startDependencies(dependencies)
+                } catch {
+                    terminal.print("Failed to start dependencies: \(error)", style: .error)
+                    terminal.print("Use --no-deps to skip dependency management.", style: .dim)
+                    terminal.print("")
+                    throw ExitCode.failure
+                }
+            }
+        }
+
         // Get project and module names
         let projectName = try getProjectName(from: cwd, terminal: terminal)
         let parentPackageName = try getParentPackageName(from: cwd) ?? projectName
@@ -179,6 +213,7 @@ public struct DevCommand: AsyncParsableCommand {
                 terminal.print("  • Checking for build errors in your project", style: .dim)
                 terminal.print("  • Running 'swift build' directly to diagnose the issue", style: .dim)
                 terminal.print("")
+                await orchestrator.stopContainers(managedContainers)
                 throw ExitCode.failure
             }
 
@@ -200,6 +235,7 @@ public struct DevCommand: AsyncParsableCommand {
                     }
                 }
 
+                await orchestrator.stopContainers(managedContainers)
                 throw ExitCode.failure
             }
 
@@ -342,6 +378,7 @@ public struct DevCommand: AsyncParsableCommand {
             terminal.print("  • Checking the generated package at: \(devPath)", style: .dim)
             terminal.print("  • Running 'swift build --package-path \(devPath)' directly", style: .dim)
             terminal.print("")
+            await orchestrator.stopContainers(managedContainers)
             throw ExitCode.failure
         }
 
@@ -363,6 +400,7 @@ public struct DevCommand: AsyncParsableCommand {
                 }
             }
 
+            await orchestrator.stopContainers(managedContainers)
             throw ExitCode.failure
         }
 
@@ -389,10 +427,24 @@ public struct DevCommand: AsyncParsableCommand {
         runProcess.standardError = FileHandle.standardError
 
         // Set up signal handling for graceful shutdown
+        let containersToStop = managedContainers
+        let cleanupOrchestrator = orchestrator
+        let cleanupTerminal = terminal
+
         let signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
         signalSource.setEventHandler {
-            print("\nReceived interrupt signal, stopping server...")
+            print("\nShutting down...")
             runProcess.terminate()
+
+            // Stop containers in a detached task
+            if !containersToStop.isEmpty {
+                Task {
+                    cleanupTerminal.print("Stopping dependencies...", style: .dim)
+                    await cleanupOrchestrator.stopContainers(containersToStop)
+                    cleanupTerminal.print("", style: .info)
+                }
+            }
+
             signalSource.cancel()
         }
         signalSource.resume()
@@ -406,6 +458,13 @@ public struct DevCommand: AsyncParsableCommand {
         // Clean up signal handler
         signalSource.cancel()
         signal(SIGINT, SIG_DFL)
+
+        // Stop managed containers on normal exit too
+        if !managedContainers.isEmpty {
+            terminal.print("")
+            terminal.print("Stopping dependencies...", style: .dim)
+            await orchestrator.stopContainers(managedContainers)
+        }
 
         // If the process exits (e.g., Ctrl+C), clean up
         if runProcess.terminationStatus != 0 {
