@@ -3,6 +3,19 @@ import Foundation
 
 /// Manages active streams and their continuations
 public actor StreamRegistry {
+    /// Debug logging helper (automatically enabled in DEBUG builds)
+    private static func debugLog(_ message: String, metadata: [String: String] = [:]) {
+        #if DEBUG
+        var output = "[StreamRegistry] \(message)"
+        if !metadata.isEmpty {
+            let metadataStr = metadata.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+            output += " | \(metadataStr)"
+        }
+        fputs(output + "\n", stderr)
+        fflush(stderr)
+        #endif
+    }
+
     /// State for an active stream
     private class StreamState {
         var continuation: AsyncStream<Data>.Continuation?
@@ -81,7 +94,10 @@ public actor StreamRegistry {
 
         let streamID = UUID()
 
-        print("🟢 [StreamRegistry] Creating remote stream with ID: \(streamID) for callID: \(callID)")
+        Self.debugLog("Creating remote stream", metadata: [
+            "streamID": streamID.uuidString,
+            "callID": callID.uuidString
+        ])
 
         // Pre-register the stream before creating the AsyncStream
         // This prevents race conditions where data arrives before registration
@@ -90,7 +106,7 @@ public actor StreamRegistry {
         callIDToStreamID[callID] = streamID
 
         let stream = AsyncStream<Data> { continuation in
-            print("🟢 [StreamRegistry] Registering continuation for stream \(streamID)")
+            Self.debugLog("Registering continuation for stream", metadata: ["streamID": streamID.uuidString])
 
             // CRITICAL: Register continuation SYNCHRONOUSLY
             // We can't call the async registerContinuation method here because we're in the StreamContinuation closure
@@ -105,7 +121,7 @@ public actor StreamRegistry {
             // No pending data at this point since this is a new stream
 
             continuation.onTermination = { @Sendable [weak self] _ in
-                print("🟢 [StreamRegistry] Stream \(streamID) terminated")
+                Self.debugLog("Stream terminated", metadata: ["streamID": streamID.uuidString])
                 Task {
                     await self?.removeStream(streamID: streamID)
                 }
@@ -177,20 +193,26 @@ public actor StreamRegistry {
 
     /// Handle a StreamStartEnvelope from the server
     public func handleStreamStart(_ envelope: StreamStartEnvelope) {
-        print("🟢 [StreamRegistry] Received StreamStart: callID=\(envelope.callID), serverStreamID=\(envelope.streamID)")
+        Self.debugLog("Received StreamStart", metadata: [
+            "callID": envelope.callID.uuidString,
+            "serverStreamID": envelope.streamID.uuidString
+        ])
 
         // The server sends its own streamID, but we pre-registered with a client-generated streamID
         // We need to create an alias from the server's streamID to our existing stream state
 
         guard let clientStreamID = callIDToStreamID[envelope.callID] else {
-            print("🟢 [StreamRegistry] ⚠️  No client stream found for callID \(envelope.callID)")
+            Self.debugLog("No client stream found for callID", metadata: ["callID": envelope.callID.uuidString])
             return
         }
 
-        print("🟢 [StreamRegistry] Creating alias: serverStreamID \(envelope.streamID) -> clientStreamID \(clientStreamID)")
+        Self.debugLog("Creating stream alias", metadata: [
+            "serverStreamID": envelope.streamID.uuidString,
+            "clientStreamID": clientStreamID.uuidString
+        ])
 
         guard let state = streams[clientStreamID] else {
-            print("🟢 [StreamRegistry] ⚠️  No stream state found for clientStreamID \(clientStreamID)")
+            Self.debugLog("No stream state found for client stream ID", metadata: ["clientStreamID": clientStreamID.uuidString])
             return
         }
 
@@ -199,16 +221,19 @@ public actor StreamRegistry {
         streams[envelope.streamID] = state
         // Keep the mapping for future data that will use the server's streamID
         callIDToStreamID[envelope.callID] = envelope.streamID
-        print("🟢 [StreamRegistry] Stream aliased successfully (both IDs active)")
+        Self.debugLog("Stream aliased successfully", metadata: ["streamID": envelope.streamID.uuidString])
     }
 
     /// Handle a StreamDataEnvelope and yield to the appropriate stream
     public func handleStreamData(_ envelope: StreamDataEnvelope) {
-        print("🟢 [StreamRegistry] Received StreamDataEnvelope for stream \(envelope.streamID), sequence \(envelope.sequenceNumber)")
+        Self.debugLog("Received StreamData", metadata: [
+            "streamID": envelope.streamID.uuidString,
+            "sequence": String(envelope.sequenceNumber)
+        ])
 
         guard streams[envelope.streamID] != nil else {
             // Stream not found, possibly already terminated
-            print("🟢 [StreamRegistry] ⚠️  Stream not found!")
+            Self.debugLog("Stream not found for data envelope", metadata: ["streamID": envelope.streamID.uuidString])
             return
         }
 
@@ -216,7 +241,11 @@ public actor StreamRegistry {
         if let currentSeq = streams[envelope.streamID]?.sequenceNumber,
            envelope.sequenceNumber <= currentSeq {
             // Duplicate or out-of-order message, ignore
-            print("🟢 [StreamRegistry] Ignoring duplicate/out-of-order data")
+            Self.debugLog("Ignoring duplicate or out-of-order data", metadata: [
+                "streamID": envelope.streamID.uuidString,
+                "received": String(envelope.sequenceNumber),
+                "current": String(currentSeq)
+            ])
             return
         }
 
@@ -231,25 +260,28 @@ public actor StreamRegistry {
 
         // If continuation is ready, yield immediately
         if let continuation = streams[envelope.streamID]?.continuation {
-            print("🟢 [StreamRegistry] Yielding data to continuation")
+            Self.debugLog("Yielding data to continuation", metadata: ["streamID": envelope.streamID.uuidString])
             continuation.yield(envelope.data)
         } else {
             // Continuation not ready yet, buffer the data
-            print("🟢 [StreamRegistry] Buffering data (continuation not ready)")
+            Self.debugLog("Buffering data (continuation not ready)", metadata: ["streamID": envelope.streamID.uuidString])
             streams[envelope.streamID]?.pendingData.append((envelope.sequenceNumber, envelope.data))
         }
     }
 
     /// Handle a StreamEndEnvelope and finish the stream
     public func handleStreamEnd(_ envelope: StreamEndEnvelope) {
-        print("🟢 [StreamRegistry] Received StreamEnd for stream \(envelope.streamID), reason: \(envelope.reason)")
+        Self.debugLog("Received StreamEnd", metadata: [
+            "streamID": envelope.streamID.uuidString,
+            "reason": String(describing: envelope.reason)
+        ])
 
         guard let state = streams[envelope.streamID] else {
-            print("🟢 [StreamRegistry] ⚠️  No stream found for StreamEnd")
+            Self.debugLog("No stream found for StreamEnd", metadata: ["streamID": envelope.streamID.uuidString])
             return
         }
 
-        print("🟢 [StreamRegistry] Finishing stream continuation")
+        Self.debugLog("Finishing stream continuation", metadata: ["streamID": envelope.streamID.uuidString])
         state.continuation?.finish()
         removeStreamInternal(streamID: envelope.streamID)
     }

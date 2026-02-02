@@ -23,6 +23,19 @@ public enum ServerState: Sendable {
 /// try await server.run()
 /// ```
 public final class TrebuchetServer: Sendable {
+    /// Debug logging helper (automatically enabled in DEBUG builds)
+    fileprivate static func debugLog(_ message: String, metadata: [String: String] = [:]) {
+        #if DEBUG
+        var output = "[TrebuchetServer] \(message)"
+        if !metadata.isEmpty {
+            let metadataStr = metadata.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+            output += " | \(metadataStr)"
+        }
+        fputs(output + "\n", stderr)
+        fflush(stderr)
+        #endif
+    }
+
     /// The actor system used by this server
     public let actorSystem: TrebuchetActorSystem
 
@@ -178,11 +191,15 @@ public final class TrebuchetServer: Sendable {
     ) async {
         // Register handler with method name check
         await streamingHandlers.registerTypedWithMethod(method: method) { envelope, actor in
-            print("[TrebuchetServer] 🌊 Handler called for method '\(method)' on actor type '\(T.self)'")
+            Self.debugLog("Handler called for streaming method", metadata: [
+                "method": method,
+                "actorType": String(describing: T.self),
+                "actorID": envelope.actorID.id
+            ])
             let stream = await observe(actor)
-            print("[TrebuchetServer] 🌊 Got stream, encoding...")
+            Self.debugLog("Stream obtained, encoding", metadata: ["method": method])
             let encoded = Self.encodeStream(stream)
-            print("[TrebuchetServer] 🌊 Stream encoded, returning")
+            Self.debugLog("Stream encoded, returning", metadata: ["method": method])
             return encoded
         }
     }
@@ -466,11 +483,13 @@ public final class TrebuchetServer: Sendable {
             try await respond(startData)
 
             // Execute the streaming method through the actor system
-            print("🟡 [Server] Executing streaming target: \(envelope.targetIdentifier)")
-            print("🟡 [Server] About to call executeStreamingTarget...")
+            Self.debugLog("Executing streaming target", metadata: [
+                "actorID": envelope.actorID.id,
+                "method": envelope.targetIdentifier,
+                "streamID": streamID.uuidString
+            ])
             let stream = try await actorSystem.executeStreamingTarget(envelope)
-            print("🟡 [Server] executeStreamingTarget returned!")
-            print("🟡 [Server] Stream obtained, starting iteration...")
+            Self.debugLog("Stream obtained, starting iteration", metadata: ["streamID": streamID.uuidString])
 
             // Run stream iteration in background task to avoid blocking the message handler
             let buffer = streamBuffer
@@ -478,10 +497,13 @@ public final class TrebuchetServer: Sendable {
             let filter = envelope.streamFilter
             Task {
                 do {
-                    print("🟡 [Server] Stream iteration task started")
+                    Self.debugLog("Stream iteration task started", metadata: ["streamID": streamID.uuidString])
                     var sequenceNumber: UInt64 = 0
                     for try await data in stream {
-                        print("🟡 [Server] Received data from stream, sequence: \(sequenceNumber + 1)")
+                        Self.debugLog("Received data from stream", metadata: [
+                            "streamID": streamID.uuidString,
+                            "sequence": String(sequenceNumber + 1)
+                        ])
                         // Apply filter before sending (if specified)
                         if let filter = filter {
                             let passes = await filterStateManager.matches(filter, data: data, streamID: streamID)
@@ -507,7 +529,7 @@ public final class TrebuchetServer: Sendable {
                     }
 
                     // Stream completed successfully
-                    print("🟡 [Server] Stream iteration completed normally (no more data)")
+                    Self.debugLog("Stream iteration completed normally", metadata: ["streamID": streamID.uuidString])
                     let endEnvelope = TrebuchetEnvelope.streamEnd(
                         StreamEndEnvelope(streamID: streamID, reason: .completed)
                     )
@@ -623,12 +645,19 @@ private actor StreamingHandlerRegistry {
     /// The type checking happens within the closure, avoiding metatype transfer
     func registerTyped<T>(handler: @escaping @Sendable (InvocationEnvelope, T) async throws -> AsyncStream<Data>) {
         handlers.append { envelope, actor in
-            print("[StreamingHandlerRegistry] 🔷 Trying to cast actor of type '\(type(of: actor))' to '\(T.self)'")
+            TrebuchetServer.debugLog("Trying to cast actor for streaming handler", metadata: [
+                "actorType": String(describing: type(of: actor)),
+                "targetType": String(describing: T.self),
+                "method": envelope.targetIdentifier
+            ])
             guard let typedActor = actor as? T else {
-                print("[StreamingHandlerRegistry] ❌ Cast failed, returning nil")
+                TrebuchetServer.debugLog("Actor cast failed, skipping handler", metadata: [
+                    "actorType": String(describing: type(of: actor)),
+                    "targetType": String(describing: T.self)
+                ])
                 return nil
             }
-            print("[StreamingHandlerRegistry] ✅ Cast succeeded, calling handler")
+            TrebuchetServer.debugLog("Actor cast succeeded, calling handler", metadata: ["targetType": String(describing: T.self)])
             return try await handler(envelope, typedActor)
         }
     }
