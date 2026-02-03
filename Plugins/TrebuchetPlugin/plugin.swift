@@ -7,9 +7,9 @@ struct TrebuchetPlugin: CommandPlugin {
         context: PluginContext,
         arguments: [String]
     ) async throws {
-        // Get the TrebuchetCLI executable tool from this package
-        guard let tool = try? context.tool(named: "TrebuchetCLI") else {
-            print("Error: Could not find 'TrebuchetCLI' tool. Make sure the package is built.")
+        // Get the trebuchet executable tool from this package
+        guard let tool = try? context.tool(named: "trebuchet") else {
+            print("Error: Could not find 'trebuchet' tool. Make sure the package is built.")
             throw PluginError.toolNotFound
         }
 
@@ -34,9 +34,9 @@ extension TrebuchetPlugin: XcodeCommandPlugin {
         context: XcodePluginContext,
         arguments: [String]
     ) throws {
-        // Get the TrebuchetCLI executable tool from this package
-        guard let tool = try? context.tool(named: "TrebuchetCLI") else {
-            print("Error: Could not find 'TrebuchetCLI' tool. Make sure the package is built.")
+        // Get the trebuchet executable tool from this package
+        guard let tool = try? context.tool(named: "trebuchet") else {
+            print("Error: Could not find 'trebuchet' tool. Make sure the package is built.")
             throw PluginError.toolNotFound
         }
 

@@ -1,0 +1,79 @@
+{
+  "configurations" : [
+    {
+      "id" : "05F7BCCE-DA6A-42AC-A478-BBB9083A57F7",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:",
+      "identifier" : "trebuchet",
+      "name" : "trebuchet"
+    }
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "TrebuchetAWSTests",
+        "name" : "TrebuchetAWSTests"
+      }
+    },
+    {
+      "enabled" : false,
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "TrebuchetCLITests",
+        "name" : "TrebuchetCLITests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "TrebuchetCloudTests",
+        "name" : "TrebuchetCloudTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "TrebuchetObservabilityTests",
+        "name" : "TrebuchetObservabilityTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "TrebuchetPostgreSQLTests",
+        "name" : "TrebuchetPostgreSQLTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "TrebuchetSecurityTests",
+        "name" : "TrebuchetSecurityTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "TrebuchetSurrealDBTests",
+        "name" : "TrebuchetSurrealDBTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "TrebuchetTests",
+        "name" : "TrebuchetTests"
+      }
+    }
+  ],
+  "version" : 1
+}

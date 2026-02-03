@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+# Critical Behavior
+
+- Use as many subagents as you can in order to efficiently use your context window. Have them write code, run commands, all that.
+- Whenever you plan a task, make sure that you take parallelizing the work into account and mark the plan as such so that you can easily parallelize the work effectively and identify bottlenecks in the implementation.
+- When running subagents, only let one at a time run tests or builds so that these processes don't collide, but feel free to write documentation, identify bugs, analyze potential security risks, or other read-only sessions while building or testing. Just be sure to not let other sub agents corrupt the build or tests.
+- Don't fire off a background task and sleep. Use the blocking task to watch it if you need to.
+- When CI fails, fix it and use `gh run watch` to watch the logs of the CI to confirm that it was fixed. 
+
 ## Debugging CI Failures
 
 **CRITICAL: Never guess when debugging CI failures.**
@@ -111,6 +119,11 @@ swift test --filter TrebuchetAWSTests
 docker-compose -f docker-compose.localstack.yml up -d
 swift test --filter TrebuchetAWSTests
 docker-compose -f docker-compose.localstack.yml down -v
+
+# Run SurrealDB tests
+docker-compose -f docker-compose.surrealdb.yml up -d
+swift test --filter TrebuchetSurrealDBTests
+docker-compose -f docker-compose.surrealdb.yml down -v
 ```
 
 ## Running LocalStack Integration Tests
@@ -163,6 +176,55 @@ Integration tests use Swift Testing framework with:
   - API Gateway WebSocket - connection management
 
 For detailed troubleshooting and LocalStack limitations, see [Tests/TrebuchetAWSTests/README.md](Tests/TrebuchetAWSTests/README.md).
+
+## Running SurrealDB Integration Tests
+
+### Prerequisites
+- Docker and Docker Compose
+- SurrealDB (started via docker-compose)
+
+### Start SurrealDB
+```bash
+# Start SurrealDB container
+docker-compose -f docker-compose.surrealdb.yml up -d
+
+# Verify SurrealDB is healthy
+curl http://localhost:8000/health
+
+# The container provides:
+# - HTTP/WebSocket endpoint at localhost:8000
+# - Root credentials (root/root)
+# - Memory storage mode for tests
+# - Trace logging enabled
+```
+
+### Run Integration Tests
+```bash
+# All SurrealDB integration tests
+swift test --filter TrebuchetSurrealDBTests
+
+# Specific integration suite
+swift test --filter SurrealDBStateStoreTests
+swift test --filter SurrealDBIntegrationTests
+```
+
+### Cleanup
+```bash
+docker-compose -f docker-compose.surrealdb.yml down -v
+```
+
+### Test Architecture
+Integration tests use Swift Testing framework with:
+- Graceful skipping when SurrealDB unavailable (availability checks in test init)
+- Automatic test isolation via unique actor IDs
+- Cleanup in defer blocks to prevent resource leaks
+- SurrealDB features tested:
+  - ActorStateStore implementation
+  - ORM patterns with SurrealModel
+  - Schema auto-generation
+  - Type-safe queries with KeyPath syntax
+  - Graph relationships with EdgeModel
+  - Concurrent operations and version conflict handling
 
 ## CLI Commands
 
@@ -317,6 +379,12 @@ Sources/TrebuchetPostgreSQL/
 ├── TrebuchetPostgreSQL.swift        # Module exports and documentation
 ├── PostgreSQLStateStore.swift      # ActorStateStore using PostgreSQL
 └── PostgreSQLStreamAdapter.swift   # LISTEN/NOTIFY for multi-instance sync
+
+Sources/TrebuchetSurrealDB/
+├── TrebuchetSurrealDB.swift         # Module exports and documentation
+├── SurrealDBStateStore.swift        # ActorStateStore using SurrealDB with ORM
+├── Configuration.swift              # Configuration types and environment loading
+└── CloudGatewayExtensions.swift     # Gateway integration and connection pooling
 ```
 
 ### Key Types
@@ -521,6 +589,7 @@ let players = try await lobby.getPlayers()  // Invokes another Lambda
 - **swift-argument-parser**: CLI argument parsing
 - **Yams**: YAML configuration parsing
 - **postgres-nio**: PostgreSQL client (TrebuchetPostgreSQL)
+- **surrealdb-swift**: SurrealDB client with ORM support (TrebuchetSurrealDB)
 - **swift-crypto**: Cryptographic operations (TrebuchetSecurity, TrebuchetAWS)
 - **soto (AWS SDK)**: AWS service clients (Lambda, DynamoDB, IAM, CloudWatch, ServiceDiscovery, ApiGatewayManagementApi)
 - **swift-macro-testing**: Macro testing utilities (TrebuchetMacrosTests)
@@ -539,6 +608,7 @@ Test suites:
 - `TrebuchetSecurityTests`: Authentication, authorization, rate limiting, validation
 - `TrebuchetObservabilityTests`: Logging, metrics, distributed tracing
 - `TrebuchetPostgreSQLTests`: PostgreSQL state store and stream adapter
+- `TrebuchetSurrealDBTests`: SurrealDB state store, ORM patterns, schema generation, graph relationships
 
 ## Release Process
 
