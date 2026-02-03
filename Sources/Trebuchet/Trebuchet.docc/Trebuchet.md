@@ -83,6 +83,7 @@ try await room.join(player: me)
 
 - <doc:TrebuchetCloud>
 - <doc:TrebuchetAWS>
+- <doc:TrebuchetSurrealDB>
+- <doc:TrebuchetPostgreSQL>
 - <doc:TrebuchetObservability>
 - <doc:TrebuchetSecurity>
-- <doc:TrebuchetPostgreSQL>
