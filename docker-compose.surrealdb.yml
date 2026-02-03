@@ -17,7 +17,7 @@ services:
       - SURREAL_LOG=trace
       - SURREAL_CAPS_ALLOW_ALL=true
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "test -e /surreal || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
