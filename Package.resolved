@@ -1,5 +1,5 @@
 {
-  "originHash" : "b12854000f1b119a2698f7ea794813684a23a68781ea19f35b46945ba6989ff5",
+  "originHash" : "96085a141c92b0ac4aee942bde6b7bc66d6ef12be123c6da7439396d73a8ed56",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -44,6 +44,15 @@
       "state" : {
         "revision" : "b4371f0475e71453597307a7e0de0f502eb49d39",
         "version" : "7.10.0"
+      }
+    },
+    {
+      "identity" : "surrealdb-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/briannadoubt/surrealdb-swift.git",
+      "state" : {
+        "revision" : "1149ada4dfb934d7acb25521799bf2bd5e970e64",
+        "version" : "0.2.0"
       }
     },
     {

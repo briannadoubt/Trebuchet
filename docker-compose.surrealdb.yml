@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    container_name: trebuchet-surrealdb
+    ports:
+      - "8000:8000"  # HTTP/WebSocket endpoint
+    command:
+      - start
+      - --log=trace
+      - --user=root
+      - --pass=root
+      - --bind=0.0.0.0:8000
+      - memory
+    environment:
+      - SURREAL_LOG=trace
+      - SURREAL_CAPS_ALLOW_ALL=true
+    healthcheck:
+      test: ["CMD-SHELL", "test -e /surreal || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
