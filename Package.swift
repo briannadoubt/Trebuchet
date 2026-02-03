@@ -24,6 +24,10 @@ let package = Package(
             targets: ["TrebuchetPostgreSQL"]
         ),
         .library(
+            name: "TrebuchetSurrealDB",
+            targets: ["TrebuchetSurrealDB"]
+        ),
+        .library(
             name: "TrebuchetObservability",
             targets: ["TrebuchetObservability"]
         ),
@@ -35,9 +39,13 @@ let package = Package(
             name: "TrebuchetPlugin",
             targets: ["TrebuchetPlugin"]
         ),
+        .library(
+            name: "TrebuchetCLI",
+            targets: ["TrebuchetCLI"]
+        ),
         .executable(
             name: "trebuchet",
-            targets: ["TrebuchetCLI"]
+            targets: ["TrebuchetCLITool"]
         ),
     ],
     dependencies: [
@@ -50,6 +58,8 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-docc-plugin.git", from: "1.4.0"),
         // PostgreSQL support
         .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.21.0"),
+        // SurrealDB support
+        .package(url: "https://github.com/briannadoubt/surrealdb-swift.git", from: "0.2.0"),
         // Cryptography (cross-platform)
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
         // CLI dependencies
@@ -115,6 +125,14 @@ let package = Package(
             ]
         ),
         .target(
+            name: "TrebuchetSurrealDB",
+            dependencies: [
+                "Trebuchet",
+                "TrebuchetCloud",
+                .product(name: "SurrealDB", package: "surrealdb-swift"),
+            ]
+        ),
+        .target(
             name: "TrebuchetObservability",
             dependencies: [
                 "Trebuchet",
@@ -130,7 +148,7 @@ let package = Package(
                 .product(name: "_CryptoExtras", package: "swift-crypto"),
             ]
         ),
-        .executableTarget(
+        .target(
             name: "TrebuchetCLI",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
@@ -138,6 +156,10 @@ let package = Package(
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftParser", package: "swift-syntax"),
             ]
+        ),
+        .executableTarget(
+            name: "TrebuchetCLITool",
+            dependencies: ["TrebuchetCLI"]
         ),
         .plugin(
             name: "TrebuchetPlugin",
@@ -156,7 +178,7 @@ let package = Package(
                     ),
                 ]
             ),
-            dependencies: ["TrebuchetCLI"]
+            dependencies: ["TrebuchetCLITool"]
         ),
         .testTarget(
             name: "TrebuchetTests",
@@ -179,6 +201,10 @@ let package = Package(
             resources: [
                 .copy("setup.sql")
             ]
+        ),
+        .testTarget(
+            name: "TrebuchetSurrealDBTests",
+            dependencies: ["TrebuchetSurrealDB"]
         ),
         .testTarget(
             name: "TrebuchetCLITests",
