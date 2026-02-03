@@ -79,6 +79,11 @@ public actor SurrealDBStateStore: ActorStateStore {
         password: String = "root",
         tableName: String = "actor_states"
     ) async throws {
+        // Validate tableName to prevent SQL injection
+        guard Self.isValidTableName(tableName) else {
+            throw SurrealDBError.queryFailed("Invalid table name: must contain only alphanumeric characters and underscores")
+        }
+
         self.tableName = tableName
         self.logger = Logger(label: "com.trebuchet.surrealdb")
 
@@ -109,6 +114,11 @@ public actor SurrealDBStateStore: ActorStateStore {
         db: SurrealDB,
         tableName: String = "actor_states"
     ) async throws {
+        // Validate tableName to prevent SQL injection
+        guard Self.isValidTableName(tableName) else {
+            throw SurrealDBError.queryFailed("Invalid table name: must contain only alphanumeric characters and underscores")
+        }
+
         self.db = db
         self.tableName = tableName
         self.logger = Logger(label: "com.trebuchet.surrealdb")
@@ -424,9 +434,22 @@ public actor SurrealDBStateStore: ActorStateStore {
                 createdAt: now
             )
 
-            let _: ActorState = try await db.create(tableName, data: newState)
-            logger.debug("Created new state for actor: \(actorID), version: 1")
-            return 1
+            do {
+                let _: ActorState = try await db.create(tableName, data: newState)
+                logger.debug("Created new state for actor: \(actorID), version: 1")
+                return 1
+            } catch {
+                // Handle race condition: another request may have created the record between our check and create
+                // Convert unique constraint violation to version conflict error
+                if error is SurrealError {
+                    let actualVersion = try await getSequenceNumber(for: actorID) ?? 0
+                    throw ActorStateError.versionConflict(
+                        expected: expectedVersion,
+                        actual: actualVersion
+                    )
+                }
+                throw error
+            }
         }
 
         // For existing actors, use conditional update
@@ -473,6 +496,13 @@ public actor SurrealDBStateStore: ActorStateStore {
     }
 
     // MARK: - Helper Methods
+
+    /// Validate table name to prevent SQL injection
+    private static func isValidTableName(_ name: String) -> Bool {
+        // Table names must contain only alphanumeric characters and underscores
+        let validCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
+        return !name.isEmpty && name.unicodeScalars.allSatisfy { validCharacters.contains($0) }
+    }
 
     /// Load the internal ActorState for an actor
     private func loadActorState(for actorID: String) async throws -> ActorState? {

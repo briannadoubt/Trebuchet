@@ -217,7 +217,7 @@ docker-compose -f docker-compose.surrealdb.yml down -v
 Integration tests use Swift Testing framework with:
 - Graceful skipping when SurrealDB unavailable (availability checks in test init)
 - Automatic test isolation via unique actor IDs
-- Cleanup in defer blocks to prevent resource leaks
+- Explicit async cleanup at end of tests (await ensures proper resource cleanup even on early exit)
 - SurrealDB features tested:
   - ActorStateStore implementation
   - ORM patterns with SurrealModel
