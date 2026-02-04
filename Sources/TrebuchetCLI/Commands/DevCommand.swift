@@ -22,6 +22,9 @@ public struct DevCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Skip automatic dependency management (Docker containers)")
     public var noDeps: Bool = false
 
+    @Option(name: .long, help: "Container runtime to use (auto, compote, docker)")
+    public var runtime: String = "auto"
+
     public init() {}
 
     public mutating func run() async throws {
@@ -115,16 +118,73 @@ public struct DevCommand: AsyncParsableCommand {
         }
         terminal.print("")
 
-        // Start dependencies (Docker containers) if needed
-        let orchestrator = DependencyOrchestrator(
-            terminal: terminal,
-            verbose: verbose,
-            projectName: config?.name ?? "trebuchet"
-        )
+        // Start dependencies if needed
+        enum ContainerRuntime {
+            case compote(CompoteOrchestrator)
+            case docker(DependencyOrchestrator)
+        }
 
-        var managedContainers: [DependencyOrchestrator.ManagedContainer] = []
+        // Determine which runtime to use
+        let containerRuntime: ContainerRuntime
+        let runtimeProjectName = config?.name ?? "trebuchet"
+
+        switch runtime.lowercased() {
+        case "compote":
+            // Force Compote
+            containerRuntime = .compote(CompoteOrchestrator(
+                terminal: terminal,
+                verbose: verbose,
+                projectName: runtimeProjectName
+            ))
+            if verbose {
+                terminal.print("Using Compote runtime (forced)", style: .dim)
+            }
+
+        case "docker":
+            // Force Docker
+            containerRuntime = .docker(DependencyOrchestrator(
+                terminal: terminal,
+                verbose: verbose,
+                projectName: runtimeProjectName
+            ))
+            if verbose {
+                terminal.print("Using Docker runtime (forced)", style: .dim)
+            }
+
+        default: // "auto"
+            // Try Compote first, fallback to Docker
+            if #available(macOS 15.0, *) {
+                containerRuntime = .compote(CompoteOrchestrator(
+                    terminal: terminal,
+                    verbose: verbose,
+                    projectName: runtimeProjectName
+                ))
+                if verbose {
+                    terminal.print("Using Compote runtime (macOS 15+)", style: .dim)
+                }
+            } else {
+                containerRuntime = .docker(DependencyOrchestrator(
+                    terminal: terminal,
+                    verbose: verbose,
+                    projectName: runtimeProjectName
+                ))
+                if verbose {
+                    terminal.print("Using Docker runtime (macOS < 15)", style: .dim)
+                }
+            }
+        }
+
+        var managedContainers: [(name: String, containerID: String, image: String, ports: [String])] = []
         if !noDeps {
-            let dependencies = orchestrator.resolveDependencies(config: config)
+            // Resolve and start dependencies
+            let dependencies: [DependencyConfig]
+            switch containerRuntime {
+            case .compote(let orch):
+                dependencies = orch.resolveDependencies(config: config)
+            case .docker(let orch):
+                dependencies = orch.resolveDependencies(config: config)
+            }
+
             if !dependencies.isEmpty {
                 terminal.print("Analyzing dependencies...", style: .dim)
                 if let stateType = config?.state?.type {
@@ -136,7 +196,14 @@ public struct DevCommand: AsyncParsableCommand {
                 terminal.print("")
 
                 do {
-                    managedContainers = try await orchestrator.startDependencies(dependencies)
+                    switch containerRuntime {
+                    case .compote(let orch):
+                        let containers = try await orch.startDependencies(dependencies)
+                        managedContainers = containers.map { ($0.name, $0.containerID, $0.image, $0.ports) }
+                    case .docker(let orch):
+                        let containers = try await orch.startDependencies(dependencies)
+                        managedContainers = containers.map { ($0.name, $0.containerID, $0.image, $0.ports) }
+                    }
                 } catch {
                     terminal.print("Failed to start dependencies: \(error)", style: .error)
                     terminal.print("Use --no-deps to skip dependency management.", style: .dim)
@@ -213,7 +280,15 @@ public struct DevCommand: AsyncParsableCommand {
                 terminal.print("  • Checking for build errors in your project", style: .dim)
                 terminal.print("  • Running 'swift build' directly to diagnose the issue", style: .dim)
                 terminal.print("")
-                await orchestrator.stopContainers(managedContainers)
+                // Stop containers based on runtime
+                switch containerRuntime {
+                case .compote(let orch):
+                    let containers = managedContainers.map { CompoteOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
+                    await orch.stopContainers(containers)
+                case .docker(let orch):
+                    let containers = managedContainers.map { DependencyOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
+                    await orch.stopContainers(containers)
+                }
                 throw ExitCode.failure
             }
 
@@ -235,7 +310,15 @@ public struct DevCommand: AsyncParsableCommand {
                     }
                 }
 
-                await orchestrator.stopContainers(managedContainers)
+                // Stop containers based on runtime
+                switch containerRuntime {
+                case .compote(let orch):
+                    let containers = managedContainers.map { CompoteOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
+                    await orch.stopContainers(containers)
+                case .docker(let orch):
+                    let containers = managedContainers.map { DependencyOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
+                    await orch.stopContainers(containers)
+                }
                 throw ExitCode.failure
             }
 
@@ -272,7 +355,8 @@ public struct DevCommand: AsyncParsableCommand {
             packageManifest = generateXcodeProjectPackageManifest(
                 packageName: packageName,
                 moduleName: moduleName,
-                localTrebuchetPath: local
+                localTrebuchetPath: local,
+                config: config
             )
             actualModuleName = moduleName
 
@@ -290,7 +374,8 @@ public struct DevCommand: AsyncParsableCommand {
                 packageName: packageName,
                 projectName: moduleName,
                 parentPackageName: parentPackageName,
-                localTrebuchetPath: local
+                localTrebuchetPath: local,
+                config: config
             )
             actualModuleName = moduleName
         }
@@ -312,7 +397,8 @@ public struct DevCommand: AsyncParsableCommand {
             actors: actors,
             moduleName: actualModuleName,
             host: host,
-            port: port
+            port: port,
+            config: config
         )
         try mainScript.write(
             toFile: "\(sourcesPath)/main.swift",
@@ -378,7 +464,15 @@ public struct DevCommand: AsyncParsableCommand {
             terminal.print("  • Checking the generated package at: \(devPath)", style: .dim)
             terminal.print("  • Running 'swift build --package-path \(devPath)' directly", style: .dim)
             terminal.print("")
-            await orchestrator.stopContainers(managedContainers)
+            // Stop containers based on runtime
+            switch containerRuntime {
+            case .compote(let orch):
+                let containers = managedContainers.map { CompoteOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
+                await orch.stopContainers(containers)
+            case .docker(let orch):
+                let containers = managedContainers.map { DependencyOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
+                await orch.stopContainers(containers)
+            }
             throw ExitCode.failure
         }
 
@@ -400,7 +494,15 @@ public struct DevCommand: AsyncParsableCommand {
                 }
             }
 
-            await orchestrator.stopContainers(managedContainers)
+            // Stop containers based on runtime
+            switch containerRuntime {
+            case .compote(let orch):
+                let containers = managedContainers.map { CompoteOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
+                await orch.stopContainers(containers)
+            case .docker(let orch):
+                let containers = managedContainers.map { DependencyOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
+                await orch.stopContainers(containers)
+            }
             throw ExitCode.failure
         }
 
@@ -450,7 +552,15 @@ public struct DevCommand: AsyncParsableCommand {
         if !managedContainers.isEmpty {
             terminal.print("")
             terminal.print("Stopping dependencies...", style: .dim)
-            await orchestrator.stopContainers(managedContainers)
+            // Stop containers based on runtime
+            switch containerRuntime {
+            case .compote(let orch):
+                let containers = managedContainers.map { CompoteOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
+                await orch.stopContainers(containers)
+            case .docker(let orch):
+                let containers = managedContainers.map { DependencyOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
+                await orch.stopContainers(containers)
+            }
         }
 
         // If the process exits (e.g., Ctrl+C), clean up
@@ -513,7 +623,7 @@ public struct DevCommand: AsyncParsableCommand {
         return sanitizeSwiftIdentifier(dirName)
     }
 
-    private func generatePackageManifest(packageName: String, projectName: String, parentPackageName: String, localTrebuchetPath: String?) -> String {
+    private func generatePackageManifest(packageName: String, projectName: String, parentPackageName: String, localTrebuchetPath: String?, config: TrebuchetConfig?) -> String {
         let trebuchetDependency: String
         if let localPath = localTrebuchetPath {
             // Expand ~ in path
@@ -522,6 +632,26 @@ public struct DevCommand: AsyncParsableCommand {
         } else {
             trebuchetDependency = ".package(url: \"https://github.com/briannadoubt/Trebuchet.git\", .upToNextMajor(from: \"0.3.0\"))"
         }
+
+        // Add state store dependencies based on config
+        var stateDependencies: [String] = []
+        if let stateType = config?.state?.type.lowercased() {
+            switch stateType {
+            case "surrealdb":
+                stateDependencies.append(".product(name: \"TrebuchetSurrealDB\", package: \"Trebuchet\")")
+            case "postgresql":
+                stateDependencies.append(".product(name: \"TrebuchetPostgreSQL\", package: \"Trebuchet\")")
+            case "dynamodb":
+                stateDependencies.append(".product(name: \"TrebuchetAWS\", package: \"Trebuchet\")")
+            default:
+                break
+            }
+        }
+
+        let allDependencies = ([
+            ".product(name: \"Trebuchet\", package: \"Trebuchet\")",
+            ".product(name: \"\(projectName)\", package: \"\(parentPackageName)\")"
+        ] + stateDependencies).joined(separator: ",\n                        ")
 
         return """
         // swift-tools-version: 6.0
@@ -541,8 +671,7 @@ public struct DevCommand: AsyncParsableCommand {
                 .executableTarget(
                     name: "\(packageName)",
                     dependencies: [
-                        .product(name: "Trebuchet", package: "Trebuchet"),
-                        .product(name: "\(projectName)", package: "\(parentPackageName)")
+                        \(allDependencies)
                     ]
                 )
             ]
@@ -594,19 +723,9 @@ public struct DevCommand: AsyncParsableCommand {
         actors: [ActorMetadata],
         moduleName: String,
         host: String,
-        port: UInt16
+        port: UInt16,
+        config: TrebuchetConfig?
     ) -> String {
-        // Generate dynamic actor creation cases
-        let dynamicActorCases = actors.map { actor in
-            let actorNameLower = actor.name.lowercased()
-            return """
-                    case let id where id == "\(actorNameLower)" || id.hasPrefix("\(actorNameLower)-"):
-                        let actor = \(actor.name)(actorSystem: server.actorSystem)
-                        await server.expose(actor, as: actorID.id)
-                        print("  ✓ Created: \(actor.name) (\\(actorID.id))")
-            """
-        }.joined(separator: "\n")
-
         // Generate streaming handler configuration for actors with streaming methods
         let streamingConfigs = actors.compactMap { actor -> String? in
             // Detect @StreamedState properties by reading the source file
@@ -660,13 +779,103 @@ public struct DevCommand: AsyncParsableCommand {
 
         """
 
+        // Generate state store imports and initialization based on config
+        let stateStoreImport: String
+        let stateStoreInit: String
+        let stateStoreCapture: String
+
+        if let stateType = config?.state?.type.lowercased() {
+            switch stateType {
+            case "surrealdb":
+                stateStoreImport = "import TrebuchetSurrealDB"
+                stateStoreInit = """
+// Initialize SurrealDB state store
+let stateStore = try await SurrealDBStateStore(
+    configuration: .init(
+        host: "localhost",
+        port: 8000,
+        namespace: "\(config?.name ?? "dev")",
+        database: "\(config?.name ?? "dev")",
+        username: "root",
+        password: "root"
+    )
+)
+print("✓ Connected to SurrealDB on localhost:8000")
+print("")
+"""
+                stateStoreCapture = ", stateStore: stateStore"
+
+            case "postgresql":
+                stateStoreImport = "import TrebuchetPostgreSQL"
+                stateStoreInit = """
+// Initialize PostgreSQL state store
+let stateStore = try await PostgreSQLStateStore(
+    configuration: .init(
+        host: "localhost",
+        port: 5432,
+        database: "trebuchet_dev",
+        username: "trebuchet",
+        password: "trebuchet"
+    )
+)
+print("✓ Connected to PostgreSQL on localhost:5432")
+print("")
+"""
+                stateStoreCapture = ", stateStore: stateStore"
+
+            case "dynamodb":
+                stateStoreImport = "import TrebuchetAWS"
+                stateStoreInit = """
+// Initialize DynamoDB state store (LocalStack)
+let stateStore = try await DynamoDBStateStore(
+    tableName: "\(config?.state?.tableName ?? (config?.name ?? "dev") + "-state")",
+    region: "us-east-1",
+    endpoint: "http://localhost:4566"  // LocalStack
+)
+print("✓ Connected to DynamoDB (LocalStack) on localhost:4566")
+print("")
+"""
+                stateStoreCapture = ", stateStore: stateStore"
+
+            default:
+                stateStoreImport = ""
+                stateStoreInit = ""
+                stateStoreCapture = ""
+            }
+        } else {
+            stateStoreImport = ""
+            stateStoreInit = ""
+            stateStoreCapture = ""
+        }
+
+        // Generate dynamic actor creation cases with state store injection
+        let dynamicActorCasesWithState = actors.map { actor in
+            let actorNameLower = actor.name.lowercased()
+            return """
+                    case let id where id == "\(actorNameLower)" || id.hasPrefix("\(actorNameLower)-"):
+                        let actor = \(actor.name)(actorSystem: server.actorSystem\(stateStoreCapture))
+                        await server.expose(actor, as: actorID.id)
+                        print("  ✓ Created: \(actor.name) (\\(actorID.id))")
+            """
+        }.joined(separator: "\n")
+
+        let additionalImports = stateStoreImport.isEmpty ? "" : "\n\(stateStoreImport)"
+        // Add proper indentation (16 spaces) to each line of state store init
+        let stateStoreSetup: String
+        if stateStoreInit.isEmpty {
+            stateStoreSetup = ""
+        } else {
+            let lines = stateStoreInit.split(separator: "\n", omittingEmptySubsequences: false)
+            stateStoreSetup = lines.map { "                \($0)" }.joined(separator: "\n")
+        }
+
         return """
         // Auto-generated local development runner
         // Generated by: trebuchet dev
 
         import Foundation
         import Trebuchet
-        import \(moduleName)
+        import \(moduleName)\(additionalImports)
 
         @main
         struct LocalRunner {
@@ -678,6 +887,7 @@ public struct DevCommand: AsyncParsableCommand {
                 print("Starting local development server...")
                 print("")
 
+                \(stateStoreSetup)
                 let server = TrebuchetServer(
                     transport: .webSocket(host: "\(host)", port: \(port))
                 )
@@ -701,7 +911,7 @@ public struct DevCommand: AsyncParsableCommand {
                 // Dynamic actor creation
                 server.onActorRequest = { actorID in
                     switch actorID.id {
-        \(dynamicActorCases)
+        \(dynamicActorCasesWithState)
                     default:
                         print("⚠️  Unknown actor type requested: \\(actorID.id)")
                     }
@@ -734,7 +944,8 @@ public struct DevCommand: AsyncParsableCommand {
     private func generateXcodeProjectPackageManifest(
         packageName: String,
         moduleName: String,
-        localTrebuchetPath: String?
+        localTrebuchetPath: String?,
+        config: TrebuchetConfig?
     ) -> String {
         let trebuchetDependency: String
         if let localPath = localTrebuchetPath {
@@ -744,6 +955,34 @@ public struct DevCommand: AsyncParsableCommand {
         } else {
             trebuchetDependency = ".package(url: \"https://github.com/briannadoubt/Trebuchet.git\", .upToNextMajor(from: \"0.3.0\"))"
         }
+
+        // Add state store dependencies based on config
+        var moduleStateDependencies: [String] = []
+        var executableStateDependencies: [String] = []
+        if let stateType = config?.state?.type.lowercased() {
+            switch stateType {
+            case "surrealdb":
+                moduleStateDependencies.append(".product(name: \"TrebuchetSurrealDB\", package: \"Trebuchet\")")
+                executableStateDependencies.append(".product(name: \"TrebuchetSurrealDB\", package: \"Trebuchet\")")
+            case "postgresql":
+                moduleStateDependencies.append(".product(name: \"TrebuchetPostgreSQL\", package: \"Trebuchet\")")
+                executableStateDependencies.append(".product(name: \"TrebuchetPostgreSQL\", package: \"Trebuchet\")")
+            case "dynamodb":
+                moduleStateDependencies.append(".product(name: \"TrebuchetAWS\", package: \"Trebuchet\")")
+                executableStateDependencies.append(".product(name: \"TrebuchetAWS\", package: \"Trebuchet\")")
+            default:
+                break
+            }
+        }
+
+        let moduleDependencies = ([
+            ".product(name: \"Trebuchet\", package: \"Trebuchet\")"
+        ] + moduleStateDependencies).joined(separator: ",\n                        ")
+
+        let executableDependencies = ([
+            ".product(name: \"Trebuchet\", package: \"Trebuchet\")",
+            "\"\(moduleName)\""
+        ] + executableStateDependencies).joined(separator: ",\n                        ")
 
         return """
         // swift-tools-version: 6.0
@@ -763,14 +1002,13 @@ public struct DevCommand: AsyncParsableCommand {
                 .target(
                     name: "\(moduleName)",
                     dependencies: [
-                        .product(name: "Trebuchet", package: "Trebuchet")
+                        \(moduleDependencies)
                     ]
                 ),
                 .executableTarget(
                     name: "\(packageName)",
                     dependencies: [
-                        .product(name: "Trebuchet", package: "Trebuchet"),
-                        "\(moduleName)"
+                        \(executableDependencies)
                     ]
                 )
             ]

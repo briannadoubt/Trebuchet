@@ -5,7 +5,7 @@ import CompilerPluginSupport
 
 let package = Package(
     name: "Trebuchet",
-    platforms: [.macOS(.v14), .iOS(.v17), .tvOS(.v17), .watchOS(.v10)],
+    platforms: [.macOS(.v15), .iOS(.v17), .tvOS(.v17), .watchOS(.v10)],
     products: [
         .library(
             name: "Trebuchet",
@@ -65,6 +65,8 @@ let package = Package(
         // CLI dependencies
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.0"),
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
+        // Compote - Native container orchestration
+        .package(path: "../compote"),
         // AWS SDK (Soto) - individual service packages
         .package(url: "https://github.com/soto-project/soto.git", from: "7.0.0"),
     ],
@@ -155,6 +157,7 @@ let package = Package(
                 .product(name: "Yams", package: "Yams"),
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftParser", package: "swift-syntax"),
+                .product(name: "CompoteCore", package: "compote"),
             ]
         ),
         .executableTarget(
