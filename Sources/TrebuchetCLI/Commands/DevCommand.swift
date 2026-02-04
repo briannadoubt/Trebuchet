@@ -69,7 +69,18 @@ public struct DevCommand: AsyncParsableCommand {
 
         // Try to load config
         let configLoader = ConfigLoader()
-        let config = try? configLoader.load(from: cwd)
+        let config: TrebuchetConfig?
+        do {
+            config = try configLoader.load(from: cwd)
+            if verbose {
+                terminal.print("✓ Loaded trebuchet.yaml", style: .dim)
+            }
+        } catch {
+            config = nil
+            if verbose {
+                terminal.print("No trebuchet.yaml found: \(error)", style: .dim)
+            }
+        }
 
         // Get package name from config, or use default
         let packageName = config?.packageName ?? "LocalRunner"
@@ -110,7 +121,11 @@ public struct DevCommand: AsyncParsableCommand {
             terminal.print("Using actors from trebuchet.yaml:", style: .info)
         } else {
             actors = allActors
-            terminal.print("No trebuchet.yaml found, using all discovered actors:", style: .info)
+            if config == nil {
+                terminal.print("No trebuchet.yaml found, using all discovered actors:", style: .info)
+            } else {
+                terminal.print("No actors configured in trebuchet.yaml, using all discovered actors:", style: .info)
+            }
         }
 
         for actor in actors {
