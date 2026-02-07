@@ -84,10 +84,10 @@ struct LocalTransportTests {
 
     @Test("Local transport basic connection")
     func testBasicConnection() async throws {
-        let client = TrebuchetClient(transport: .local)
+        let transport = LocalTransport.shared
 
         // Connect should succeed immediately (no-op for local transport)
-        try await client.connect()
+        try await transport.connect(to: Endpoint(host: "local", port: 0))
 
         // Connection succeeded without errors
         #expect(true)
@@ -114,6 +114,8 @@ struct LocalTransportTests {
 
         let finalValue = try await remoteCounter.getValue()
         #expect(finalValue == 2)
+
+        await local.shutdown()
     }
 
     @Test("TrebuchetLocal unified API")
@@ -130,6 +132,8 @@ struct LocalTransportTests {
         // Invoke method
         let greeting = try await resolved.greet(name: "World")
         #expect(greeting == "Hello, World!")
+
+        await local.shutdown()
     }
 
     @Test("TrebuchetLocal factory pattern")
@@ -150,6 +154,8 @@ struct LocalTransportTests {
         let resolved = try local.resolve(LocalTestDataStore.self, id: "store-test")
         let resolvedValue = try await resolved.get(key: "name")
         #expect(resolvedValue == "Alice")
+
+        await local.shutdown()
     }
 
     @Test("Local transport zero serialization overhead")
@@ -173,6 +179,8 @@ struct LocalTransportTests {
 
         // Local transport should be very fast (< 100ms even for large payloads)
         #expect(duration < .milliseconds(100))
+
+        await local.shutdown()
     }
 
     @Test("Multiple actors on local transport")
@@ -193,6 +201,8 @@ struct LocalTransportTests {
 
         #expect(nameA == "ServiceA")
         #expect(nameB == "ServiceB")
+
+        await local.shutdown()
     }
 
     @Test("Local transport endpoint configuration")
@@ -224,5 +234,7 @@ struct LocalTransportTests {
         // The ID should not be considered "local" in the traditional sense
         // because it has host and port set for the local transport
         #expect(!actorID.isLocal)
+
+        await local.shutdown()
     }
 }

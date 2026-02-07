@@ -73,6 +73,14 @@ public actor LocalTransport: TrebuchetTransport {
     /// across your application.
     public static let shared = LocalTransport()
 
+    /// Create an isolated local transport instance.
+    ///
+    /// This is useful when you need a dedicated in-process transport that does
+    /// not share message streams with `LocalTransport.shared`.
+    internal static func isolated() -> LocalTransport {
+        LocalTransport()
+    }
+
     /// The async stream for receiving messages.
     public nonisolated let incoming: AsyncStream<TransportMessage>
 
@@ -82,11 +90,16 @@ public actor LocalTransport: TrebuchetTransport {
     /// Access is synchronized through actor isolation.
     private var continuation: AsyncStream<TransportMessage>.Continuation?
 
+    /// Shared server instance for local transport usage.
+    private static let sharedServer = TrebuchetServer(transport: .local)
+
     /// The shared server instance for this transport.
     ///
     /// This provides a convenient way to access a TrebuchetServer configured with
     /// local transport, useful for testing and SwiftUI previews.
-    public nonisolated let server: TrebuchetServer
+    public nonisolated var server: TrebuchetServer {
+        Self.sharedServer
+    }
 
     /// Creates a new local transport instance.
     ///
@@ -99,7 +112,6 @@ public actor LocalTransport: TrebuchetTransport {
             continuation = cont
         }
         self.continuation = continuation
-        self.server = TrebuchetServer(transport: .local)
     }
 
     /// Connects to the specified endpoint.
