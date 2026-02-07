@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: briannadoubt/compote
-          path: compote
+          path: ../compote
 
       - name: Setup Swift (Linux)
         if: runner.os == 'Linux'
