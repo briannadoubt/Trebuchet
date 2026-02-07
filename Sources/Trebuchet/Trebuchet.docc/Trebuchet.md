@@ -45,6 +45,7 @@ try await room.join(player: me)
 
 - ``TrebuchetServer``
 - ``TrebuchetClient``
+- ``TrebuchetLocal``
 
 ### Transport Layer
 

@@ -4,9 +4,30 @@
 
 `TransportConfiguration` specifies how Trebuchet communicates over the network. It's used when creating servers and clients.
 
+## Local Transport
+
+For in-process communication without network overhead, use the `.local` transport:
+
+```swift
+// Create server and client with local transport
+let server = TrebuchetServer(transport: .local)
+let client = TrebuchetClient(transport: .local)
+
+// Or use TrebuchetLocal for a unified API
+let local = await TrebuchetLocal()
+```
+
+The `.local` transport is ideal for:
+- **Testing**: No network setup required, instant connections
+- **SwiftUI Previews**: Works in sandboxed preview environments
+- **Development**: Zero latency for rapid prototyping
+- **Single-process apps**: Location transparency within one process
+
+See ``TrebuchetLocal`` for a convenient unified API.
+
 ## WebSocket Transport
 
-WebSocket is the default and recommended transport:
+WebSocket is the recommended transport for network communication:
 
 ```swift
 // Server - listen on all interfaces
@@ -36,6 +57,7 @@ let tls = try TLSConfiguration(
 
 ### Transport Types
 
+- ``local``
 - ``webSocket(host:port:tls:)``
 - ``tcp(host:port:)``
 
