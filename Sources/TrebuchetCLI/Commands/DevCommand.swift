@@ -135,7 +135,9 @@ public struct DevCommand: AsyncParsableCommand {
 
         // Start dependencies if needed
         enum ContainerRuntime {
+            #if os(macOS)
             case compote(CompoteOrchestrator)
+            #endif
             case docker(DependencyOrchestrator)
         }
 
@@ -145,6 +147,7 @@ public struct DevCommand: AsyncParsableCommand {
 
         switch runtime.lowercased() {
         case "compote":
+            #if os(macOS)
             // Force Compote
             containerRuntime = .compote(CompoteOrchestrator(
                 terminal: terminal,
@@ -154,6 +157,10 @@ public struct DevCommand: AsyncParsableCommand {
             if verbose {
                 terminal.print("Using Compote runtime (forced)", style: .dim)
             }
+            #else
+            terminal.print("Compote runtime is only available on macOS. Use --runtime docker instead.", style: .error)
+            throw ExitCode.failure
+            #endif
 
         case "docker":
             // Force Docker
@@ -168,6 +175,7 @@ public struct DevCommand: AsyncParsableCommand {
 
         default: // "auto"
             // Try Compote first, fallback to Docker
+            #if os(macOS)
             if #available(macOS 15.0, *) {
                 containerRuntime = .compote(CompoteOrchestrator(
                     terminal: terminal,
@@ -187,15 +195,45 @@ public struct DevCommand: AsyncParsableCommand {
                     terminal.print("Using Docker runtime (macOS < 15)", style: .dim)
                 }
             }
+            #else
+            containerRuntime = .docker(DependencyOrchestrator(
+                terminal: terminal,
+                verbose: verbose,
+                projectName: runtimeProjectName
+            ))
+            if verbose {
+                terminal.print("Using Docker runtime (non-macOS)", style: .dim)
+            }
+            #endif
         }
 
         var managedContainers: [(name: String, containerID: String, image: String, ports: [String])] = []
+
+        func stopManagedContainers() async {
+            switch containerRuntime {
+            #if os(macOS)
+            case .compote(let orch):
+                let containers = managedContainers.map {
+                    CompoteOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports)
+                }
+                await orch.stopContainers(containers)
+            #endif
+            case .docker(let orch):
+                let containers = managedContainers.map {
+                    DependencyOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports)
+                }
+                await orch.stopContainers(containers)
+            }
+        }
+
         if !noDeps {
             // Resolve and start dependencies
             let dependencies: [DependencyConfig]
             switch containerRuntime {
+            #if os(macOS)
             case .compote(let orch):
                 dependencies = orch.resolveDependencies(config: config)
+            #endif
             case .docker(let orch):
                 dependencies = orch.resolveDependencies(config: config)
             }
@@ -212,9 +250,11 @@ public struct DevCommand: AsyncParsableCommand {
 
                 do {
                     switch containerRuntime {
+                    #if os(macOS)
                     case .compote(let orch):
                         let containers = try await orch.startDependencies(dependencies)
                         managedContainers = containers.map { ($0.name, $0.containerID, $0.image, $0.ports) }
+                    #endif
                     case .docker(let orch):
                         let containers = try await orch.startDependencies(dependencies)
                         managedContainers = containers.map { ($0.name, $0.containerID, $0.image, $0.ports) }
@@ -295,15 +335,7 @@ public struct DevCommand: AsyncParsableCommand {
                 terminal.print("  • Checking for build errors in your project", style: .dim)
                 terminal.print("  • Running 'swift build' directly to diagnose the issue", style: .dim)
                 terminal.print("")
-                // Stop containers based on runtime
-                switch containerRuntime {
-                case .compote(let orch):
-                    let containers = managedContainers.map { CompoteOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
-                    await orch.stopContainers(containers)
-                case .docker(let orch):
-                    let containers = managedContainers.map { DependencyOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
-                    await orch.stopContainers(containers)
-                }
+                await stopManagedContainers()
                 throw ExitCode.failure
             }
 
@@ -325,15 +357,7 @@ public struct DevCommand: AsyncParsableCommand {
                     }
                 }
 
-                // Stop containers based on runtime
-                switch containerRuntime {
-                case .compote(let orch):
-                    let containers = managedContainers.map { CompoteOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
-                    await orch.stopContainers(containers)
-                case .docker(let orch):
-                    let containers = managedContainers.map { DependencyOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
-                    await orch.stopContainers(containers)
-                }
+                await stopManagedContainers()
                 throw ExitCode.failure
             }
 
@@ -479,15 +503,7 @@ public struct DevCommand: AsyncParsableCommand {
             terminal.print("  • Checking the generated package at: \(devPath)", style: .dim)
             terminal.print("  • Running 'swift build --package-path \(devPath)' directly", style: .dim)
             terminal.print("")
-            // Stop containers based on runtime
-            switch containerRuntime {
-            case .compote(let orch):
-                let containers = managedContainers.map { CompoteOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
-                await orch.stopContainers(containers)
-            case .docker(let orch):
-                let containers = managedContainers.map { DependencyOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
-                await orch.stopContainers(containers)
-            }
+            await stopManagedContainers()
             throw ExitCode.failure
         }
 
@@ -509,15 +525,7 @@ public struct DevCommand: AsyncParsableCommand {
                 }
             }
 
-            // Stop containers based on runtime
-            switch containerRuntime {
-            case .compote(let orch):
-                let containers = managedContainers.map { CompoteOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
-                await orch.stopContainers(containers)
-            case .docker(let orch):
-                let containers = managedContainers.map { DependencyOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
-                await orch.stopContainers(containers)
-            }
+            await stopManagedContainers()
             throw ExitCode.failure
         }
 
@@ -567,15 +575,7 @@ public struct DevCommand: AsyncParsableCommand {
         if !managedContainers.isEmpty {
             terminal.print("")
             terminal.print("Stopping dependencies...", style: .dim)
-            // Stop containers based on runtime
-            switch containerRuntime {
-            case .compote(let orch):
-                let containers = managedContainers.map { CompoteOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
-                await orch.stopContainers(containers)
-            case .docker(let orch):
-                let containers = managedContainers.map { DependencyOrchestrator.ManagedContainer(name: $0.name, containerID: $0.containerID, image: $0.image, ports: $0.ports) }
-                await orch.stopContainers(containers)
-            }
+            await stopManagedContainers()
         }
 
         // If the process exits (e.g., Ctrl+C), clean up

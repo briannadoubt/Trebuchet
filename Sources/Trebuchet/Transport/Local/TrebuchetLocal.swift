@@ -162,7 +162,7 @@ public final class TrebuchetLocal: Sendable {
     /// The actor system used by this instance
     public let actorSystem: TrebuchetActorSystem
 
-    /// The underlying transport (shared singleton)
+    /// The underlying transport (isolated per TrebuchetLocal instance)
     private let transport: LocalTransport
 
     /// Registry of exposed actors by name
@@ -177,12 +177,9 @@ public final class TrebuchetLocal: Sendable {
     /// Create a new local instance
     ///
     /// This creates a unified server and client that communicate in-process
-    /// using the shared `LocalTransport` singleton.
-    ///
-    /// - Note: All `TrebuchetLocal` instances in the same process share
-    ///   the same transport, allowing actors to discover each other.
+    /// using an isolated in-process local transport.
     public init() async {
-        self.transport = LocalTransport.shared
+        self.transport = LocalTransport.isolated()
         self.actorSystem = TrebuchetActorSystem()
 
         // Configure the actor system with local transport
@@ -228,6 +225,14 @@ public final class TrebuchetLocal: Sendable {
 
     deinit {
         messageHandlerTask.cancel()
+    }
+
+    /// Stops local message handling for this instance.
+    ///
+    /// Call this in tests to ensure deterministic cleanup between cases.
+    public func shutdown() async {
+        messageHandlerTask.cancel()
+        await transport.shutdown()
     }
 
     /// Expose an actor with a given name so it can be resolved
@@ -284,7 +289,9 @@ public final class TrebuchetLocal: Sendable {
         _ actorType: Act.Type,
         id: String
     ) throws -> Act where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
-        let actorID = TrebuchetActorID(id: id)
+        // Use a routable local endpoint so invocation flows through LocalTransport,
+        // where exposed-name translation maps "id" -> actual actor ID.
+        let actorID = TrebuchetActorID(id: id, host: "local", port: 0)
         return try Act.resolve(id: actorID, using: actorSystem)
     }
 

@@ -8,7 +8,10 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Save and load actor state")
     func testSaveAndLoad() async throws {
-        try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        guard await LocalStackTestHelpers.isLocalStackAvailable() else {
+            print("⏭️  Skipping: LocalStack not available. Start with: docker-compose -f docker-compose.localstack.yml up -d")
+            return
+        }
         let client = LocalStackTestHelpers.createAWSClient()
 
 
@@ -34,7 +37,10 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Sequence numbers auto-increment")
     func testSequenceNumbersAutoIncrement() async throws {
-        try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        guard await LocalStackTestHelpers.isLocalStackAvailable() else {
+            print("⏭️  Skipping: LocalStack not available. Start with: docker-compose -f docker-compose.localstack.yml up -d")
+            return
+        }
         let client = LocalStackTestHelpers.createAWSClient()
 
         
@@ -67,7 +73,10 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Delete removes actor state")
     func testDelete() async throws {
-        try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        guard await LocalStackTestHelpers.isLocalStackAvailable() else {
+            print("⏭️  Skipping: LocalStack not available. Start with: docker-compose -f docker-compose.localstack.yml up -d")
+            return
+        }
         let client = LocalStackTestHelpers.createAWSClient()
 
         
@@ -98,7 +107,10 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Exists returns correct boolean")
     func testExists() async throws {
-        try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        guard await LocalStackTestHelpers.isLocalStackAvailable() else {
+            print("⏭️  Skipping: LocalStack not available. Start with: docker-compose -f docker-compose.localstack.yml up -d")
+            return
+        }
         let client = LocalStackTestHelpers.createAWSClient()
 
         
@@ -133,7 +145,10 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Save with version check succeeds on match")
     func testSaveWithVersionCheckSucceeds() async throws {
-        try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        guard await LocalStackTestHelpers.isLocalStackAvailable() else {
+            print("⏭️  Skipping: LocalStack not available. Start with: docker-compose -f docker-compose.localstack.yml up -d")
+            return
+        }
         let client = LocalStackTestHelpers.createAWSClient()
 
         
@@ -163,7 +178,10 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Save with version check fails on mismatch")
     func testSaveWithVersionCheckFails() async throws {
-        try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        guard await LocalStackTestHelpers.isLocalStackAvailable() else {
+            print("⏭️  Skipping: LocalStack not available. Start with: docker-compose -f docker-compose.localstack.yml up -d")
+            return
+        }
         let client = LocalStackTestHelpers.createAWSClient()
 
         
@@ -202,7 +220,10 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Concurrent saves to different actors")
     func testConcurrentSaves() async throws {
-        try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        guard await LocalStackTestHelpers.isLocalStackAvailable() else {
+            print("⏭️  Skipping: LocalStack not available. Start with: docker-compose -f docker-compose.localstack.yml up -d")
+            return
+        }
         let client = LocalStackTestHelpers.createAWSClient()
 
         
@@ -228,7 +249,10 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Update with transform function")
     func testUpdateWithTransform() async throws {
-        try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        guard await LocalStackTestHelpers.isLocalStackAvailable() else {
+            print("⏭️  Skipping: LocalStack not available. Start with: docker-compose -f docker-compose.localstack.yml up -d")
+            return
+        }
         let client = LocalStackTestHelpers.createAWSClient()
 
         
@@ -262,7 +286,10 @@ struct DynamoDBStateStoreIntegrationTests {
 
     @Test("Load returns nil for non-existent actor")
     func testLoadNonExistent() async throws {
-        try #require(await LocalStackTestHelpers.isLocalStackAvailable())
+        guard await LocalStackTestHelpers.isLocalStackAvailable() else {
+            print("⏭️  Skipping: LocalStack not available. Start with: docker-compose -f docker-compose.localstack.yml up -d")
+            return
+        }
         let client = LocalStackTestHelpers.createAWSClient()
 
 
