@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import CompoteCore
 
@@ -163,3 +164,4 @@ public struct ComposeFileGenerator {
         )
     }
 }
+#endif
