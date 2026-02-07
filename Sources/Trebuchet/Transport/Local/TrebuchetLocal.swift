@@ -171,6 +171,9 @@ public final class TrebuchetLocal: Sendable {
     /// Registry of streaming handlers by type
     private let streamingHandlers = StreamingHandlerRegistry()
 
+    /// Task handling incoming messages
+    private let messageHandlerTask: Task<Void, Never>
+
     /// Create a new local instance
     ///
     /// This creates a unified server and client that communicate in-process
@@ -205,11 +208,26 @@ public final class TrebuchetLocal: Sendable {
         try? await transport.listen(on: Endpoint(host: "local", port: 0))
 
         // Process incoming messages
-        Task {
+        // Capture dependencies to avoid self-before-init error
+        let actorSystem = self.actorSystem
+        let exposedActors = self.exposedActors
+        let transport = self.transport
+
+        self.messageHandlerTask = Task { [weak actorSystem, weak exposedActors, weak transport] in
+            guard let actorSystem, let exposedActors, let transport else { return }
+
             for await message in transport.incoming {
-                await self.handleMessage(message)
+                await Self.handleMessageStatic(
+                    message,
+                    actorSystem: actorSystem,
+                    exposedActors: exposedActors
+                )
             }
         }
+    }
+
+    deinit {
+        messageHandlerTask.cancel()
     }
 
     /// Expose an actor with a given name so it can be resolved
@@ -266,7 +284,7 @@ public final class TrebuchetLocal: Sendable {
         _ actorType: Act.Type,
         id: String
     ) throws -> Act where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
-        let actorID = TrebuchetActorID(id: id, host: "local", port: 0)
+        let actorID = TrebuchetActorID(id: id)
         return try Act.resolve(id: actorID, using: actorSystem)
     }
 
@@ -436,7 +454,11 @@ public final class TrebuchetLocal: Sendable {
 
     // MARK: - Private
 
-    private func handleMessage(_ message: TransportMessage) async {
+    private static func handleMessageStatic(
+        _ message: TransportMessage,
+        actorSystem: TrebuchetActorSystem,
+        exposedActors: ExposedActorRegistry
+    ) async {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
@@ -454,14 +476,21 @@ public final class TrebuchetLocal: Sendable {
                         callID: invocationEnvelope.callID,
                         actorID: realID,
                         targetIdentifier: invocationEnvelope.targetIdentifier,
+                        protocolVersion: invocationEnvelope.protocolVersion,
                         genericSubstitutions: invocationEnvelope.genericSubstitutions,
-                        arguments: invocationEnvelope.arguments
+                        arguments: invocationEnvelope.arguments,
+                        streamFilter: invocationEnvelope.streamFilter,
+                        traceContext: invocationEnvelope.traceContext
                     )
                 }
 
                 // Check if this is a streaming method
                 if invocationEnvelope.targetIdentifier.hasPrefix("observe") {
-                    await handleStreamingInvocation(invocationEnvelope, respond: message.respond)
+                    await Self.handleStreamingInvocation(
+                        invocationEnvelope,
+                        actorSystem: actorSystem,
+                        respond: message.respond
+                    )
                 } else {
                     // Regular RPC invocation
                     let response = await actorSystem.handleIncomingInvocation(invocationEnvelope)
@@ -491,11 +520,24 @@ public final class TrebuchetLocal: Sendable {
                 break
             }
         } catch {
-            // Silently ignore decoding errors
+            // Send error response for decoding failures
+            let errorResponse = ResponseEnvelope(
+                callID: UUID(),
+                result: nil,
+                errorMessage: "Failed to decode message: \(error.localizedDescription)"
+            )
+            let errorEnvelope = TrebuchetEnvelope.response(errorResponse)
+            if let errorData = try? encoder.encode(errorEnvelope) {
+                try? await message.respond(errorData)
+            }
         }
     }
 
-    private func handleStreamingInvocation(_ envelope: InvocationEnvelope, respond: @escaping @Sendable (Data) async throws -> Void) async {
+    private static func handleStreamingInvocation(
+        _ envelope: InvocationEnvelope,
+        actorSystem: TrebuchetActorSystem,
+        respond: @escaping @Sendable (Data) async throws -> Void
+    ) async {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
 

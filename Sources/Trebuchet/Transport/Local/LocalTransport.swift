@@ -51,10 +51,10 @@ import Foundation
 ///
 /// ## Thread Safety
 ///
-/// LocalTransport is marked `@unchecked Sendable` because:
-/// - The `continuation` is accessed only during initialization and shutdown
-/// - The `server` property uses lazy initialization with Swift's built-in thread safety
-/// - All message handling is async and uses structured concurrency
+/// LocalTransport is an actor that provides thread-safe access to all mutable state:
+/// - The `continuation` is isolated to the actor
+/// - The `server` property is initialized during init and never mutated
+/// - All message handling is async and uses actor isolation
 ///
 /// ## Performance
 ///
@@ -66,7 +66,7 @@ import Foundation
 ///
 /// Use this for benchmarking to measure pure actor system performance without
 /// transport overhead contaminating results.
-public final class LocalTransport: TrebuchetTransport, @unchecked Sendable {
+public actor LocalTransport: TrebuchetTransport {
     /// The shared singleton instance for local transport.
     ///
     /// Use this instance when you want to share a single in-process transport
@@ -74,21 +74,19 @@ public final class LocalTransport: TrebuchetTransport, @unchecked Sendable {
     public static let shared = LocalTransport()
 
     /// The async stream for receiving messages.
-    public let incoming: AsyncStream<TransportMessage>
+    public nonisolated let incoming: AsyncStream<TransportMessage>
 
     /// The continuation for writing messages to the stream.
     ///
     /// This is optional because it's finished during shutdown and becomes nil.
-    /// Access is synchronized through the AsyncStream's built-in thread safety.
+    /// Access is synchronized through actor isolation.
     private var continuation: AsyncStream<TransportMessage>.Continuation?
 
-    /// The shared server instance, created lazily when first accessed.
+    /// The shared server instance for this transport.
     ///
     /// This provides a convenient way to access a TrebuchetServer configured with
     /// local transport, useful for testing and SwiftUI previews.
-    public private(set) lazy var server: TrebuchetServer = {
-        TrebuchetServer(transport: .local)
-    }()
+    public nonisolated let server: TrebuchetServer
 
     /// Creates a new local transport instance.
     ///
@@ -101,6 +99,7 @@ public final class LocalTransport: TrebuchetTransport, @unchecked Sendable {
             continuation = cont
         }
         self.continuation = continuation
+        self.server = TrebuchetServer(transport: .local)
     }
 
     /// Connects to the specified endpoint.
@@ -115,39 +114,37 @@ public final class LocalTransport: TrebuchetTransport, @unchecked Sendable {
 
     /// Sends data to the specified endpoint.
     ///
-    /// This decodes the data into a `TransportMessage` and delivers it directly
-    /// to any registered message handlers via the incoming stream.
+    /// This creates a `TransportMessage` and delivers it directly to any registered
+    /// message handlers via the incoming stream.
     ///
     /// - Parameters:
     ///   - data: The serialized message envelope to send.
     ///   - endpoint: The destination endpoint (ignored for local transport).
-    /// - Throws: If the data cannot be decoded as a valid envelope.
     ///
     /// ## Implementation Notes
     ///
     /// Unlike network transports, this doesn't actually "send" anything over a wire.
     /// Instead, it:
-    /// 1. Decodes the envelope from the provided data
-    /// 2. Creates a TransportMessage with a no-op response handler
+    /// 1. Creates a TransportMessage from the provided data
+    /// 2. Sets up a response handler that routes responses back through the stream
     /// 3. Yields it to the AsyncStream that message handlers consume from
     ///
     /// This bypasses all network I/O and provides direct in-memory routing.
     public func send(_ data: Data, to endpoint: Endpoint) async throws {
-        let decoder = JSONDecoder()
-
-        // Decode to determine the envelope type and create appropriate message
+        // Create a message with a response handler that routes back through our stream
         let message = TransportMessage(
             data: data,
             source: endpoint,
             respond: { [weak self] responseData in
-                // Response handler: decode and yield response back through continuation
-                guard let self = self else { return }
-                let responseMessage = TransportMessage(
-                    data: responseData,
-                    source: nil,
-                    respond: { _ in } // No response to responses
-                )
-                self.continuation?.yield(responseMessage)
+                Task {
+                    guard let self = self else { return }
+                    let responseMessage = TransportMessage(
+                        data: responseData,
+                        source: nil,
+                        respond: { _ in } // No response to responses
+                    )
+                    await self.deliver(responseMessage)
+                }
             }
         )
 
@@ -188,9 +185,8 @@ public final class LocalTransport: TrebuchetTransport, @unchecked Sendable {
     ///
     /// ## Thread Safety
     ///
-    /// AsyncStream.Continuation is thread-safe, so this method can be called
-    /// from any context without additional synchronization.
-    internal func deliver(_ message: TransportMessage) {
+    /// This method is actor-isolated, ensuring thread-safe access to the continuation.
+    internal func deliver(_ message: TransportMessage) async {
         continuation?.yield(message)
     }
 }

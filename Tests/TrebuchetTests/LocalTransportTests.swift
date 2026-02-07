@@ -95,19 +95,15 @@ struct LocalTransportTests {
 
     @Test("Local transport actor invocation")
     func testActorInvocation() async throws {
-        // Use shared local transport
-        let server = LocalTransport.shared.server
-        let client = TrebuchetClient(transport: .local)
+        // Use TrebuchetLocal unified API
+        let local = await TrebuchetLocal()
 
-        // Expose actor on server
-        let counter = LocalTestCounter(actorSystem: server.actorSystem)
-        await server.expose(counter, as: "counter-test")
-
-        // Connect client
-        try await client.connect()
+        // Expose actor
+        let counter = LocalTestCounter(actorSystem: local.actorSystem)
+        await local.expose(counter, as: "counter-test")
 
         // Resolve actor
-        let remoteCounter = try client.resolve(LocalTestCounter.self, id: "counter-test")
+        let remoteCounter = try local.resolve(LocalTestCounter.self, id: "counter-test")
 
         // Test invocation
         let value1 = try await remoteCounter.increment()
@@ -221,7 +217,12 @@ struct LocalTransportTests {
 
         let actorID = try await actor.getId()
 
-        // Verify the actor ID is local (no host/port)
-        #expect(actorID.isLocal)
+        // Verify the actor ID has the local transport endpoint
+        #expect(actorID.host == "local")
+        #expect(actorID.port == 0)
+
+        // The ID should not be considered "local" in the traditional sense
+        // because it has host and port set for the local transport
+        #expect(!actorID.isLocal)
     }
 }
