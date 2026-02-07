@@ -36,6 +36,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Checkout Compote dependency
+        run: |
+          cd ..
+          git clone https://github.com/briannadoubt/compote.git compote
+
       - name: Setup Swift
         uses: swift-actions/setup-swift@v2
         with:
