@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import CompoteCore
 import Logging
@@ -79,7 +80,7 @@ public struct CompoteOrchestrator: Sendable {
         // Start services
         try await orchestrator.up(detach: true)
 
-        terminal.print("", style: .info)
+        terminal.print("✓ Dependencies started", style: .info)
 
         // Return managed containers info
         return composeFile.services.map { name, service in
@@ -181,3 +182,4 @@ private extension Environment {
         }
     }
 }
+#endif

@@ -76,6 +76,8 @@ public final class TrebuchetServer: Sendable {
             self.transport = WebSocketTransport(tlsConfiguration: tls)
         case .tcp:
             self.transport = TCPTransport()
+        case .local:
+            self.transport = LocalTransport.shared
         }
 
         // Configure the actor system with transport info
@@ -609,6 +611,11 @@ public final class TrebuchetServer: Sendable {
             // Restart the stream
             await handleStreamingInvocation(invocation, respond: respond)
         }
+    }
+
+    /// Internal helper for resuming streams from local transport
+    internal func handleStreamResumeLocal(_ envelope: StreamResumeEnvelope, respond: @escaping @Sendable (Data) async throws -> Void) async {
+        await handleStreamResume(envelope, respond: respond)
     }
 }
 

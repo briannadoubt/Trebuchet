@@ -157,7 +157,7 @@ let package = Package(
                 .product(name: "Yams", package: "Yams"),
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftParser", package: "swift-syntax"),
-                .product(name: "CompoteCore", package: "compote"),
+                .product(name: "CompoteCore", package: "compote", condition: .when(platforms: [.macOS])),
             ]
         ),
         .executableTarget(

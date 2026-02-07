@@ -19,6 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout Compote dependency
+        run: |
+          cd ..
+          git clone https://github.com/briannadoubt/compote.git compote
+
       - name: Setup Swift (Linux)
         if: runner.os == 'Linux'
         uses: swift-actions/setup-swift@v2

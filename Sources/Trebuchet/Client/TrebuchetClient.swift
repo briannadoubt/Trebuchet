@@ -42,6 +42,8 @@ public final class TrebuchetClient: Sendable {
             self.transport = WebSocketTransport(tlsConfiguration: tls)
         case .tcp:
             self.transport = TCPTransport()
+        case .local:
+            self.transport = LocalTransport.shared
         }
 
         // Configure the actor system with transport info

@@ -100,6 +100,7 @@ public struct TLSConfiguration: Sendable {
 public enum TransportConfiguration: Sendable {
     case webSocket(host: String = "0.0.0.0", port: UInt16, tls: TLSConfiguration? = nil)
     case tcp(host: String = "0.0.0.0", port: UInt16)
+    case local
 
     public var endpoint: Endpoint {
         switch self {
@@ -107,6 +108,8 @@ public enum TransportConfiguration: Sendable {
             return Endpoint(host: host, port: port)
         case .tcp(let host, let port):
             return Endpoint(host: host, port: port)
+        case .local:
+            return Endpoint(host: "local", port: 0)
         }
     }
 
@@ -117,6 +120,8 @@ public enum TransportConfiguration: Sendable {
             return tls != nil
         case .tcp:
             return false
+        case .local:
+            return false
         }
     }
 
@@ -126,6 +131,8 @@ public enum TransportConfiguration: Sendable {
         case .webSocket(_, _, let tls):
             return tls
         case .tcp:
+            return nil
+        case .local:
             return nil
         }
     }
