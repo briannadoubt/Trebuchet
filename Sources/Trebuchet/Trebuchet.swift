@@ -20,6 +20,13 @@
 // try await client.connect()
 // let room = try client.resolve(GameRoom.self, id: "main-room")
 // try await room.join(player: me)
+//
+// // Local (in-process, for testing)
+// let local = await TrebuchetLocal()
+// let room = GameRoom(actorSystem: local.actorSystem)
+// await local.expose(room, as: "main-room")
+// let resolved = try local.resolve(GameRoom.self, id: "main-room")
+// try await resolved.join(player: me)
 // ```
 
 @_exported import Distributed
