@@ -32,12 +32,37 @@ let tls = try TLSConfiguration(
 .webSocket(host: "0.0.0.0", port: 8443, tls: tls)
 ```
 
+## Local Transport
+
+For in-process communication without network overhead:
+
+```swift
+// Testing
+let local = TrebuchetLocal()
+
+// SwiftUI Previews
+.trebuchet(transport: .local)
+
+// Server/Client pattern
+let server = TrebuchetServer(transport: .local)
+let client = TrebuchetClient(transport: .local)
+```
+
+The `.local` transport is ideal for:
+- Unit testing
+- SwiftUI previews
+- Single-process deployments
+- Performance benchmarking
+
+See <doc:LocalTransport> for detailed usage.
+
 ## Topics
 
 ### Transport Types
 
 - ``webSocket(host:port:tls:)``
 - ``tcp(host:port:)``
+- ``local``
 
 ### Properties
 

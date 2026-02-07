@@ -32,6 +32,7 @@ try await room.join(player: me)
 - <doc:GettingStarted>
 - <doc:DefiningActors>
 - <doc:SwiftUIIntegration>
+- <doc:LocalTransport>
 - <doc:Streaming>
 - <doc:AdvancedStreaming>
 
@@ -45,10 +46,12 @@ try await room.join(player: me)
 
 - ``TrebuchetServer``
 - ``TrebuchetClient``
+- ``TrebuchetLocal``
 
 ### Transport Layer
 
 - ``TrebuchetTransport``
+- ``LocalTransport``
 - ``Endpoint``
 - ``TransportMessage``
 - ``TransportConfiguration``
@@ -66,6 +69,7 @@ try await room.join(player: me)
 - ``TrebuchetConnection``
 - ``TrebuchetConnectionManager``
 - ``ConnectionState``
+- ``TrebuchetPreview``
 
 ### Cloud Deployment
 

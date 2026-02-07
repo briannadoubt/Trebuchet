@@ -60,6 +60,32 @@ let newValue = try await counter.increment()
 print("Counter is now: \(newValue)")
 ```
 
+## Testing with Local Transport
+
+For unit testing, use the `.local` transport for in-process communication without network overhead:
+
+```swift
+import Testing
+import Trebuchet
+
+@Test
+func testDistributedCounter() async throws {
+    let local = await TrebuchetLocal()
+
+    // Expose an actor
+    let counter = Counter(actorSystem: local.actorSystem)
+    await local.expose(counter, as: "test-counter")
+
+    // Resolve and test
+    let resolved = try local.resolve(Counter.self, id: "test-counter")
+    let result = try await resolved.increment()
+
+    #expect(result == 1)
+}
+```
+
+The local transport is ideal for testing as it requires no network configuration and has zero latency. See <doc:LocalTransport> for more details.
+
 ## Using with SwiftUI
 
 Trebuchet provides SwiftUI integration for reactive actor connections:
@@ -99,5 +125,6 @@ struct CounterView: View {
 ## Next Steps
 
 - Learn about <doc:DefiningActors> for best practices
+- Use <doc:LocalTransport> for testing and SwiftUI previews
 - Explore cloud deployment with ``TrebuchetCloud`` and ``TrebuchetAWS``
 - Use the `trebuchet` CLI for serverless deployment

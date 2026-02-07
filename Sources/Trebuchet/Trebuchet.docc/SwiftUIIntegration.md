@@ -329,6 +329,61 @@ struct ContentView: View {
 }
 ```
 
+## SwiftUI Previews with Local Transport
+
+Use the `.local` transport for Xcode previews without needing a network connection:
+
+```swift
+#Preview {
+    GameView()
+        .trebuchet(transport: .local)
+        .task {
+            // Set up preview data
+            let room = GameRoom(actorSystem: TrebuchetPreview.server.actorSystem)
+            await room.addPlayer(Player(name: "Alice"))
+            await room.addPlayer(Player(name: "Bob"))
+            await TrebuchetPreview.expose(room, as: "preview-room")
+        }
+}
+```
+
+### Reusable Preview Setup
+
+Create a custom `PreviewModifier` for shared preview configuration:
+
+```swift
+struct GameRoomPreview: PreviewModifier {
+    static func makeSharedContext() async throws {
+        let room = GameRoom(actorSystem: TrebuchetPreview.server.actorSystem)
+        await room.addPlayers([
+            Player(name: "Alice"),
+            Player(name: "Bob")
+        ])
+        await TrebuchetPreview.expose(room, as: "game-room")
+    }
+
+    func body(content: Content, context: Void) -> some View {
+        content.trebuchet(transport: .local)
+    }
+}
+
+#Preview("Game Room", traits: .modifier(GameRoomPreview())) {
+    GameRoomView()
+}
+```
+
+### Preview Trait
+
+For simple setups, use the `.trebuchet` preview trait:
+
+```swift
+#Preview("Simple", traits: .trebuchet) {
+    ContentView()
+}
+```
+
+See <doc:LocalTransport> for more details on using local transport for previews and testing.
+
 ## Topics
 
 ### Environment Setup
