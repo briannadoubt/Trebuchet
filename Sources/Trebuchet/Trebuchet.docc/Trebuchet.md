@@ -34,6 +34,7 @@ try await room.join(player: me)
 - <doc:SwiftUIIntegration>
 - <doc:Streaming>
 - <doc:AdvancedStreaming>
+- <doc:WASIPlatform>
 
 ### Actor System
 
