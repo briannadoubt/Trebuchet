@@ -1,3 +1,4 @@
+#if !os(WASI)
 import Foundation
 @preconcurrency import NIO
 import NIOConcurrencyHelpers
@@ -279,7 +280,6 @@ private final class TCPMessageHandler: ChannelInboundHandler {
         context.close(promise: nil)
     }
 }
-
 // MARK: - Channel Extensions
 
 extension Channel {
@@ -290,3 +290,4 @@ extension Channel {
         return writeAndFlush(buffer)
     }
 }
+#endif

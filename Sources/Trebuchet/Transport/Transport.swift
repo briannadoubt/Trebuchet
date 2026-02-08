@@ -1,5 +1,8 @@
 import Foundation
+
+#if canImport(NIOSSL)
 import NIOSSL
+#endif
 
 /// An endpoint for network communication
 public struct Endpoint: Sendable, Hashable {
@@ -63,6 +66,7 @@ public struct TransportMessage: Sendable {
     }
 }
 
+#if canImport(NIOSSL)
 /// TLS configuration for secure connections
 public struct TLSConfiguration: Sendable {
     /// Certificate chain in PEM format
@@ -95,19 +99,29 @@ public struct TLSConfiguration: Sendable {
         self.privateKey = privateKey
     }
 }
+#else
+/// Placeholder TLS configuration for platforms without NIOSSL support.
+public struct TLSConfiguration: Sendable {
+    public init() {}
+}
+#endif
 
 /// Configuration options for transports
 public enum TransportConfiguration: Sendable {
     case webSocket(host: String = "0.0.0.0", port: UInt16, tls: TLSConfiguration? = nil)
+#if !os(WASI)
     case tcp(host: String = "0.0.0.0", port: UInt16)
+#endif
     case local
 
     public var endpoint: Endpoint {
         switch self {
         case .webSocket(let host, let port, _):
             return Endpoint(host: host, port: port)
+#if !os(WASI)
         case .tcp(let host, let port):
             return Endpoint(host: host, port: port)
+#endif
         case .local:
             return Endpoint(host: "local", port: 0)
         }
@@ -118,8 +132,10 @@ public enum TransportConfiguration: Sendable {
         switch self {
         case .webSocket(_, _, let tls):
             return tls != nil
+#if !os(WASI)
         case .tcp:
             return false
+#endif
         case .local:
             return false
         }
@@ -130,8 +146,10 @@ public enum TransportConfiguration: Sendable {
         switch self {
         case .webSocket(_, _, let tls):
             return tls
+#if !os(WASI)
         case .tcp:
             return nil
+#endif
         case .local:
             return nil
         }

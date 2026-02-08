@@ -33,6 +33,7 @@
 
 // MARK: - Macro Declaration
 
+#if !os(WASI)
 /// Marks a distributed actor for use with the Trebuchet system.
 ///
 /// The `@Trebuchet` macro simplifies distributed actor declarations by
@@ -82,17 +83,25 @@ public macro Trebuchet() = #externalMacro(module: "TrebuchetMacros", type: "Treb
 @attached(accessor)
 @attached(peer, names: arbitrary)
 public macro StreamedState() = #externalMacro(module: "TrebuchetMacros", type: "StreamedStateMacro")
+#endif
 
 // MARK: - Convenience Extensions
 
 extension TrebuchetActorSystem {
     /// Create an actor system configured for use with a server
+#if os(WASI)
+    @available(*, unavailable, message: "forServer(host:port:) is unavailable on WASI in this build because WebSocket transport is not implemented for WASI.")
+    public static func forServer(host: String, port: UInt16) -> TrebuchetActorSystem {
+        TrebuchetActorSystem()
+    }
+#else
     public static func forServer(host: String, port: UInt16) -> TrebuchetActorSystem {
         let system = TrebuchetActorSystem()
         let transport = WebSocketTransport()
         system.configure(transport: transport, host: host, port: port)
         return system
     }
+#endif
 
     /// Create an actor system configured for use with a client
     public static func forClient() -> TrebuchetActorSystem {

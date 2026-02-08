@@ -1,3 +1,4 @@
+#if !os(WASI)
 import Foundation
 @preconcurrency import NIO
 import NIOConcurrencyHelpers
@@ -278,3 +279,4 @@ private final class WebSocketMessageHandler: ChannelInboundHandler {
         context.close(promise: nil)
     }
 }
+#endif

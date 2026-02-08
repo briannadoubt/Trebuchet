@@ -369,9 +369,16 @@ private final class HTTPClientResponseHandler: ChannelInboundHandler, RemovableC
 
 extension TransportConfiguration {
     /// HTTP transport configuration
+#if os(WASI)
+    @available(*, unavailable, message: "HTTP transport is unavailable on WASI because TCP transport is not supported.")
+    public static func http(host: String = "0.0.0.0", port: UInt16) -> TransportConfiguration {
+        .local
+    }
+#else
     public static func http(host: String = "0.0.0.0", port: UInt16) -> TransportConfiguration {
         // For now, reuse the tcp case structure
         // In a full implementation, we'd add a dedicated case
         .tcp(host: host, port: port)
     }
+#endif
 }
