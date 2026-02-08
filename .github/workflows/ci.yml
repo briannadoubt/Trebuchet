@@ -73,6 +73,7 @@ jobs:
       - name: Setup Swiftly and Swift 6.2.3
         run: |
           brew install swiftly
+          swiftly init --skip-install --assume-yes --quiet-shell-followup
           swiftly install 6.2.3
           swiftly use 6.2.3
           swiftly run swift --version
