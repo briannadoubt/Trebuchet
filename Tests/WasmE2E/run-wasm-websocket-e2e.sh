@@ -8,13 +8,15 @@ SWIFT_SDK="swift-6.2.3-RELEASE_wasm"
 SWIFTLY_BIN="/opt/homebrew/bin/swiftly"
 NODE22_BIN="/opt/homebrew/opt/node@22/bin"
 
-if ! command -v "${SWIFTLY_BIN}" >/dev/null 2>&1; then
-  echo "error: swiftly not found at ${SWIFTLY_BIN}" >&2
-  exit 1
-fi
 if ! command -v python3 >/dev/null 2>&1; then
   echo "error: python3 is required" >&2
   exit 1
+fi
+
+if command -v "${SWIFTLY_BIN}" >/dev/null 2>&1; then
+  SWIFT_BUILD_CMD=("${SWIFTLY_BIN}" run swift build)
+else
+  SWIFT_BUILD_CMD=(swift build)
 fi
 
 WORK_DIR="$(mktemp -d /tmp/trebuchet-wasm-e2e.XXXXXX)"
@@ -90,7 +92,7 @@ public func runProbe() {
 SWIFT
 
 echo "[1/5] Building WASM probe"
-"${SWIFTLY_BIN}" run swift build \
+"${SWIFT_BUILD_CMD[@]}" \
   --swift-sdk "${SWIFT_SDK}" \
   --package-path "${WORK_DIR}" \
   -Xswiftc -Xclang-linker -Xswiftc -mexec-model=reactor >/dev/null

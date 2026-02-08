@@ -59,3 +59,34 @@ jobs:
 
       - name: Build Trebuchet for WASM
         run: swift build --target Trebuchet --swift-sdk swift-6.2.3-RELEASE_wasm
+
+  wasm-e2e:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout Compote dependency
+        run: |
+          cd ..
+          git clone https://github.com/briannadoubt/compote.git compote
+
+      - name: Setup Swiftly and Swift 6.2.3
+        run: |
+          brew install swiftly
+          swiftly install 6.2.3
+          swiftly use 6.2.3
+          swiftly run swift --version
+
+      - name: Install WASM SDK
+        run: |
+          swiftly run swift sdk install \
+            https://download.swift.org/swift-6.2.3-release/wasm-sdk/swift-6.2.3-RELEASE/swift-6.2.3-RELEASE_wasm.artifactbundle.tar.gz \
+            --checksum 394040ecd5260e68bb02f6c20aeede733b9b90702c2204e178f3e42413edad2a
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run WASM WebSocket E2E
+        run: ./Tests/WasmE2E/run-wasm-websocket-e2e.sh
