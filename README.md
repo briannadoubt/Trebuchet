@@ -133,6 +133,20 @@ The `dev` command:
 - Exposes actors at `http://localhost:8080/invoke`
 - Provides health check at `http://localhost:8080/health`
 
+## WebAssembly (WASI / Browser)
+
+Trebuchet supports WASI builds and browser WebSocket clients.
+
+- `WebSocketTransport` works in WASI as a client (`connect` / `send` / receive via `incoming`)
+- `listen(on:)` is not supported on WASI/browser runtimes
+- TCP transport is compiled out on WASI (`#if !os(WASI)`)
+
+Run the checked-in end-to-end WASM WebSocket probe:
+
+```bash
+./Tests/WasmE2E/run-wasm-websocket-e2e.sh
+```
+
 ## Xcode Project Support
 
 Trebuchet CLI now fully supports Xcode projects with **automatic dependency analysis**:

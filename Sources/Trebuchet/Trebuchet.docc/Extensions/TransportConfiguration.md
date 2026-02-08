@@ -19,6 +19,14 @@ WebSocket is the default and recommended transport:
 .webSocket(host: "game.example.com", port: 8080)
 ```
 
+### WASI / Browser Behavior
+
+On WASI/browser runtimes:
+
+- `.webSocket(...)` is supported for client-side communication
+- server listen mode (`listen(on:)`) is unavailable
+- TCP transport is compiled out
+
 ### With TLS
 
 For secure connections, provide a ``TLSConfiguration``:
@@ -37,7 +45,7 @@ let tls = try TLSConfiguration(
 ### Transport Types
 
 - ``webSocket(host:port:tls:)``
-- ``tcp(host:port:)``
+- ``tcp(host:port:)`` (not available on WASI builds)
 
 ### Properties
 

@@ -5,7 +5,7 @@ import CompilerPluginSupport
 
 let package = Package(
     name: "Trebuchet",
-    platforms: [.macOS(.v15), .iOS(.v17), .tvOS(.v17), .watchOS(.v10)],
+    platforms: [.macOS(.v15), .iOS(.v17), .tvOS(.v17), .watchOS(.v10), .custom("wasi", versionString: "1.0")],
     products: [
         .library(
             name: "Trebuchet",
@@ -51,9 +51,9 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.25.0"),
-        .package(url: "https://github.com/apple/swift-nio-transport-services.git", from: "1.20.0"),
         .package(url: "https://github.com/apple/swift-nio-extras.git", from: "1.22.0"),
         .package(url: "https://github.com/vapor/websocket-kit.git", from: "2.14.0"),
+        .package(url: "https://github.com/swiftwasm/JavaScriptKit.git", exact: "0.19.2"),
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin.git", from: "1.4.0"),
         // PostgreSQL support
@@ -74,15 +74,55 @@ let package = Package(
         .target(
             name: "Trebuchet",
             dependencies: [
-                .product(name: "NIO", package: "swift-nio"),
-                .product(name: "NIOFoundationCompat", package: "swift-nio"),
-                .product(name: "NIOHTTP1", package: "swift-nio"),
-                .product(name: "NIOWebSocket", package: "swift-nio"),
-                .product(name: "NIOExtras", package: "swift-nio-extras"),
-                .product(name: "NIOSSL", package: "swift-nio-ssl"),
-                .product(name: "NIOTransportServices", package: "swift-nio-transport-services"),
-                .product(name: "WebSocketKit", package: "websocket-kit"),
-                "TrebuchetMacros",
+                .product(
+                    name: "NIO",
+                    package: "swift-nio",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                .product(
+                    name: "NIOFoundationCompat",
+                    package: "swift-nio",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                .product(
+                    name: "NIOHTTP1",
+                    package: "swift-nio",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                .product(
+                    name: "NIOWebSocket",
+                    package: "swift-nio",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                .product(
+                    name: "NIOExtras",
+                    package: "swift-nio-extras",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                .product(
+                    name: "NIOSSL",
+                    package: "swift-nio-ssl",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                .product(
+                    name: "WebSocketKit",
+                    package: "websocket-kit",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                .product(
+                    name: "JavaScriptKit",
+                    package: "JavaScriptKit",
+                    condition: .when(platforms: [.wasi])
+                ),
+                .product(
+                    name: "JavaScriptEventLoop",
+                    package: "JavaScriptKit",
+                    condition: .when(platforms: [.wasi])
+                ),
+                .target(
+                    name: "TrebuchetMacros",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
             ]
         ),
         .macro(

@@ -40,8 +40,10 @@ public final class TrebuchetClient: Sendable {
         switch transport {
         case .webSocket(_, _, let tls):
             self.transport = WebSocketTransport(tlsConfiguration: tls)
+#if !os(WASI)
         case .tcp:
             self.transport = TCPTransport()
+#endif
         case .local:
             self.transport = LocalTransport.shared
         }

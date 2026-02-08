@@ -1,3 +1,4 @@
+#if !os(WASI)
 import Testing
 import Distributed
 import Foundation
@@ -378,3 +379,4 @@ struct TCPTransportTests {
         serverTask.cancel()
     }
 }
+#endif

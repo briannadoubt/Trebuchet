@@ -18,12 +18,18 @@ TrebuchetServer(transport: .webSocket(port: 8080))
 TrebuchetClient(transport: .webSocket(host: "localhost", port: 8080))
 ```
 
+On WASI/browser runtimes, `WebSocketTransport` supports client usage (`connect`, `send`, and `incoming`), but does not support `listen(on:)`.
+
 ## Custom Transports
 
 Implement `TrebuchetTransport` to add support for other protocols:
 
 ```swift
 public struct MyCustomTransport: TrebuchetTransport {
+    public func connect(to endpoint: Endpoint) async throws {
+        // Establish a connection to the endpoint
+    }
+
     public func send(_ data: Data, to endpoint: Endpoint) async throws {
         // Send data to the endpoint
     }
@@ -46,6 +52,7 @@ public struct MyCustomTransport: TrebuchetTransport {
 
 ### Protocol Requirements
 
+- ``connect(to:)``
 - ``send(_:to:)``
 - ``listen(on:)``
 - ``shutdown()``
