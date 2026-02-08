@@ -58,7 +58,7 @@ jobs:
             --checksum 482b9f95462b87bedfafca94a092cf9ec4496671ca13b43745097122d20f18af
 
       - name: Build Trebuchet for WASM
-        run: swift build --target Trebuchet --swift-sdk swift-6.2.3-RELEASE_wasm
+        run: swift build --target Trebuchet --swift-sdk swift-6.2.1-RELEASE_wasm
 
   wasm-e2e:
     runs-on: macos-26
