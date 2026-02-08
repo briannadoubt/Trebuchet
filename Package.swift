@@ -53,6 +53,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.25.0"),
         .package(url: "https://github.com/apple/swift-nio-extras.git", from: "1.22.0"),
         .package(url: "https://github.com/vapor/websocket-kit.git", from: "2.14.0"),
+        .package(url: "https://github.com/swiftwasm/JavaScriptKit.git", exact: "0.19.2"),
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin.git", from: "1.4.0"),
         // PostgreSQL support
@@ -107,6 +108,16 @@ let package = Package(
                     name: "WebSocketKit",
                     package: "websocket-kit",
                     condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                .product(
+                    name: "JavaScriptKit",
+                    package: "JavaScriptKit",
+                    condition: .when(platforms: [.wasi])
+                ),
+                .product(
+                    name: "JavaScriptEventLoop",
+                    package: "JavaScriptKit",
+                    condition: .when(platforms: [.wasi])
                 ),
                 .target(
                     name: "TrebuchetMacros",
