@@ -81,9 +81,11 @@ trebuchet deploy --provider aws
 ```bash
 git clone https://github.com/briannadoubt/Trebuchet.git
 cd Trebuchet
-swift build -c release
+./scripts/build-cli.sh release
 cp .build/release/trebuchet /usr/local/bin/trebuchet
 ```
+
+`build-cli.sh` builds and signs the CLI binary with virtualization entitlements required by Compote.
 
 ## Quick Start
 
@@ -124,6 +126,8 @@ trebuchet dev --host 0.0.0.0 --port 3000
 # Enable verbose output
 trebuchet dev --verbose
 ```
+
+On macOS, if the CLI binary is missing virtualization entitlements, Trebuchet will automatically sign the binary and relaunch the command.
 
 The `dev` command:
 - Discovers all `@Trebuchet` actors in your project
@@ -199,6 +203,41 @@ distributed actor GameRoom {
 ```
 
 See **[Xcode Project Support](Sources/Trebuchet/Trebuchet.docc/XCODE_PROJECT_SUPPORT.md)** for detailed documentation.
+
+### One-Click Xcode Run (App + Server)
+
+Trebuchet can now wire an Xcode shared scheme that starts and stops the dev server automatically:
+
+```bash
+cd /path/to/YourXcodeProject
+trebuchet xcode setup --host localhost --port 8080
+```
+
+This creates:
+- A managed shared scheme: `<YourScheme>+Trebuchet`
+- Pre-run action: starts or reuses a Trebuchet dev session
+- Post-run action: stops the Trebuchet dev session
+- Scripts in `.trebuchet-xcode/` managed by Trebuchet
+
+Useful follow-ups:
+
+```bash
+trebuchet xcode status
+trebuchet xcode teardown
+```
+
+### Auto Client Transport
+
+Trebuchet clients can now use automatic endpoint resolution:
+
+```swift
+ContentView()
+    .trebuchet(transport: .auto())
+```
+
+Resolution order:
+1. `TREBUCHET_HOST` + `TREBUCHET_PORT` (when both are set)
+2. fallback to `localhost:8080`
 
 ## Cloud Deployment
 

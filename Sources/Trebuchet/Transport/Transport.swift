@@ -106,6 +106,40 @@ public struct TLSConfiguration: Sendable {
 }
 #endif
 
+/// Resolution options for ``TransportConfiguration/auto(_:)``.
+public struct AutoTransportOptions: Sendable {
+    /// Environment variable used for host override.
+    public let environmentHostKey: String
+
+    /// Environment variable used for port override.
+    public let environmentPortKey: String
+
+    /// Fallback host when env overrides are not available.
+    public let fallbackHost: String
+
+    /// Fallback port when env overrides are not available.
+    public let fallbackPort: UInt16
+
+    /// Whether localhost fallback is allowed when env values are missing.
+    public let allowLocalhostFallback: Bool
+
+    public init(
+        environmentHostKey: String = "TREBUCHET_HOST",
+        environmentPortKey: String = "TREBUCHET_PORT",
+        fallbackHost: String = "127.0.0.1",
+        fallbackPort: UInt16 = 8080,
+        allowLocalhostFallback: Bool = true
+    ) {
+        self.environmentHostKey = environmentHostKey
+        self.environmentPortKey = environmentPortKey
+        self.fallbackHost = fallbackHost
+        self.fallbackPort = fallbackPort
+        self.allowLocalhostFallback = allowLocalhostFallback
+    }
+
+    public static let `default` = AutoTransportOptions()
+}
+
 /// Configuration options for transports
 public enum TransportConfiguration: Sendable {
     case webSocket(host: String = "0.0.0.0", port: UInt16, tls: TLSConfiguration? = nil)
@@ -113,9 +147,10 @@ public enum TransportConfiguration: Sendable {
     case tcp(host: String = "0.0.0.0", port: UInt16)
 #endif
     case local
+    case auto(AutoTransportOptions = .default)
 
     public var endpoint: Endpoint {
-        switch self {
+        switch resolvedForRuntime().resolved {
         case .webSocket(let host, let port, _):
             return Endpoint(host: host, port: port)
 #if !os(WASI)
@@ -124,12 +159,14 @@ public enum TransportConfiguration: Sendable {
 #endif
         case .local:
             return Endpoint(host: "local", port: 0)
+        case .auto:
+            return Endpoint(host: "localhost", port: 8080)
         }
     }
 
     /// Whether TLS is enabled for this transport
     public var tlsEnabled: Bool {
-        switch self {
+        switch resolvedForRuntime().resolved {
         case .webSocket(_, _, let tls):
             return tls != nil
 #if !os(WASI)
@@ -138,12 +175,14 @@ public enum TransportConfiguration: Sendable {
 #endif
         case .local:
             return false
+        case .auto:
+            return false
         }
     }
 
     /// The TLS configuration, if any
     public var tlsConfiguration: TLSConfiguration? {
-        switch self {
+        switch resolvedForRuntime().resolved {
         case .webSocket(_, _, let tls):
             return tls
 #if !os(WASI)
@@ -152,6 +191,72 @@ public enum TransportConfiguration: Sendable {
 #endif
         case .local:
             return nil
+        case .auto:
+            return nil
         }
+    }
+
+    /// Resolve `.auto` into a concrete transport for runtime use.
+    ///
+    /// - Parameter environment: Optional environment map used for deterministic tests.
+    /// - Returns: A concrete runtime transport plus an optional validation error.
+    public func resolvedForRuntime(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> (resolved: TransportConfiguration, error: TrebuchetError?) {
+        switch self {
+        case .auto(let options):
+            let envHost = environment[options.environmentHostKey]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let envPortRaw = environment[options.environmentPortKey]?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if let envHost, !envHost.isEmpty, let envPortRaw, !envPortRaw.isEmpty {
+                guard let envPort = UInt16(envPortRaw) else {
+                    return (
+                        .webSocket(host: options.fallbackHost, port: options.fallbackPort),
+                        .invalidConfiguration(
+                            "Environment variable \(options.environmentPortKey) must be a UInt16 port. Received '\(envPortRaw)'."
+                        )
+                    )
+                }
+                return (.webSocket(host: envHost, port: envPort), nil)
+            }
+
+            if envHost != nil || envPortRaw != nil {
+                if options.allowLocalhostFallback {
+                    return (.webSocket(host: options.fallbackHost, port: options.fallbackPort), nil)
+                }
+                return (
+                    .webSocket(host: options.fallbackHost, port: options.fallbackPort),
+                    .invalidConfiguration(
+                        "Both \(options.environmentHostKey) and \(options.environmentPortKey) must be set when localhost fallback is disabled."
+                    )
+                )
+            }
+
+            if options.allowLocalhostFallback {
+                return (.webSocket(host: options.fallbackHost, port: options.fallbackPort), nil)
+            }
+            return (
+                .webSocket(host: options.fallbackHost, port: options.fallbackPort),
+                .invalidConfiguration(
+                    "No automatic transport endpoint found. Set \(options.environmentHostKey) and \(options.environmentPortKey), or enable localhost fallback."
+                )
+            )
+        default:
+            return (self, nil)
+        }
+    }
+
+    /// Resolve `.auto` and throw if configuration is invalid.
+    ///
+    /// - Parameter environment: Optional environment map used for deterministic tests.
+    /// - Throws: ``TrebuchetError/invalidConfiguration(_:)`` when auto resolution fails.
+    public func resolved(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) throws -> TransportConfiguration {
+        let result = resolvedForRuntime(environment: environment)
+        if let error = result.error {
+            throw error
+        }
+        return result.resolved
     }
 }

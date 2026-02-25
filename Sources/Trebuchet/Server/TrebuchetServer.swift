@@ -68,10 +68,11 @@ public final class TrebuchetServer: Sendable {
     /// Create a new server with the specified transport
     /// - Parameter transport: The transport configuration (e.g., `.webSocket(port: 8080)`)
     public init(transport: TransportConfiguration) {
-        self.transportConfig = transport
+        let resolved = transport.resolvedForRuntime()
+        self.transportConfig = resolved.resolved
         self.actorSystem = TrebuchetActorSystem()
 
-        switch transport {
+        switch resolved.resolved {
         case .webSocket(_, _, let tls):
             self.transport = WebSocketTransport(tlsConfiguration: tls)
 #if !os(WASI)
@@ -80,13 +81,16 @@ public final class TrebuchetServer: Sendable {
 #endif
         case .local:
             self.transport = LocalTransport.shared
+        case .auto:
+            // `.auto` is always resolved to a concrete transport above.
+            self.transport = WebSocketTransport(tlsConfiguration: nil)
         }
 
         // Configure the actor system with transport info
         actorSystem.configure(
             transport: self.transport,
-            host: transport.endpoint.host,
-            port: transport.endpoint.port
+            host: self.transportConfig.endpoint.host,
+            port: self.transportConfig.endpoint.port
         )
 
         // Set up the main streaming handler to dispatch to registered handlers

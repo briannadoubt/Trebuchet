@@ -16,11 +16,13 @@ public struct CompoteOrchestrator: Sendable {
     private let terminal: Terminal
     private let verbose: Bool
     private let projectName: String
+    private let configDirectory: String
 
-    public init(terminal: Terminal, verbose: Bool, projectName: String) {
+    public init(terminal: Terminal, verbose: Bool, projectName: String, configDirectory: String) {
         self.terminal = terminal
         self.verbose = verbose
         self.projectName = projectName
+        self.configDirectory = configDirectory
     }
 
     // MARK: - Public API
@@ -140,10 +142,9 @@ public struct CompoteOrchestrator: Sendable {
         return false
     }
 
-    private func getCurrentConfig() -> TrebuchetConfig? {
+    func getCurrentConfig() -> TrebuchetConfig? {
         let configLoader = ConfigLoader()
-        let cwd = FileManager.default.currentDirectoryPath
-        return try? configLoader.load(from: cwd)
+        return try? configLoader.load(from: configDirectory)
     }
 }
 

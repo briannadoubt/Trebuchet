@@ -1,11 +1,15 @@
 import ArgumentParser
 import Foundation
+import SwiftParser
 
 public struct DevCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "dev",
         abstract: "Run actors locally for development"
     )
+
+    @Argument(help: "Path to the project to run in")
+    public var projectPath: String = "."
 
     @Option(name: .shortAndLong, help: "Port to listen on")
     public var port: UInt16 = 8080
@@ -29,7 +33,23 @@ public struct DevCommand: AsyncParsableCommand {
 
     public mutating func run() async throws {
         let terminal = Terminal()
-        let cwd = FileManager.default.currentDirectoryPath
+        let currentDirectory = FileManager.default.currentDirectoryPath
+        let expandedProjectPath = (projectPath as NSString).expandingTildeInPath
+        let projectDirectoryURL: URL
+        if expandedProjectPath.hasPrefix("/") {
+            projectDirectoryURL = URL(fileURLWithPath: expandedProjectPath).standardizedFileURL
+        } else {
+            projectDirectoryURL = URL(fileURLWithPath: currentDirectory)
+                .appendingPathComponent(expandedProjectPath)
+                .standardizedFileURL
+        }
+        let projectDirectory = projectDirectoryURL.path
+
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: projectDirectory, isDirectory: &isDirectory), isDirectory.boolValue else {
+            terminal.print("Error: Project path does not exist or is not a directory: \(projectPath)", style: .error)
+            throw ExitCode.failure
+        }
 
         terminal.print("")
         terminal.print("Starting local development server...", style: .header)
@@ -71,7 +91,7 @@ public struct DevCommand: AsyncParsableCommand {
         let configLoader = ConfigLoader()
         let config: TrebuchetConfig?
         do {
-            config = try configLoader.load(from: cwd)
+            config = try configLoader.load(from: projectDirectory)
             if verbose {
                 terminal.print("✓ Loaded trebuchet.yaml", style: .dim)
             }
@@ -89,11 +109,11 @@ public struct DevCommand: AsyncParsableCommand {
         let outputDirectory = config?.outputDirectory ?? ".trebuchet"
 
         // Discover all actors
-        terminal.print("Discovering actors in \(cwd)...", style: .dim)
+        terminal.print("Discovering actors in \(projectDirectory)...", style: .dim)
         let discovery = ActorDiscovery()
         let allActors: [ActorMetadata]
         do {
-            allActors = try discovery.discover(in: cwd)
+            allActors = try discovery.discover(in: projectDirectory)
             terminal.print("Found \(allActors.count) actors", style: .dim)
         } catch {
             terminal.print("Error during discovery: \(error)", style: .error)
@@ -152,7 +172,8 @@ public struct DevCommand: AsyncParsableCommand {
             containerRuntime = .compote(CompoteOrchestrator(
                 terminal: terminal,
                 verbose: verbose,
-                projectName: runtimeProjectName
+                projectName: runtimeProjectName,
+                configDirectory: projectDirectory
             ))
             if verbose {
                 terminal.print("Using Compote runtime (forced)", style: .dim)
@@ -180,7 +201,8 @@ public struct DevCommand: AsyncParsableCommand {
                 containerRuntime = .compote(CompoteOrchestrator(
                     terminal: terminal,
                     verbose: verbose,
-                    projectName: runtimeProjectName
+                    projectName: runtimeProjectName,
+                    configDirectory: projectDirectory
                 ))
                 if verbose {
                     terminal.print("Using Compote runtime (macOS 15+)", style: .dim)
@@ -269,12 +291,12 @@ public struct DevCommand: AsyncParsableCommand {
         }
 
         // Get project and module names
-        let projectName = try getProjectName(from: cwd, terminal: terminal)
-        let parentPackageName = try getParentPackageName(from: cwd) ?? projectName
+        let projectName = try getProjectName(from: projectDirectory, terminal: terminal)
+        let parentPackageName = try getParentPackageName(from: projectDirectory) ?? projectName
         let moduleName = inferModuleName(from: actors, projectName: projectName)
 
         // Detect if parent is an Xcode project (vs Swift Package)
-        let isXcodeProject = detectXcodeProject(in: cwd)
+        let isXcodeProject = detectXcodeProject(in: projectDirectory)
 
         // Generate and run local bootstrap
         if !isXcodeProject {
@@ -288,7 +310,7 @@ public struct DevCommand: AsyncParsableCommand {
             let buildProcess = Process()
             buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             buildProcess.arguments = ["swift", "build"]
-            buildProcess.currentDirectoryURL = URL(fileURLWithPath: cwd)
+            buildProcess.currentDirectoryURL = URL(fileURLWithPath: projectDirectory)
 
             let outputPipe = Pipe()
             let errorPipe = Pipe()
@@ -368,7 +390,7 @@ public struct DevCommand: AsyncParsableCommand {
         // Generate development runner package
         terminal.print("Generating development server...", style: .dim)
 
-        let devPath = "\(cwd)/\(outputDirectory)"
+        let devPath = "\(projectDirectory)/\(outputDirectory)"
 
         // Clean output directory to avoid stale dependency issues
         // TODO: Optimize to only clean sources once dependency resolution is stable
@@ -406,7 +428,13 @@ public struct DevCommand: AsyncParsableCommand {
                 withIntermediateDirectories: true
             )
 
-            try copyActorSources(actors: actors, to: actorSourcesPath, terminal: terminal, verbose: verbose)
+            try copyActorSources(
+                actors: actors,
+                in: projectDirectory,
+                to: actorSourcesPath,
+                terminal: terminal,
+                verbose: verbose
+            )
         } else {
             // For Swift Packages, use existing approach
             packageManifest = generatePackageManifest(
@@ -456,7 +484,7 @@ public struct DevCommand: AsyncParsableCommand {
         let buildProcess = Process()
         buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         buildProcess.arguments = ["swift", "build", "--package-path", devPath]
-        buildProcess.currentDirectoryURL = URL(fileURLWithPath: cwd)
+        buildProcess.currentDirectoryURL = URL(fileURLWithPath: projectDirectory)
 
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -545,7 +573,7 @@ public struct DevCommand: AsyncParsableCommand {
         let runProcess = Process()
         runProcess.executableURL = URL(fileURLWithPath: binaryPath)
         runProcess.arguments = []
-        runProcess.currentDirectoryURL = URL(fileURLWithPath: cwd)
+        runProcess.currentDirectoryURL = URL(fileURLWithPath: projectDirectory)
 
         // Always show server output - explicitly set to ensure inheritance
         runProcess.standardOutput = FileHandle.standardOutput
@@ -677,7 +705,7 @@ public struct DevCommand: AsyncParsableCommand {
 
         let package = Package(
             name: "\(packageName)",
-            platforms: [.macOS(.v14)],
+            platforms: [.macOS(.v15)],
             dependencies: [
                 .package(path: ".."),
                 \(trebuchetDependency)
@@ -794,74 +822,11 @@ public struct DevCommand: AsyncParsableCommand {
 
         """
 
-        // Generate state store imports and initialization based on config
-        let stateStoreImport: String
-        let stateStoreInit: String
-        let stateStoreCapture: String
-
-        if let stateType = config?.state?.type.lowercased() {
-            switch stateType {
-            case "surrealdb":
-                stateStoreImport = "import TrebuchetSurrealDB"
-                stateStoreInit = """
-// Initialize SurrealDB state store
-let stateStore = try await SurrealDBStateStore(
-    configuration: .init(
-        host: "localhost",
-        port: 8000,
-        namespace: "\(config?.name ?? "dev")",
-        database: "\(config?.name ?? "dev")",
-        username: "root",
-        password: "root"
-    )
-)
-print("✓ Connected to SurrealDB on localhost:8000")
-print("")
-"""
-                stateStoreCapture = ", stateStore: stateStore"
-
-            case "postgresql":
-                stateStoreImport = "import TrebuchetPostgreSQL"
-                stateStoreInit = """
-// Initialize PostgreSQL state store
-let stateStore = try await PostgreSQLStateStore(
-    configuration: .init(
-        host: "localhost",
-        port: 5432,
-        database: "trebuchet_dev",
-        username: "trebuchet",
-        password: "trebuchet"
-    )
-)
-print("✓ Connected to PostgreSQL on localhost:5432")
-print("")
-"""
-                stateStoreCapture = ", stateStore: stateStore"
-
-            case "dynamodb":
-                stateStoreImport = "import TrebuchetAWS"
-                stateStoreInit = """
-// Initialize DynamoDB state store (LocalStack)
-let stateStore = try await DynamoDBStateStore(
-    tableName: "\(config?.state?.tableName ?? (config?.name ?? "dev") + "-state")",
-    region: "us-east-1",
-    endpoint: "http://localhost:4566"  // LocalStack
-)
-print("✓ Connected to DynamoDB (LocalStack) on localhost:4566")
-print("")
-"""
-                stateStoreCapture = ", stateStore: stateStore"
-
-            default:
-                stateStoreImport = ""
-                stateStoreInit = ""
-                stateStoreCapture = ""
-            }
-        } else {
-            stateStoreImport = ""
-            stateStoreInit = ""
-            stateStoreCapture = ""
-        }
+        // Local dev runners should not assume actor initializers accept a state store.
+        // Persistence integrations are handled by actor logic / framework defaults.
+        let stateStoreImport = ""
+        let stateStoreInit = ""
+        let stateStoreCapture = ""
 
         // Generate dynamic actor creation cases with state store injection
         let dynamicActorCasesWithState = actors.map { actor in
@@ -1009,7 +974,7 @@ print("")
 
         let package = Package(
             name: "\(packageName)",
-            platforms: [.macOS(.v14), .iOS(.v17)],
+            platforms: [.macOS(.v15), .iOS(.v17)],
             dependencies: [
                 \(trebuchetDependency)
             ],
@@ -1033,50 +998,150 @@ print("")
 
     private func copyActorSources(
         actors: [ActorMetadata],
+        in projectDirectory: String,
         to targetPath: String,
         terminal: Terminal,
         verbose: Bool
     ) throws {
+        let analyzer = DependencyAnalyzer(projectPath: projectDirectory)
+        var requiredFiles: Set<String>
+        do {
+            requiredFiles = try analyzer.findDependencies(for: actors)
+        } catch {
+            terminal.print("Warning: Dependency analysis failed, copying actor files only", style: .warning)
+            if verbose {
+                terminal.print("  Error: \(error)", style: .dim)
+            }
+            requiredFiles = Set(actors.map(\.filePath))
+        }
+
+        // Pragmatic fallback for common server-side persistence support files
+        // used by actor code in Xcode projects.
+        if let enumerator = FileManager.default.enumerator(atPath: projectDirectory) {
+            while let relativePath = enumerator.nextObject() as? String {
+                guard relativePath.hasSuffix(".swift") else { continue }
+                if relativePath.contains("/Models/Database/") || relativePath.contains("/Services/Database/") {
+                    requiredFiles.insert("\(projectDirectory)/\(relativePath)")
+                }
+            }
+        }
+
+        // Additional symbol-based fallback: infer type names referenced by actors and
+        // include files that define those types.
+        let actorFiles = Set(actors.map(\.filePath))
+        requiredFiles.formUnion(
+            inferSupportingFilesForActorSources(actorFiles: actorFiles, in: projectDirectory)
+        )
+
         // Track which files we've already copied to avoid duplicates
         var copiedFiles = Set<String>()
 
-        for actor in actors {
-            let sourceFile = actor.filePath
+        for sourceFile in requiredFiles {
             let fileName = URL(fileURLWithPath: sourceFile).lastPathComponent
 
-            // Skip if already copied
             guard !copiedFiles.contains(fileName) else {
                 continue
             }
 
-            let targetFile = "\(targetPath)/\(fileName)"
+            // Skip standalone script files (e.g. shebang-based maintenance scripts).
+            if let contents = try? String(contentsOfFile: sourceFile, encoding: .utf8),
+               contents.hasPrefix("#!") {
+                if verbose {
+                    terminal.print("  Skipped script file: \(fileName)", style: .dim)
+                }
+                continue
+            }
 
-            // Copy source file as-is - macros will expand during build
+            let targetFile = "\(targetPath)/\(fileName)"
             try FileManager.default.copyItem(atPath: sourceFile, toPath: targetFile)
             copiedFiles.insert(fileName)
 
             if verbose {
                 terminal.print("  Copied: \(fileName)", style: .dim)
             }
+        }
 
-            // Also copy streaming protocol file if it exists
-            let actorBaseName = fileName.replacingOccurrences(of: ".swift", with: "")
-            let streamingProtocolName = "\(actorBaseName)Streaming.swift"
+        // Always include actor streaming protocol companions when present.
+        for actor in actors {
+            let sourceFile = actor.filePath
             let sourceDir = URL(fileURLWithPath: sourceFile).deletingLastPathComponent().path
+            let actorBaseName = URL(fileURLWithPath: sourceFile).deletingPathExtension().lastPathComponent
+            let streamingProtocolName = "\(actorBaseName)Streaming.swift"
+            guard !copiedFiles.contains(streamingProtocolName) else { continue }
+
             let streamingProtocolPath = "\(sourceDir)/\(streamingProtocolName)"
+            guard FileManager.default.fileExists(atPath: streamingProtocolPath) else { continue }
 
-            if FileManager.default.fileExists(atPath: streamingProtocolPath),
-               !copiedFiles.contains(streamingProtocolName) {
-                let targetStreamingFile = "\(targetPath)/\(streamingProtocolName)"
-                try FileManager.default.copyItem(atPath: streamingProtocolPath, toPath: targetStreamingFile)
-                copiedFiles.insert(streamingProtocolName)
+            let targetStreamingFile = "\(targetPath)/\(streamingProtocolName)"
+            try FileManager.default.copyItem(atPath: streamingProtocolPath, toPath: targetStreamingFile)
+            copiedFiles.insert(streamingProtocolName)
 
-                if verbose {
-                    terminal.print("  Copied: \(streamingProtocolName)", style: .dim)
-                }
+            if verbose {
+                terminal.print("  Copied: \(streamingProtocolName)", style: .dim)
             }
         }
 
         terminal.print("✓ Copied \(copiedFiles.count) actor source file(s)", style: .success)
+    }
+
+    private func inferSupportingFilesForActorSources(
+        actorFiles: Set<String>,
+        in projectDirectory: String
+    ) -> Set<String> {
+        var referencedSymbols = Set<String>()
+
+        for actorFile in actorFiles {
+            guard let contents = try? String(contentsOfFile: actorFile, encoding: .utf8) else {
+                continue
+            }
+
+            // Extract symbols from syntax (not comments/docs) to avoid pulling UI-only files.
+            let sourceFile = Parser.parse(source: contents)
+            let usageVisitor = TypeUsageVisitor()
+            usageVisitor.walk(sourceFile)
+            referencedSymbols.formUnion(usageVisitor.usedTypes)
+        }
+
+        guard !referencedSymbols.isEmpty else { return [] }
+
+        let definitionRegex = try? NSRegularExpression(
+            pattern: #"\b(?:struct|class|actor|enum|protocol|typealias)\s+([A-Z][A-Za-z0-9_]*)\b"#,
+            options: []
+        )
+        guard let definitionRegex else { return [] }
+
+        var supportingFiles = Set<String>()
+        guard let enumerator = FileManager.default.enumerator(atPath: projectDirectory) else {
+            return []
+        }
+
+        while let relativePath = enumerator.nextObject() as? String {
+            guard relativePath.hasSuffix(".swift") else { continue }
+            if relativePath.contains("/.build/") || relativePath.contains("/Tests/") {
+                continue
+            }
+
+            let fullPath = "\(projectDirectory)/\(relativePath)"
+            guard let contents = try? String(contentsOfFile: fullPath, encoding: .utf8) else {
+                continue
+            }
+
+            let nsContents = contents as NSString
+            let matches = definitionRegex.matches(
+                in: contents,
+                options: [],
+                range: NSRange(location: 0, length: nsContents.length)
+            )
+
+            for match in matches where match.numberOfRanges >= 2 {
+                let symbol = nsContents.substring(with: match.range(at: 1))
+                if referencedSymbols.contains(symbol) {
+                    supportingFiles.insert(fullPath)
+                    break
+                }
+            }
+        }
+
+        return supportingFiles
     }
 }

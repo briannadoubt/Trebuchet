@@ -5,7 +5,13 @@ import CompilerPluginSupport
 
 let package = Package(
     name: "Trebuchet",
-    platforms: [.macOS(.v15), .iOS(.v17), .tvOS(.v17), .watchOS(.v10), .custom("wasi", versionString: "1.0")],
+    platforms: [
+        .macOS(.v15),
+        .iOS(.v17),
+        .tvOS(.v17),
+        .watchOS(.v10),
+        .custom("wasi", versionString: "1.0")
+    ],
     products: [
         .library(
             name: "Trebuchet",

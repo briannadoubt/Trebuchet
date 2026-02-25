@@ -24,6 +24,16 @@ public struct DependencyAnalyzer {
             // Add the actor's file
             requiredFiles.insert(actor.filePath)
 
+            // Include dependencies used anywhere inside the actor declaration
+            // (stored properties, initializers, method bodies, nested types, etc.).
+            let actorDeclarationDependencies = try findDependencies(ofType: actor.name, in: actor.filePath)
+            requiredTypes.formUnion(actorDeclarationDependencies)
+
+            // Also include file-level dependencies to catch helper/model references
+            // that may appear outside the actor declaration.
+            let fileLevelDependencies = try findDependencies(in: actor.filePath)
+            requiredTypes.formUnion(fileLevelDependencies)
+
             // Collect types from method signatures
             for method in actor.methods {
                 // Parameter types
@@ -266,6 +276,16 @@ final class TypeUsageVisitor: SyntaxVisitor {
         let typeName = node.name.text
         if !typeName.isEmpty {
             usedTypes.insert(typeName)
+        }
+        return .visitChildren
+    }
+
+    override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
+        // Capture constructor-style references like `DBMessage(...)`.
+        // Restrict to UpperCamelCase to avoid pulling in local variable names.
+        let symbol = node.baseName.text
+        if let first = symbol.first, first.isUppercase {
+            usedTypes.insert(symbol)
         }
         return .visitChildren
     }
