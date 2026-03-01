@@ -294,7 +294,7 @@ public actor InMemoryStateStore: ActorStateStore {
 ///
 /// Actors conforming to this protocol can have their state automatically
 /// persisted to an external store when deployed to serverless environments.
-public protocol StatefulActor: DistributedActor where ActorSystem == TrebuchetActorSystem {
+public protocol StatefulActor: DistributedActor where ActorSystem == TrebuchetRuntime {
     /// The type of state this actor persists
     associatedtype PersistentState: Codable & Sendable
 

@@ -43,8 +43,14 @@ public struct XcodeSetupCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Path to local Trebuchet checkout to pass to `trebuchet dev --local`")
     public var local: String?
 
-    @Option(name: .long, help: "Container runtime passed to `trebuchet dev` (auto, compote, docker)")
-    public var runtime: String = "auto"
+    @Option(name: .long, help: "Container runtime passed to `trebuchet dev` (compote on macOS, docker on non-macOS)")
+    public var runtime: String = {
+        #if os(macOS)
+        "compote"
+        #else
+        "docker"
+        #endif
+    }()
 
     @Flag(name: .long, help: "Pass --no-deps to `trebuchet dev` sessions")
     public var noDeps: Bool = false
@@ -342,8 +348,14 @@ public struct XcodeSessionStartCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Path to local Trebuchet checkout to pass to `trebuchet dev --local`")
     public var local: String?
 
-    @Option(name: .long, help: "Container runtime passed to `trebuchet dev` (auto, compote, docker)")
-    public var runtime: String = "auto"
+    @Option(name: .long, help: "Container runtime passed to `trebuchet dev` (compote on macOS, docker on non-macOS)")
+    public var runtime: String = {
+        #if os(macOS)
+        "compote"
+        #else
+        "docker"
+        #endif
+    }()
 
     @Flag(name: .long, help: "Pass --no-deps to `trebuchet dev`")
     public var noDeps: Bool = false

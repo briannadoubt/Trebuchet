@@ -224,7 +224,7 @@ public final class TrebuchetConnectionManager {
         _ actorType: Act.Type,
         id: String,
         from connectionName: String? = nil
-    ) throws -> Act where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
+    ) throws -> Act where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetRuntime {
         let name = connectionName ?? defaultConnectionName
         guard let name, let connection = connections[name] else {
             throw TrebuchetError.systemNotRunning

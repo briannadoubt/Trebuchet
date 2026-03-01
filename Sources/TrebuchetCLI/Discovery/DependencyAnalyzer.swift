@@ -137,7 +137,7 @@ public struct DependencyAnalyzer {
             "Data", "Date", "URL", "UUID", "Decimal",
             "NSObject", "NSString", "NSArray", "NSDictionary",
             // Trebuchet
-            "TrebuchetActorSystem", "TrebuchetActorID", "TrebuchetError",
+            "TrebuchetRuntime", "TrebuchetActorID", "TrebuchetError",
             // Distributed actor system
             "DistributedActor", "DistributedActorSystem",
             // Swift concurrency

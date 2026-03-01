@@ -163,7 +163,7 @@ Client                          Server
 ### Server Side
 
 1. **TrebuchetServer** - Detects `observe*` methods and initiates streaming
-2. **TrebuchetActorSystem** - `executeStreamingTarget()` gets the stream from the actor
+2. **TrebuchetRuntime** - `executeStreamingTarget()` gets the stream from the actor
 3. **StreamingActor Protocol** - Actors implement `_getStream(for:)` to provide encoded streams
 4. **Generated Code** - `@Trebuchet` macro generates the streaming infrastructure
 

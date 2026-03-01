@@ -28,7 +28,7 @@ distributed actor Counter {
 }
 ```
 
-The `@Trebuchet` macro automatically adds `typealias ActorSystem = TrebuchetActorSystem` to your actor.
+The `@Trebuchet` macro automatically adds `typealias ActorSystem = TrebuchetRuntime` to your actor.
 
 ## Running a Server
 

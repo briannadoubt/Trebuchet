@@ -42,7 +42,7 @@ distributed actor TodoListActor {
     /// This initializer automatically generates the schema for the Todo model
     /// if it doesn't already exist in the database.
     public init(
-        actorSystem: TrebuchetActorSystem,
+        actorSystem: TrebuchetRuntime,
         database: SurrealDB,
         actorId: String
     ) async throws {

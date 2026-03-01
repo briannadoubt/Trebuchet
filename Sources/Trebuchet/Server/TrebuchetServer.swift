@@ -36,7 +36,7 @@ public final class TrebuchetServer: Sendable {
     }
 
     /// The actor system used by this server
-    public let actorSystem: TrebuchetActorSystem
+    public let actorSystem: TrebuchetRuntime
 
     /// The transport configuration
     private let transportConfig: TransportConfiguration
@@ -70,7 +70,7 @@ public final class TrebuchetServer: Sendable {
     public init(transport: TransportConfiguration) {
         let resolved = transport.resolvedForRuntime()
         self.transportConfig = resolved.resolved
-        self.actorSystem = TrebuchetActorSystem()
+        self.actorSystem = TrebuchetRuntime()
 
         switch resolved.resolved {
         case .webSocket(_, _, let tls):
@@ -130,7 +130,7 @@ public final class TrebuchetServer: Sendable {
     @discardableResult
     public func expose<Act: DistributedActor>(
         _ name: String,
-        factory: @Sendable (TrebuchetActorSystem) -> Act
+        factory: @Sendable (TrebuchetRuntime) -> Act
     ) async -> Act where Act.ID == TrebuchetActorID {
         let actor = factory(actorSystem)
         await exposedActors.register(actor, as: name)

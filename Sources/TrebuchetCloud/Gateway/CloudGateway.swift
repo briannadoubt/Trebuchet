@@ -13,7 +13,7 @@ import TrebuchetSecurity
 /// CloudGateway provides a unified interface for exposing actors via HTTP,
 /// handling invocation routing, state management, and health checks.
 public actor CloudGateway {
-    internal let actorSystem: TrebuchetActorSystem
+    internal let actorSystem: TrebuchetRuntime
     private let transport: HTTPTransport
     private let stateStore: (any ActorStateStore)?
     internal let registry: (any ServiceRegistry)?
@@ -64,7 +64,7 @@ public actor CloudGateway {
     /// - Parameter configuration: Gateway configuration
     public init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
-        self.actorSystem = TrebuchetActorSystem()
+        self.actorSystem = TrebuchetRuntime()
         self.transport = HTTPTransport()
         self.stateStore = configuration.stateStore
         self.registry = configuration.registry
@@ -77,7 +77,7 @@ public actor CloudGateway {
     }
 
     /// The actor system used by this gateway
-    public nonisolated var system: TrebuchetActorSystem {
+    public nonisolated var system: TrebuchetRuntime {
         actorSystem
     }
 
@@ -90,7 +90,7 @@ public actor CloudGateway {
     public func expose<A: DistributedActor>(
         _ actor: A,
         as name: String
-    ) async throws where A.ActorSystem == TrebuchetActorSystem {
+    ) async throws where A.ActorSystem == TrebuchetRuntime {
         exposedActors[name] = actor
 
         await logger.info("Exposed actor", metadata: [
@@ -140,7 +140,7 @@ public actor CloudGateway {
     /// Get an exposed actor by name
     /// - Parameter name: The actor name
     /// - Returns: The actor if found
-    public func actor<A: DistributedActor>(named name: String) -> A? where A.ActorSystem == TrebuchetActorSystem {
+    public func actor<A: DistributedActor>(named name: String) -> A? where A.ActorSystem == TrebuchetRuntime {
         exposedActors[name] as? A
     }
 

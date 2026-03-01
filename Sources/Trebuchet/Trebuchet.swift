@@ -51,11 +51,11 @@
 /// ```
 ///
 /// The macro will generate:
-/// - `public typealias ActorSystem = TrebuchetActorSystem` (if not present)
+/// - `public typealias ActorSystem = TrebuchetRuntime` (if not present)
 /// - Conformance to `TrebuchetActor` protocol
 /// - `public func observeState() -> AsyncStream<State>` (for @StreamedState properties)
 @attached(member, names: named(ActorSystem), arbitrary)
-@attached(extension, conformances: TrebuchetActor)
+@attached(extension, conformances: TrebuchetActor, StreamingActor)
 public macro Trebuchet() = #externalMacro(module: "TrebuchetMacros", type: "TrebuchetMacro")
 
 /// Marks a property for automatic state streaming.
@@ -87,16 +87,16 @@ public macro StreamedState() = #externalMacro(module: "TrebuchetMacros", type: "
 
 // MARK: - Convenience Extensions
 
-extension TrebuchetActorSystem {
+extension TrebuchetRuntime {
     /// Create an actor system configured for use with a server
 #if os(WASI)
     @available(*, unavailable, message: "forServer(host:port:) is unavailable on WASI in this build because WebSocket transport is not implemented for WASI.")
-    public static func forServer(host: String, port: UInt16) -> TrebuchetActorSystem {
-        TrebuchetActorSystem()
+    public static func forServer(host: String, port: UInt16) -> TrebuchetRuntime {
+        TrebuchetRuntime()
     }
 #else
-    public static func forServer(host: String, port: UInt16) -> TrebuchetActorSystem {
-        let system = TrebuchetActorSystem()
+    public static func forServer(host: String, port: UInt16) -> TrebuchetRuntime {
+        let system = TrebuchetRuntime()
         let transport = WebSocketTransport()
         system.configure(transport: transport, host: host, port: port)
         return system
@@ -104,7 +104,7 @@ extension TrebuchetActorSystem {
 #endif
 
     /// Create an actor system configured for use with a client
-    public static func forClient() -> TrebuchetActorSystem {
-        TrebuchetActorSystem()
+    public static func forClient() -> TrebuchetRuntime {
+        TrebuchetRuntime()
     }
 }

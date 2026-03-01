@@ -1,8 +1,8 @@
-# ``Trebuchet/TrebuchetActorSystem``
+# ``Trebuchet/TrebuchetRuntime``
 
 ## Overview
 
-`TrebuchetActorSystem` is the core implementation of Swift's `DistributedActorSystem` protocol. It manages actor lifecycles, handles serialization, and coordinates remote method invocations.
+`TrebuchetRuntime` is the core implementation of Swift's `DistributedActorSystem` protocol. It manages actor lifecycles, handles serialization, and coordinates remote method invocations.
 
 In most cases, you won't interact with the actor system directly. Instead, you'll use ``TrebuchetServer`` or ``TrebuchetClient`` which manage the system for you.
 
@@ -25,7 +25,7 @@ When you call a method on a distributed actor:
 While ``TrebuchetServer`` and ``TrebuchetClient`` are recommended, you can use the system directly:
 
 ```swift
-let system = TrebuchetActorSystem.forServer(host: "0.0.0.0", port: 8080)
+let system = TrebuchetRuntime.forServer(host: "0.0.0.0", port: 8080)
 let actor = MyActor(actorSystem: system)
 ```
 

@@ -211,7 +211,7 @@ The analyzer automatically **excludes** standard types:
 `DistributedActor`, `DistributedActorSystem`, etc.
 
 ### Trebuchet
-`TrebuchetActorSystem`, `TrebuchetActorID`, `TrebuchetError`, etc.
+`TrebuchetRuntime`, `TrebuchetActorID`, `TrebuchetError`, etc.
 
 ### Swift Concurrency
 `Task`, `AsyncStream`, `AsyncThrowingStream`, etc.

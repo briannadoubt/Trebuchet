@@ -28,7 +28,7 @@ import Trebuchet
 ///     }
 ///
 ///     public init(
-///         actorSystem: TrebuchetActorSystem,
+///         actorSystem: TrebuchetRuntime,
 ///         stateStore: ActorStateStore
 ///     ) async throws {
 ///         self.actorSystem = actorSystem

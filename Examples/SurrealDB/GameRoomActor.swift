@@ -48,7 +48,7 @@ distributed actor GameRoomActor {
     /// - Player node table
     /// - PlayerInRoom edge table
     public init(
-        actorSystem: TrebuchetActorSystem,
+        actorSystem: TrebuchetRuntime,
         database: SurrealDB,
         roomId: String,
         maxPlayers: Int = 4

@@ -12,7 +12,7 @@ import Foundation
 /// ```
 public final class TrebuchetClient: Sendable {
     /// The actor system used by this client
-    public let actorSystem: TrebuchetActorSystem
+    public let actorSystem: TrebuchetRuntime
 
     /// The transport configuration
     private let transportConfig: TransportConfiguration
@@ -40,7 +40,7 @@ public final class TrebuchetClient: Sendable {
         self.transportConfig = resolved.resolved
         self.transportConfigurationError = resolved.error
         self.serverEndpoint = resolved.resolved.endpoint
-        self.actorSystem = TrebuchetActorSystem()
+        self.actorSystem = TrebuchetRuntime()
 
         switch resolved.resolved {
         case .webSocket(_, _, let tls):
@@ -95,7 +95,7 @@ public final class TrebuchetClient: Sendable {
     public func resolve<Act: DistributedActor>(
         _ actorType: Act.Type,
         id: String
-    ) throws -> Act where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
+    ) throws -> Act where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetRuntime {
         let actorID = TrebuchetActorID(
             id: id,
             host: serverEndpoint.host,

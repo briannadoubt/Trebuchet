@@ -14,7 +14,6 @@ public struct TrebuchetCommand: AsyncParsableCommand {
             DevCommand.self,
             XcodeCommand.self,
             InitCommand.self,
-            GenerateCommand.self,
             RunCommand.self,
         ],
         defaultSubcommand: nil

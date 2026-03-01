@@ -191,7 +191,7 @@ distributed actor GameRoom: StatefulStreamingActor {
         set { state = newValue }
     }
 
-    init(actorSystem: TrebuchetActorSystem, stateStore: ActorStateStore) async {
+    init(actorSystem: TrebuchetRuntime, stateStore: ActorStateStore) async {
         self.actorSystem = actorSystem
         self.stateStore = stateStore
 

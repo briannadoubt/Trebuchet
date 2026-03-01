@@ -73,7 +73,7 @@ struct LocalActorTests {
 
     @Test("Local actor echo call")
     func localActorEcho() async throws {
-        let system = TrebuchetActorSystem()
+        let system = TrebuchetRuntime()
         let actor = EchoActor(actorSystem: system)
 
         let result = try await actor.echo(message: "Hello")
@@ -82,7 +82,7 @@ struct LocalActorTests {
 
     @Test("Local actor add call")
     func localActorAdd() async throws {
-        let system = TrebuchetActorSystem()
+        let system = TrebuchetRuntime()
         let actor = EchoActor(actorSystem: system)
 
         let result = try await actor.add(a: 5, b: 3)
@@ -91,7 +91,7 @@ struct LocalActorTests {
 
     @Test("Local actor returns array")
     func localActorArray() async throws {
-        let system = TrebuchetActorSystem()
+        let system = TrebuchetRuntime()
         let actor = EchoActor(actorSystem: system)
 
         let result = try await actor.greet(name: "World", times: 3)
@@ -102,7 +102,7 @@ struct LocalActorTests {
 
     @Test("Multiple actors same system")
     func multipleActors() async throws {
-        let system = TrebuchetActorSystem()
+        let system = TrebuchetRuntime()
         let actor1 = EchoActor(actorSystem: system)
         let actor2 = EchoActor(actorSystem: system)
 

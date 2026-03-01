@@ -58,7 +58,7 @@ public typealias ActorStateStoreProtocol = ActorStateStore
 public actor TrebuchetCloudClient {
     private let registry: any ServiceRegistry
     private let providerType: CloudProviderType
-    private let actorSystem: TrebuchetActorSystem
+    private let actorSystem: TrebuchetRuntime
     private var transports: [String: any TrebuchetTransport] = [:]
 
     /// Create a cloud client
@@ -71,11 +71,11 @@ public actor TrebuchetCloudClient {
     ) {
         self.registry = registry
         self.providerType = provider
-        self.actorSystem = TrebuchetActorSystem()
+        self.actorSystem = TrebuchetRuntime()
     }
 
     /// The actor system used by this client
-    public nonisolated var system: TrebuchetActorSystem {
+    public nonisolated var system: TrebuchetRuntime {
         actorSystem
     }
 
@@ -87,7 +87,7 @@ public actor TrebuchetCloudClient {
     public func resolve<A: DistributedActor>(
         _ actorType: A.Type,
         id: String
-    ) async throws -> A where A.ActorSystem == TrebuchetActorSystem {
+    ) async throws -> A where A.ActorSystem == TrebuchetRuntime {
         // Look up the actor's endpoint in the registry
         guard let endpoint = try await registry.resolve(actorID: id) else {
             throw CloudError.actorNotFound(actorID: id, provider: providerType)

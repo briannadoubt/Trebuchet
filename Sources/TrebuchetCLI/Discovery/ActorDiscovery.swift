@@ -98,10 +98,10 @@ final class ActorVisitor: SyntaxVisitor {
         let actorName = node.name.text
         let lineNumber = lineNumber(for: node.position)
 
-        // Check for @Trebuchet attribute or TrebuchetActorSystem conformance
+        // Check for @Trebuchet attribute or TrebuchetRuntime conformance
         let hasTrebuchetMarker = hasTrebuchetAttribute(node) || hasTrebuchetTypealias(node)
 
-        // Only include actors marked with @Trebuchet or that use TrebuchetActorSystem
+        // Only include actors marked with @Trebuchet or that use TrebuchetRuntime
         guard hasTrebuchetMarker else {
             return .visitChildren
         }
@@ -151,7 +151,7 @@ final class ActorVisitor: SyntaxVisitor {
             if let typeAlias = member.decl.as(TypeAliasDeclSyntax.self) {
                 if typeAlias.name.text == "ActorSystem" {
                     let type = typeAlias.initializer.value.description.trimmingCharacters(in: .whitespaces)
-                    if type == "TrebuchetActorSystem" {
+                    if type == "TrebuchetRuntime" {
                         return true
                     }
                 }

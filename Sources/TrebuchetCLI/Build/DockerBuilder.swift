@@ -2,7 +2,7 @@ import Foundation
 
 /// Result from a build operation
 public struct BuildResult: Sendable {
-    /// Path to the built binary
+    /// Path to the built binary or archive
     public let binaryPath: String
 
     /// Size in bytes
@@ -28,86 +28,82 @@ public struct DockerBuilder {
         self.fileManager = fileManager
     }
 
-    /// Build the project for Lambda
+    /// Build the selected executable for Lambda and package it as `bootstrap` zip.
     /// - Parameters:
     ///   - projectPath: Path to the Swift project
-    ///   - config: Resolved configuration
+    ///   - config: Resolved deployment configuration
+    ///   - executableProduct: Swift executable product name to build
     ///   - verbose: Enable verbose output
     ///   - terminal: Terminal for output
-    /// - Returns: Build result with binary path and size
+    /// - Returns: Build result with package path and size
     public func build(
         projectPath: String,
         config: ResolvedConfig,
+        executableProduct: String? = nil,
         verbose: Bool,
         terminal: Terminal
     ) async throws -> BuildResult {
         let startTime = ContinuousClock.now
 
-        // Create build directory
+        let product = executableProduct ?? config.projectName
+
         let buildDir = "\(projectPath)/.trebuchet/build"
         try fileManager.createDirectory(atPath: buildDir, withIntermediateDirectories: true)
 
-        // Generate Dockerfile
         let dockerfilePath = "\(buildDir)/Dockerfile"
-        let dockerfile = generateDockerfile(projectName: config.projectName)
+        let dockerfile = generateDockerfile(productName: product)
         try dockerfile.write(toFile: dockerfilePath, atomically: true, encoding: .utf8)
 
-        // Generate bootstrap
-        let bootstrapPath = "\(buildDir)/bootstrap.swift"
-        let bootstrap = generateBootstrap(config: config)
-        try bootstrap.write(toFile: bootstrapPath, atomically: true, encoding: .utf8)
-
-        // Check if Docker is available
         guard try await isDockerAvailable() else {
             throw CLIError.buildFailed("Docker is not available. Please install Docker to build for Lambda.")
         }
 
-        // Build Docker image
+        let imageName = "trebuchet-build-\(UUID().uuidString.prefix(8))"
         terminal.print("  Building Docker image...", style: .dim)
         try await runDocker(
-            ["build", "-t", "trebuchet-build-\(config.projectName)", "-f", dockerfilePath, projectPath],
+            ["build", "-t", imageName, "-f", dockerfilePath, projectPath],
             verbose: verbose
         )
 
-        // Extract binary from container
         terminal.print("  Extracting binary...", style: .dim)
         let containerName = "trebuchet-extract-\(UUID().uuidString.prefix(8))"
 
-        // Create container
         try await runDocker(
-            ["create", "--name", containerName, "trebuchet-build-\(config.projectName)"],
+            ["create", "--name", containerName, imageName],
             verbose: verbose
         )
 
-        // Copy binary out
-        let outputPath = "\(buildDir)/bootstrap"
-        try await runDocker(
-            ["cp", "\(containerName):/app/.build/release/\(config.projectName)", outputPath],
-            verbose: verbose
-        )
+        let binaryPath = "\(buildDir)/\(product)"
+        do {
+            try await runDocker(
+                ["cp", "\(containerName):/app/.build/release/\(product)", binaryPath],
+                verbose: verbose
+            )
 
-        // Remove container
-        try await runDocker(["rm", containerName], verbose: verbose)
+            try await makeExecutable(binaryPath)
 
-        // Get binary size
-        let attributes = try fileManager.attributesOfItem(atPath: outputPath)
-        let _ = attributes[.size] as? Int64 ?? 0
+            terminal.print("  Creating deployment package...", style: .dim)
+            let packagePath = "\(buildDir)/lambda-package.zip"
+            try await createLambdaPackage(binaryPath: binaryPath, outputPath: packagePath)
 
-        // Create Lambda package
-        terminal.print("  Creating deployment package...", style: .dim)
-        let packagePath = "\(buildDir)/lambda-package.zip"
-        try await createLambdaPackage(binaryPath: outputPath, outputPath: packagePath)
+            let packageAttributes = try fileManager.attributesOfItem(atPath: packagePath)
+            let packageSize = packageAttributes[.size] as? Int64 ?? 0
 
-        let packageAttributes = try fileManager.attributesOfItem(atPath: packagePath)
-        let packageSize = packageAttributes[.size] as? Int64 ?? 0
+            try? await runDocker(["rm", "-f", containerName], verbose: true)
+            try? await runDocker(["rmi", imageName], verbose: true)
 
-        let duration = ContinuousClock.now - startTime
+            let duration = ContinuousClock.now - startTime
 
-        return BuildResult(
-            binaryPath: packagePath,
-            size: packageSize,
-            duration: duration
-        )
+            return BuildResult(
+                binaryPath: packagePath,
+                size: packageSize,
+                duration: duration
+            )
+        } catch {
+            try? await runDocker(["rm", "-f", containerName], verbose: true)
+            try? await runDocker(["rmi", imageName], verbose: true)
+            throw error
+        }
     }
 
     /// Build locally (no Docker) for development
@@ -146,116 +142,17 @@ public struct DockerBuilder {
 
     // MARK: - Private
 
-    private func generateDockerfile(projectName: String) -> String {
+    private func generateDockerfile(productName: String) -> String {
         """
         # Trebuchet Lambda Build Image
-        FROM swift:6.0-amazonlinux2 AS builder
+        FROM swift:6.2-amazonlinux2 AS builder
 
         WORKDIR /app
+        COPY . .
 
-        # Copy package files first for caching
-        COPY Package.swift Package.resolved* ./
+        RUN swift build -c release --product \(productName) --static-swift-stdlib -Xlinker -s
 
-        # Copy source files
-        COPY Sources/ Sources/
-        COPY Tests/ Tests/
-
-        # Build for release
-        RUN swift build -c release \\
-            --static-swift-stdlib \\
-            -Xlinker -s
-
-        # Copy the bootstrap generator
-        COPY .trebuchet/build/bootstrap.swift /app/
-
-        # The output will be copied out of the container
-        """
-    }
-
-    private func generateBootstrap(config: ResolvedConfig) -> String {
-        // Generate actor registrations
-        var registrations = ""
-        for actor in config.actors {
-            registrations += """
-                    // Register \(actor.name)
-                    let \(actor.name.lowercased()) = \(actor.name)(actorSystem: gateway.system)
-                    try await gateway.expose(\(actor.name.lowercased()), as: "\(actor.name.lowercased())")
-
-            """
-        }
-
-        return """
-        // Auto-generated Lambda bootstrap for \(config.projectName)
-        // Generated by trebuchet CLI
-
-        import Foundation
-        import Trebuchet
-        import TrebuchetCloud
-        import TrebuchetAWS
-        import AWSLambdaRuntime
-        import AWSLambdaEvents
-
-        @main
-        struct ActorLambdaHandler: LambdaHandler {
-            typealias Event = APIGatewayV2Request
-            typealias Output = APIGatewayV2Response
-
-            let gateway: CloudGateway
-
-            init(context: LambdaInitializationContext) async throws {
-                // Configure state store
-                let stateStore = DynamoDBStateStore(
-                    tableName: ProcessInfo.processInfo.environment["STATE_TABLE"] ?? "\(config.stateTableName)"
-                )
-
-                // Configure service registry
-                let registry = CloudMapRegistry(
-                    namespace: ProcessInfo.processInfo.environment["NAMESPACE"] ?? "\(config.discoveryNamespace)"
-                )
-
-                // Initialize gateway
-                gateway = CloudGateway(configuration: .init(
-                    stateStore: stateStore,
-                    registry: registry
-                ))
-
-        \(registrations)
-                context.logger.info("Lambda handler initialized with \\(gateway) actors")
-            }
-
-            func handle(_ event: APIGatewayV2Request, context: LambdaContext) async throws -> APIGatewayV2Response {
-                do {
-                    // Parse invocation envelope from request body
-                    guard let body = event.body,
-                          let data = body.data(using: .utf8) else {
-                        return APIGatewayV2Response(
-                            statusCode: .badRequest,
-                            body: "{\\"error\\": \\"Missing request body\\"}"
-                        )
-                    }
-
-                    let envelope = try JSONDecoder().decode(InvocationEnvelope.self, from: data)
-
-                    // Process invocation through CloudGateway
-                    // CloudGateway.process() handles actor routing, middleware execution, and error handling
-                    let response = await gateway.process(envelope)
-
-                    let responseData = try JSONEncoder().encode(response)
-                    let responseBody = String(data: responseData, encoding: .utf8) ?? "{}"
-
-                    return APIGatewayV2Response(
-                        statusCode: response.isSuccess ? .ok : .internalServerError,
-                        headers: ["Content-Type": "application/json"],
-                        body: responseBody
-                    )
-                } catch {
-                    return APIGatewayV2Response(
-                        statusCode: .internalServerError,
-                        body: "{\\"error\\": \\"\\(error)\\"}"
-                    )
-                }
-            }
-        }
+        # The built product is available at /app/.build/release/\(productName)
         """
     }
 
@@ -290,14 +187,34 @@ public struct DockerBuilder {
         }
     }
 
+    private func makeExecutable(_ path: String) async throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        process.arguments = ["+x", path]
+
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            throw CLIError.buildFailed("Failed to make binary executable at \(path)")
+        }
+    }
+
     private func createLambdaPackage(binaryPath: String, outputPath: String) async throws {
-        // Remove existing package
         try? fileManager.removeItem(atPath: outputPath)
 
-        // Create zip with bootstrap as the binary name (Lambda requirement)
+        let buildDir = (binaryPath as NSString).deletingLastPathComponent
+        let bootstrapPath = "\(buildDir)/bootstrap"
+        try? fileManager.removeItem(atPath: bootstrapPath)
+        try fileManager.copyItem(atPath: binaryPath, toPath: bootstrapPath)
+
+        defer {
+            try? fileManager.removeItem(atPath: bootstrapPath)
+        }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["zip", "-j", outputPath, binaryPath]
+        process.arguments = ["zip", "-j", outputPath, bootstrapPath]
 
         try process.run()
         process.waitUntilExit()
