@@ -13,7 +13,7 @@ import Distributed
 /// @Trebuchet
 /// public distributed actor GameRoom {
 ///     // Actors with custom init parameters should provide a convenience init
-///     public init(actorSystem: TrebuchetActorSystem) {
+///     public init(actorSystem: TrebuchetRuntime) {
 ///         self.actorSystem = actorSystem
 ///         // Initialize with defaults for dev mode
 ///     }
@@ -31,13 +31,13 @@ import Distributed
 ///     let userID: String
 ///
 ///     // Production initializer
-///     public init(actorSystem: TrebuchetActorSystem, userID: String) {
+///     public init(actorSystem: TrebuchetRuntime, userID: String) {
 ///         self.actorSystem = actorSystem
 ///         self.userID = userID
 ///     }
 ///
 ///     // Required by TrebuchetActor - used by CLI dev mode
-///     public init(actorSystem: TrebuchetActorSystem) {
+///     public init(actorSystem: TrebuchetRuntime) {
 ///         self.actorSystem = actorSystem
 ///         self.userID = "dev-user-\(UUID())"
 ///     }
@@ -46,7 +46,7 @@ import Distributed
 ///
 /// **Note**: Actors do not support `convenience` initializers, so you must provide
 /// separate regular initializers for each use case.
-public protocol TrebuchetActor: DistributedActor where ActorSystem == TrebuchetActorSystem {
+public protocol TrebuchetActor: DistributedActor where ActorSystem == TrebuchetRuntime {
     /// Initialize the actor with a Trebuchet actor system.
     ///
     /// This initializer is required for the Trebuchet CLI to automatically
@@ -56,5 +56,5 @@ public protocol TrebuchetActor: DistributedActor where ActorSystem == TrebuchetA
     /// as a convenience initializer that provides sensible defaults for development.
     ///
     /// - Parameter actorSystem: The actor system to use for this actor
-    init(actorSystem: TrebuchetActorSystem)
+    init(actorSystem: TrebuchetRuntime)
 }

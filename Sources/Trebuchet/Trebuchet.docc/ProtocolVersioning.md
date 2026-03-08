@@ -79,7 +79,7 @@ Clients automatically set this to their build version. Servers negotiate the hig
 Configure supported versions:
 
 ```swift
-let actorSystem = TrebuchetActorSystem()
+let actorSystem = TrebuchetRuntime()
 
 // Support v1 and v2
 let negotiator = ProtocolNegotiator(

@@ -461,7 +461,7 @@ public enum OrchestratorError: Error, CustomStringConvertible {
             return "Docker is not installed or not running. Install Docker to use automatic dependency management."
         case .portConflict(let port, let dependency):
             return "Port \(port) is already in use (needed by \(dependency)). " +
-                   "Stop the conflicting process or change the port in trebuchet.yaml."
+                   "Stop the conflicting process or change the mapped port in your compose manifest."
         case .healthCheckFailed(let dependency, let attempts):
             return "\(dependency) failed to become ready after \(attempts) attempts. " +
                    "Check if the service starts correctly with 'docker run' manually."

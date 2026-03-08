@@ -61,7 +61,7 @@ public final class TCPTransport: TrebuchetTransport, @unchecked Sendable {
             // Use 2-4 threads for typical server-to-server workloads
             // This is more efficient than using all cores for I/O bound operations
             self.eventLoopGroup = MultiThreadedEventLoopGroup(
-                numberOfThreads: min(4, max(2, System.coreCount))
+                numberOfThreads: min(4, max(2, ProcessInfo.processInfo.activeProcessorCount))
             )
             self.ownsEventLoopGroup = true
         }

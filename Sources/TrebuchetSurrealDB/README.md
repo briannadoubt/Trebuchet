@@ -51,7 +51,7 @@ distributed actor Counter: StatefulActor {
     let stateStore: SurrealDBStateStore
     var state = State()
 
-    init(actorSystem: TrebuchetActorSystem, stateStore: SurrealDBStateStore) async throws {
+    init(actorSystem: TrebuchetRuntime, stateStore: SurrealDBStateStore) async throws {
         self.actorSystem = actorSystem
         self.stateStore = stateStore
 
@@ -94,7 +94,7 @@ distributed actor TodoList {
         static var tableName: String { "todos" }
     }
 
-    init(actorSystem: TrebuchetActorSystem, db: SurrealDB) async throws {
+    init(actorSystem: TrebuchetRuntime, db: SurrealDB) async throws {
         self.actorSystem = actorSystem
         self.db = db
 

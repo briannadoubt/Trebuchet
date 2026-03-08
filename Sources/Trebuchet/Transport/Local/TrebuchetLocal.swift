@@ -160,7 +160,7 @@ import Foundation
 ///   communication only.
 public final class TrebuchetLocal: Sendable {
     /// The actor system used by this instance
-    public let actorSystem: TrebuchetActorSystem
+    public let actorSystem: TrebuchetRuntime
 
     /// The underlying transport (isolated per TrebuchetLocal instance)
     private let transport: LocalTransport
@@ -180,7 +180,7 @@ public final class TrebuchetLocal: Sendable {
     /// using an isolated in-process local transport.
     public init() async {
         self.transport = LocalTransport.isolated()
-        self.actorSystem = TrebuchetActorSystem()
+        self.actorSystem = TrebuchetRuntime()
 
         // Configure the actor system with local transport
         actorSystem.configure(
@@ -266,7 +266,7 @@ public final class TrebuchetLocal: Sendable {
     @discardableResult
     public func expose<Act: DistributedActor>(
         _ name: String,
-        factory: @Sendable (TrebuchetActorSystem) -> Act
+        factory: @Sendable (TrebuchetRuntime) -> Act
     ) async -> Act where Act.ID == TrebuchetActorID {
         let actor = factory(actorSystem)
         await exposedActors.register(actor, as: name)
@@ -288,7 +288,7 @@ public final class TrebuchetLocal: Sendable {
     public func resolve<Act: DistributedActor>(
         _ actorType: Act.Type,
         id: String
-    ) throws -> Act where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
+    ) throws -> Act where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetRuntime {
         // Use a routable local endpoint so invocation flows through LocalTransport,
         // where exposed-name translation maps "id" -> actual actor ID.
         let actorID = TrebuchetActorID(id: id, host: "local", port: 0)
@@ -463,7 +463,7 @@ public final class TrebuchetLocal: Sendable {
 
     private static func handleMessageStatic(
         _ message: TransportMessage,
-        actorSystem: TrebuchetActorSystem,
+        actorSystem: TrebuchetRuntime,
         exposedActors: ExposedActorRegistry
     ) async {
         let decoder = JSONDecoder()
@@ -542,7 +542,7 @@ public final class TrebuchetLocal: Sendable {
 
     private static func handleStreamingInvocation(
         _ envelope: InvocationEnvelope,
-        actorSystem: TrebuchetActorSystem,
+        actorSystem: TrebuchetRuntime,
         respond: @escaping @Sendable (Data) async throws -> Void
     ) async {
         let encoder = JSONEncoder()

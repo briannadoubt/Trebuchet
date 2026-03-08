@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The state of a remote actor resolution.
 public enum RemoteActorState<Act: DistributedActor>: Sendable
-where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
+where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetRuntime {
     /// Not connected to a server.
     case disconnected
 
@@ -103,7 +103,7 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
 /// ```
 @propertyWrapper
 public struct RemoteActor<Act: DistributedActor>: DynamicProperty
-where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
+where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetRuntime {
 
     // MARK: - Configuration
 
@@ -281,7 +281,7 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
 /// Projection type for accessing remote actor state and methods.
 @MainActor
 public struct RemoteActorProjection<Act: DistributedActor>: Sendable
-where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
+where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetRuntime {
     /// The current resolution state.
     public let state: RemoteActorState<Act>
 
@@ -327,7 +327,7 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
 /// }
 /// ```
 public struct RemoteActorView<Act: DistributedActor, Content: View, Loading: View, Disconnected: View, Failed: View>: View
-where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
+where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetRuntime {
 
     @RemoteActor private var actor: Act?
 

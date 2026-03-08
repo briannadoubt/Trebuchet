@@ -94,10 +94,10 @@ struct SerializationTests {
 
 // MARK: - Actor System Tests
 
-@Suite("TrebuchetActorSystem")
+@Suite("TrebuchetRuntime")
 struct ActorSystemTests {
     @Test func assignsUniqueIDs() {
-        let system = TrebuchetActorSystem()
+        let system = TrebuchetRuntime()
 
         let id1 = system.assignID(TestActor.self)
         let id2 = system.assignID(TestActor.self)
@@ -109,7 +109,7 @@ struct ActorSystemTests {
 // MARK: - Test Helpers
 
 distributed actor TestActor {
-    typealias ActorSystem = TrebuchetActorSystem
+    typealias ActorSystem = TrebuchetRuntime
 
     distributed func greet(name: String) -> String {
         "Hello, \(name)!"

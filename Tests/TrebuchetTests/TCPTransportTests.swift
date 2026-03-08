@@ -7,7 +7,7 @@ import Foundation
 // MARK: - Test Actor
 
 distributed actor TCPEchoActor {
-    typealias ActorSystem = TrebuchetActorSystem
+    typealias ActorSystem = TrebuchetRuntime
 
     distributed func echo(message: String) -> String {
         return "Echo: \(message)"

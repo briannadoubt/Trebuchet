@@ -4,9 +4,10 @@ Complete reference for AWS deployment configuration options.
 
 ## Overview
 
-This article covers all configuration options available when deploying to AWS.
+This article covers deployment configuration options for AWS.
+The canonical workflow is `trebuchet deploy <system-package-path> --product <SystemExecutable> ...` with deployment values defined in the System DSL.
 
-## trebuchet.yaml Reference
+## Legacy YAML Reference (Migration)
 
 ### Top-Level Configuration
 

@@ -1614,6 +1614,67 @@ struct DependencyOrchestratorTests {
     }
 }
 
+#if os(macOS)
+@Suite("Compote Orchestrator Tests")
+struct CompoteOrchestratorTests {
+
+    @Test("Compote loads config from configured project directory, not cwd")
+    func loadsConfigFromConfiguredDirectory() throws {
+        let fileManager = FileManager.default
+        let projectDir = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .path
+        let otherDir = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .path
+
+        try fileManager.createDirectory(atPath: projectDir, withIntermediateDirectories: true)
+        try fileManager.createDirectory(atPath: otherDir, withIntermediateDirectories: true)
+
+        defer {
+            try? fileManager.removeItem(atPath: projectDir)
+            try? fileManager.removeItem(atPath: otherDir)
+        }
+
+        let yaml = """
+            name: path-config-test
+            version: "1"
+            defaults:
+              provider: local
+              region: local
+              memory: 512
+              timeout: 30
+            actors: {}
+            state:
+              type: surrealdb
+            """
+
+        try yaml.write(
+            toFile: "\(projectDir)/trebuchet.yaml",
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let originalCwd = fileManager.currentDirectoryPath
+        defer {
+            _ = fileManager.changeCurrentDirectoryPath(originalCwd)
+        }
+        _ = fileManager.changeCurrentDirectoryPath(otherDir)
+
+        let orchestrator = CompoteOrchestrator(
+            terminal: Terminal(useColors: false),
+            verbose: false,
+            projectName: "test",
+            configDirectory: projectDir
+        )
+
+        let config = orchestrator.getCurrentConfig()
+        #expect(config?.name == "path-config-test")
+        #expect(config?.state?.type == "surrealdb")
+    }
+}
+#endif
+
 @Suite("Orchestrator Error Tests")
 struct OrchestratorErrorTests {
 

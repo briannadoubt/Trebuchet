@@ -21,7 +21,7 @@ This is equivalent to:
 
 ```swift
 distributed actor GameRoom {
-    typealias ActorSystem = TrebuchetActorSystem
+    typealias ActorSystem = TrebuchetRuntime
 
     distributed func join(player: Player) -> RoomState
 }
@@ -124,6 +124,6 @@ distributed actor GameRoom {
 
 ## See Also
 
-- ``TrebuchetActorSystem``
+- ``TrebuchetRuntime``
 - ``TrebuchetActorID``
 - <doc:GettingStarted>

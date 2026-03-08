@@ -1,8 +1,151 @@
-#if os(macOS)
 import Foundation
-import CompoteCore
 
-/// Generates Compote compose files from Trebuchet configuration
+/// Minimal compose representation used by Trebuchet CLI without a hard CompoteCore dependency.
+public struct ComposeFile: Sendable, Encodable {
+    public let version: String
+    public let services: [String: Service]
+    public let volumes: [String: Volume]?
+
+    public init(version: String, services: [String: Service], volumes: [String: Volume]? = nil) {
+        self.version = version
+        self.services = services
+        self.volumes = volumes
+    }
+}
+
+public struct Service: Sendable, Encodable {
+    public let image: String?
+    public let container_name: String?
+    public let command: Command?
+    public let environment: Environment?
+    public let ports: [String]?
+    public let volumes: [String]?
+    public let healthcheck: HealthCheck?
+    public let restart: String?
+
+    public init(
+        image: String?,
+        container_name: String? = nil,
+        command: Command? = nil,
+        environment: Environment? = nil,
+        ports: [String]? = nil,
+        volumes: [String]? = nil,
+        healthcheck: HealthCheck? = nil,
+        restart: String? = nil
+    ) {
+        self.image = image
+        self.container_name = container_name
+        self.command = command
+        self.environment = environment
+        self.ports = ports
+        self.volumes = volumes
+        self.healthcheck = healthcheck
+        self.restart = restart
+    }
+}
+
+public struct Volume: Sendable, Encodable {
+    public let driver: String?
+
+    public init(driver: String? = nil) {
+        self.driver = driver
+    }
+}
+
+public struct HealthCheck: Sendable, Encodable {
+    public let test: Command
+    public let interval: String?
+    public let timeout: String?
+    public let retries: Int?
+
+    public init(test: Command, interval: String? = nil, timeout: String? = nil, retries: Int? = nil) {
+        self.test = test
+        self.interval = interval
+        self.timeout = timeout
+        self.retries = retries
+    }
+}
+
+public enum Command: Sendable, Encodable {
+    case array([String])
+    case string(String)
+
+    var asArray: [String]? {
+        switch self {
+        case .array(let values):
+            return values
+        case .string(let value):
+            return [value]
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        switch self {
+        case .array(let values):
+            var container = encoder.unkeyedContainer()
+            for value in values {
+                try container.encode(value)
+            }
+        case .string(let value):
+            var container = encoder.singleValueContainer()
+            try container.encode(value)
+        }
+    }
+}
+
+public enum Environment: Sendable, Encodable {
+    case dictionary([String: String])
+    case array([String])
+
+    var asDictionary: [String: String]? {
+        switch self {
+        case .dictionary(let dict):
+            return dict
+        case .array(let array):
+            var dict: [String: String] = [:]
+            for item in array {
+                let parts = item.split(separator: "=", maxSplits: 1)
+                if parts.count == 2 {
+                    dict[String(parts[0])] = String(parts[1])
+                }
+            }
+            return dict
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        switch self {
+        case .dictionary(let dictionary):
+            var container = encoder.container(keyedBy: DynamicCodingKey.self)
+            for (key, value) in dictionary {
+                guard let codingKey = DynamicCodingKey(stringValue: key) else { continue }
+                try container.encode(value, forKey: codingKey)
+            }
+        case .array(let values):
+            var container = encoder.unkeyedContainer()
+            for value in values {
+                try container.encode(value)
+            }
+        }
+    }
+}
+
+private struct DynamicCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = "\(intValue)"
+        self.intValue = intValue
+    }
+}
+
+/// Generates compose-compatible service descriptions from Trebuchet configuration.
 public struct ComposeFileGenerator {
     private let config: TrebuchetConfig
 
@@ -10,12 +153,11 @@ public struct ComposeFileGenerator {
         self.config = config
     }
 
-    /// Generate a ComposeFile from TrebuchetConfig
+    /// Generate a ComposeFile from TrebuchetConfig.
     public func generate() -> ComposeFile {
         var services: [String: Service] = [:]
         var volumes: [String: Volume] = [:]
 
-        // Add services based on state store type
         if let stateType = config.state?.type.lowercased() {
             switch stateType {
             case "surrealdb":
@@ -34,19 +176,15 @@ public struct ComposeFileGenerator {
             }
         }
 
-        // Add custom dependencies from config
         if let dependencies = config.dependencies {
             for dep in dependencies {
                 services[dep.name] = createCustomService(from: dep)
 
-                // Add volumes if specified
                 if let depVolumes = dep.volumes {
                     for volumeSpec in depVolumes {
-                        // Parse "volume-name:/path" format
                         let parts = volumeSpec.split(separator: ":")
-                        if parts.count >= 1 {
-                            let volumeName = String(parts[0])
-                            volumes[volumeName] = Volume(driver: "local")
+                        if let first = parts.first {
+                            volumes[String(first)] = Volume(driver: "local")
                         }
                     }
                 }
@@ -59,8 +197,6 @@ public struct ComposeFileGenerator {
             volumes: volumes.isEmpty ? nil : volumes
         )
     }
-
-    // MARK: - Service Creators
 
     private func createSurrealDBService() -> Service {
         Service(
@@ -122,7 +258,6 @@ public struct ComposeFileGenerator {
     }
 
     private func createCustomService(from dep: DependencyConfig) -> Service {
-        // Convert dependency config to service
         var environment: Environment?
         if let env = dep.environment {
             environment = .dictionary(env)
@@ -164,4 +299,3 @@ public struct ComposeFileGenerator {
         )
     }
 }
-#endif

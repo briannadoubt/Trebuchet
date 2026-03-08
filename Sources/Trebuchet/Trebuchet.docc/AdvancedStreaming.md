@@ -265,7 +265,7 @@ public distributed actor TodoList: StatefulStreamingActor {
     }
 
     public init(
-        actorSystem: TrebuchetActorSystem,
+        actorSystem: TrebuchetRuntime,
         stateStore: ActorStateStore
     ) async throws {
         self.actorSystem = actorSystem

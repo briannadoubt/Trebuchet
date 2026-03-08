@@ -295,12 +295,6 @@ struct StreamingIntegrationTests {
                     await server.expose(counter, as: actorID.id)
                 }
 
-                // Configure streaming
-                await server.configureStreaming(
-                    for: CounterStreaming.self,
-                    method: "observeCount"
-                ) { await $0.observeCount() }
-
                 try await withTestClient(port: port) { client in
                     // Try to resolve and subscribe to non-existent actor
                     // This should trigger dynamic creation
@@ -348,6 +342,51 @@ struct StreamingIntegrationTests {
                     }
                     if receivedValues.count >= 2 {
                         #expect(receivedValues[1] == 1, "Updated count should be 1")
+                    }
+                }
+            }
+        }
+    }
+
+    @Test("Auto-streaming bridge works without manual configureStreaming")
+    func testAutoStreamingBridgeWithoutManualRegistration() async throws {
+        try await withTimeout(seconds: 5) {
+            try await withTestServer { server, port in
+                let counter = TestCounter(actorSystem: server.actorSystem)
+                await server.expose(counter, as: "auto-counter")
+
+                try await withTestClient(port: port) { client in
+                    let remoteCounter = try client.resolve(TestCounter.self, id: "auto-counter")
+
+                    var encoder = remoteCounter.actorSystem.makeInvocationEncoder()
+                    let (_, stream) = try await remoteCounter.actorSystem.remoteCallStream(
+                        on: remoteCounter,
+                        target: RemoteCallTarget("observeCount"),
+                        invocation: &encoder,
+                        returning: Int.self
+                    )
+
+                    let collector = ResultCollector<Int>()
+                    let task = Task {
+                        var count = 0
+                        for await value in stream {
+                            await collector.append(value)
+                            count += 1
+                            if count >= 2 { break }
+                        }
+                    }
+
+                    defer { task.cancel() }
+
+                    try await Task.sleep(for: .milliseconds(250))
+                    try await remoteCounter.increment()
+                    try await Task.sleep(for: .milliseconds(250))
+
+                    let receivedValues = await collector.getAll()
+                    #expect(receivedValues.count >= 2)
+                    if receivedValues.count >= 2 {
+                        #expect(receivedValues[0] == 0)
+                        #expect(receivedValues[1] == 1)
                     }
                 }
             }

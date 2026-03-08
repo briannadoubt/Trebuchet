@@ -2,6 +2,9 @@
 
 Deploy your distributed actors to AWS Lambda with the trebuchet CLI.
 
+Canonical workflow: deploy from a System executable Swift package (`trebuchet deploy <system-package-path> --product <SystemExecutable> ...`).
+Any `trebuchet.yaml` snippets in this page are legacy migration examples.
+
 ## Overview
 
 Trebuchet provides a streamlined deployment experience for AWS Lambda, similar to frameworks like Vercel or AWS Amplify. The CLI handles:
@@ -28,43 +31,14 @@ terraform --version
 
 ## Quick Start
 
-### 1. Initialize Configuration
+### 1. Prepare Your System Package
 
-```bash
-trebuchet init --name my-game-server --provider aws
-```
-
-This creates `trebuchet.yaml`:
-
-```yaml
-name: my-game-server
-version: "1"
-
-defaults:
-  provider: aws
-  region: us-east-1
-  memory: 512
-  timeout: 30
-
-actors:
-  GameRoom:
-    memory: 1024
-    stateful: true
-  Lobby:
-    memory: 256
-
-state:
-  type: dynamodb
-
-discovery:
-  type: cloudmap
-  namespace: my-game
-```
+Define your topology and deployment settings in your `System` executable Swift package (for example `./Server`) and choose the executable product (for example `AuraSystem`).
 
 ### 2. Preview Deployment
 
 ```bash
-trebuchet deploy --dry-run --verbose
+trebuchet deploy ./Server --product AuraSystem --provider aws --region us-east-1 --dry-run --verbose
 ```
 
 Output:
@@ -88,7 +62,7 @@ Dry run - would deploy:
 ### 3. Deploy
 
 ```bash
-trebuchet deploy --provider aws --region us-east-1
+trebuchet deploy ./Server --product AuraSystem --provider aws --region us-east-1
 ```
 
 Output:

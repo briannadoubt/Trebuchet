@@ -84,8 +84,8 @@ public final class AWSProvider: CloudProvider, @unchecked Sendable {
         _ actorType: A.Type,
         as actorID: String,
         config: AWSFunctionConfig,
-        factory: @Sendable (TrebuchetActorSystem) -> A
-    ) async throws -> AWSDeployment where A.ActorSystem == TrebuchetActorSystem {
+        factory: @Sendable (TrebuchetRuntime) -> A
+    ) async throws -> AWSDeployment where A.ActorSystem == TrebuchetRuntime {
         let functionName = sanitizeFunctionName(actorID)
 
         // Get or create IAM role

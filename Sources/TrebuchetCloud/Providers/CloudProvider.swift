@@ -29,8 +29,8 @@ public protocol CloudProvider: Sendable {
         _ actorType: A.Type,
         as actorID: String,
         config: FunctionConfig,
-        factory: @Sendable (TrebuchetActorSystem) -> A
-    ) async throws -> DeploymentResult where A.ActorSystem == TrebuchetActorSystem
+        factory: @Sendable (TrebuchetRuntime) -> A
+    ) async throws -> DeploymentResult where A.ActorSystem == TrebuchetRuntime
 
     /// Create a transport for invoking deployed actors
     /// - Parameter deployment: The deployment to create a transport for

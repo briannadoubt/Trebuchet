@@ -43,7 +43,7 @@ Generate database schema from your Swift types:
 distributed actor TodoList {
     private let db: SurrealDB
 
-    init(actorSystem: TrebuchetActorSystem, db: SurrealDB) async throws {
+    init(actorSystem: TrebuchetRuntime, db: SurrealDB) async throws {
         self.actorSystem = actorSystem
         self.db = db
 

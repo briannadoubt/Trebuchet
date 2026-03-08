@@ -100,7 +100,7 @@ public final class TrebuchetConnection {
     }
 
     /// The actor system from the client (nil if not connected).
-    public var actorSystem: TrebuchetActorSystem? {
+    public var actorSystem: TrebuchetRuntime? {
         client?.actorSystem
     }
 
@@ -175,7 +175,7 @@ public final class TrebuchetConnection {
     public func resolve<Act: DistributedActor>(
         _ actorType: Act.Type,
         id: String
-    ) throws -> Act where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
+    ) throws -> Act where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetRuntime {
         guard let client = client else {
             throw TrebuchetError.systemNotRunning
         }

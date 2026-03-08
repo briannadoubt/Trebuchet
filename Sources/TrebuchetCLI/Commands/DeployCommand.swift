@@ -1,23 +1,27 @@
 import ArgumentParser
 import Foundation
+import Trebuchet
 
 public struct DeployCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "deploy",
-        abstract: "Deploy distributed actors to the cloud"
+        abstract: "Deploy a System executable from a Swift package to the cloud"
     )
+
+    @Argument(help: "Path to the Swift package containing the @main ...: System executable")
+    public var projectPath: String = "."
 
     @Option(name: .shortAndLong, help: "Cloud provider (aws, fly)")
     public var provider: String?
 
-    @Option(name: .shortAndLong, help: "Deployment region")
+    @Option(name: .shortAndLong, help: "Deployment region override")
     public var region: String?
 
     @Option(name: .shortAndLong, help: "Environment name (production, staging)")
     public var environment: String?
 
-    @Option(name: .long, help: "Path to trebuchet.yaml")
-    public var config: String?
+    @Option(name: .long, help: "Executable product to deploy")
+    public var product: String?
 
     @Flag(name: .long, help: "Show what would be deployed without deploying")
     public var dryRun: Bool = false
@@ -29,384 +33,277 @@ public struct DeployCommand: AsyncParsableCommand {
 
     public mutating func run() async throws {
         let terminal = Terminal()
-        let cwd = FileManager.default.currentDirectoryPath
+        let projectDirectory = try resolveProjectDirectory(projectPath)
 
-        // Load configuration
-        terminal.print("Loading configuration...", style: .dim)
-        let configLoader = ConfigLoader()
-        let trebuchetConfig: TrebuchetConfig
+        let resolver = SystemProductResolver()
+        let resolvedProduct = try resolver.resolve(projectPath: projectDirectory, explicitProduct: product)
 
-        do {
-            if let configPath = config {
-                trebuchetConfig = try configLoader.load(file: configPath)
-            } else {
-                trebuchetConfig = try configLoader.load(from: cwd)
-            }
-        } catch ConfigError.fileNotFound {
-            terminal.print("No trebuchet.yaml found. Run 'trebuchet init' to create one.", style: .error)
-            throw ExitCode.failure
-        }
-
-        // Discover actors
-        terminal.print("")
-        terminal.print("Discovering actors...", style: .header)
-
-        let discovery = ActorDiscovery()
-        let actors = try discovery.discover(in: cwd)
-
-        if actors.isEmpty {
-            terminal.print("No distributed actors found.", style: .warning)
-            terminal.print("Make sure your actors use @Trebuchet macro or TrebuchetActorSystem typealias.", style: .dim)
-            throw ExitCode.failure
-        }
-
-        for actor in actors {
-            terminal.print("  ✓ \(actor.name)", style: .success)
-            if verbose {
-                for method in actor.methods {
-                    terminal.print("      → \(method.signature)", style: .dim)
-                }
-            }
-        }
-
-        // Resolve configuration
-        let rawProvider = provider ?? trebuchetConfig.defaults.provider
-        // Normalize provider: fly.io -> fly
-        let resolvedProvider = rawProvider.lowercased() == "fly.io" ? "fly" : rawProvider
-        let resolvedRegion = region ?? trebuchetConfig.defaults.region
-
-        let resolvedConfig = try configLoader.resolve(
-            config: trebuchetConfig,
-            environment: environment,
-            discoveredActors: actors
+        let runner = SystemExecutableRunner()
+        var plan = try runner.buildPlan(
+            projectPath: projectDirectory,
+            product: resolvedProduct.product,
+            provider: nil,
+            environment: environment
         )
 
-        terminal.print("")
+        let selectedProvider = (provider?.lowercased() ?? defaultProvider(from: plan))
+        plan.provider = selectedProvider
+        plan.environment = environment
+        plan = filterPlan(plan, for: selectedProvider)
+
+        if let region {
+            applyRegionOverride(&plan, provider: selectedProvider, region: region)
+        }
 
         if dryRun {
-            terminal.print("Dry run - would deploy:", style: .header)
-            terminal.print("")
-            terminal.print("  Provider: \(resolvedProvider)", style: .info)
-            terminal.print("  Region: \(resolvedRegion)", style: .info)
-            terminal.print("  State Table: \(resolvedConfig.stateTableName)", style: .info)
-            terminal.print("  Namespace: \(resolvedConfig.discoveryNamespace)", style: .info)
-            terminal.print("")
-
-            for actorConfig in resolvedConfig.actors {
-                terminal.print("  Actor: \(actorConfig.name)", style: .info)
-                terminal.print("    Memory: \(actorConfig.memory) MB", style: .dim)
-                terminal.print("    Timeout: \(actorConfig.timeout)s", style: .dim)
-                terminal.print("    Isolated: \(actorConfig.isolated)", style: .dim)
-            }
+            printDryRun(plan: plan, terminal: terminal)
             return
         }
 
-        // Route to provider-specific deployment
-        terminal.print("")
-        switch resolvedProvider {
-        case "fly":
-            try await deployToFly(
-                config: resolvedConfig,
-                actors: actors,
-                projectPath: cwd,
-                region: resolvedRegion,
-                verbose: verbose,
-                terminal: terminal
-            )
-        case "aws":
-            try await deployToAWS(
-                config: resolvedConfig,
-                actors: actors,
-                projectPath: cwd,
-                region: resolvedRegion,
-                verbose: verbose,
-                terminal: terminal
-            )
-        default:
-            terminal.print("❌ Unsupported provider: \(resolvedProvider)", style: .error)
-            terminal.print("   Supported providers: aws, fly", style: .dim)
-            throw ExitCode.failure
-        }
-    }
+        printDatabaseGuidance(plan: plan, provider: selectedProvider, terminal: terminal)
 
-    // MARK: - Fly.io Deployment
-
-    private func deployToFly(
-        config: ResolvedConfig,
-        actors: [ActorMetadata],
-        projectPath: String,
-        region: String,
-        verbose: Bool,
-        terminal: Terminal
-    ) async throws {
-        let deployer = FlyDeployer(terminal: terminal)
-
-        let result = try await deployer.deploy(
-            config: config,
-            actors: actors,
-            projectPath: projectPath,
-            appName: nil,  // Uses config.projectName
-            region: region,
-            verbose: verbose
-        )
-
-        terminal.print("")
-        terminal.print("🚀 Deployment successful!", style: .header)
-        terminal.print("")
-        terminal.print("  App:      \(result.appName)", style: .success)
-        terminal.print("  URL:      https://\(result.hostname)", style: .success)
-        terminal.print("  Region:   \(result.region)", style: .success)
-        terminal.print("  Status:   \(result.status)", style: .success)
-
-        if let dbUrl = result.databaseUrl {
-            terminal.print("  Database: \(dbUrl)", style: .success)
+        if verbose, !plan.warnings.isEmpty {
+            terminal.print("Deployment merge warnings:", style: .warning)
+            for warning in plan.warnings {
+                terminal.print("  • \(warning)", style: .dim)
+            }
+            terminal.print("", style: .info)
         }
 
-        terminal.print("")
-        terminal.print("Ready! Connect with:", style: .header)
-        terminal.print("  wss://\(result.hostname)", style: .dim)
-        terminal.print("")
-
-        // Save deployment info
-        let deploymentInfo = FlyDeploymentInfo(
-            projectName: config.projectName,
-            provider: "fly",
-            appName: result.appName,
-            hostname: result.hostname,
-            region: result.region,
-            databaseUrl: result.databaseUrl,
-            deployedAt: Date()
-        )
-
-        try saveFlyDeploymentInfo(deploymentInfo, to: "\(projectPath)/.trebuchet/deployment.json")
-    }
-
-    // MARK: - AWS Deployment
-
-    private func deployToAWS(
-        config: ResolvedConfig,
-        actors: [ActorMetadata],
-        projectPath: String,
-        region: String,
-        verbose: Bool,
-        terminal: Terminal
-    ) async throws {
-        // Build
-        terminal.print("Building for Lambda (arm64)...", style: .header)
-
-        let builder = DockerBuilder()
-        let buildResult = try await builder.build(
-            projectPath: projectPath,
-            config: config,
+        let providerImpl = try DeploymentProviderRegistry().provider(for: selectedProvider)
+        let result = try await providerImpl.deploy(
+            plan: plan,
+            projectPath: projectDirectory,
+            executableProduct: resolvedProduct.product,
             verbose: verbose,
             terminal: terminal
         )
 
-        terminal.print("  ✓ Package built (\(buildResult.sizeDescription))", style: .success)
-        terminal.print("")
-
-        // Generate Terraform
-        terminal.print("Generating infrastructure...", style: .header)
-
-        let terraformGenerator = TerraformGenerator()
-        let terraformDir = try terraformGenerator.generate(
-            config: config,
-            actors: actors,
-            outputDir: "\(projectPath)/.trebuchet/terraform"
+        try saveDeploymentInfo(
+            result.deploymentInfo,
+            to: "\(projectDirectory)/.trebuchet/deployment.json"
         )
 
-        terminal.print("  ✓ Terraform generated at \(terraformDir)", style: .success)
-        terminal.print("")
-
-        // Deploy
-        terminal.print("Deploying to AWS...", style: .header)
-
-        let deployer = TerraformDeployer()
-        let deployment = try await deployer.deploy(
-            terraformDir: terraformDir,
-            region: region,
-            verbose: verbose,
-            terminal: terminal
-        )
-
-        terminal.print("  ✓ Lambda: \(deployment.lambdaArn)", style: .success)
-        if let apiUrl = deployment.apiGatewayUrl {
-            terminal.print("  ✓ API Gateway: \(apiUrl)", style: .success)
-        }
-        terminal.print("  ✓ DynamoDB: \(deployment.dynamoDBTable)", style: .success)
-        terminal.print("  ✓ CloudMap: \(deployment.cloudMapNamespace)", style: .success)
-
-        terminal.print("")
-        terminal.print("Ready! Actors can discover each other automatically.", style: .header)
-
-        // Save deployment info
-        let deploymentInfo = DeploymentInfo(
-            projectName: config.projectName,
-            provider: "aws",
-            region: region,
-            lambdaArn: deployment.lambdaArn,
-            apiGatewayUrl: deployment.apiGatewayUrl,
-            dynamoDBTable: deployment.dynamoDBTable,
-            cloudMapNamespace: deployment.cloudMapNamespace,
-            deployedAt: Date()
-        )
-
-        try saveDeploymentInfo(deploymentInfo, to: "\(projectPath)/.trebuchet/deployment.json")
-    }
-
-    private func saveDeploymentInfo(_ info: DeploymentInfo, to path: String) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(info)
-
-        let dirPath = (path as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(atPath: dirPath, withIntermediateDirectories: true)
-        try data.write(to: URL(fileURLWithPath: path))
-    }
-
-    private func saveFlyDeploymentInfo(_ info: FlyDeploymentInfo, to path: String) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(info)
-
-        let dirPath = (path as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(atPath: dirPath, withIntermediateDirectories: true)
-        try data.write(to: URL(fileURLWithPath: path))
-    }
-}
-
-/// Information about an AWS deployment
-public struct DeploymentInfo: Codable {
-    let projectName: String
-    let provider: String
-    let region: String
-    let lambdaArn: String
-    let apiGatewayUrl: String?
-    let dynamoDBTable: String
-    let cloudMapNamespace: String
-    let deployedAt: Date
-}
-
-/// Information about a Fly.io deployment
-public struct FlyDeploymentInfo: Codable {
-    let projectName: String
-    let provider: String
-    let appName: String
-    let hostname: String
-    let region: String
-    let databaseUrl: String?
-    let deployedAt: Date
-}
-
-/// Result from Terraform deployment
-public struct TerraformDeploymentResult {
-    let lambdaArn: String
-    let apiGatewayUrl: String?
-    let dynamoDBTable: String
-    let cloudMapNamespace: String
-}
-
-/// Runs Terraform to deploy infrastructure
-public struct TerraformDeployer {
-    func deploy(
-        terraformDir: String,
-        region: String,
-        verbose: Bool,
-        terminal: Terminal
-    ) async throws -> TerraformDeploymentResult {
-        // Initialize Terraform
-        terminal.print("  Initializing Terraform...", style: .dim)
-        try await runTerraform(["init"], in: terraformDir, verbose: verbose)
-
-        // Plan
-        terminal.print("  Planning infrastructure...", style: .dim)
-        try await runTerraform(
-            ["plan", "-var", "aws_region=\(region)", "-out=tfplan"],
-            in: terraformDir,
-            verbose: verbose
-        )
-
-        // Apply
-        terminal.print("  Applying infrastructure...", style: .dim)
-        try await runTerraform(
-            ["apply", "-auto-approve", "tfplan"],
-            in: terraformDir,
-            verbose: verbose
-        )
-
-        // Get outputs
-        let outputs = try await getTerraformOutputs(in: terraformDir)
-
-        return TerraformDeploymentResult(
-            lambdaArn: outputs["lambda_arn"] ?? "unknown",
-            apiGatewayUrl: outputs["api_gateway_url"],
-            dynamoDBTable: outputs["dynamodb_table"] ?? "unknown",
-            cloudMapNamespace: outputs["cloudmap_namespace"] ?? "unknown"
-        )
-    }
-
-    private func runTerraform(_ args: [String], in directory: String, verbose: Bool) async throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["terraform"] + args
-        process.currentDirectoryURL = URL(fileURLWithPath: directory)
-
-        if !verbose {
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-        }
-
-        try process.run()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            throw CLIError.terraformFailed("Terraform command failed with status \(process.terminationStatus)")
+        terminal.print("", style: .info)
+        terminal.print("Deployment successful (\(result.provider)).", style: .header)
+        for line in result.summaryLines {
+            terminal.print("  \(line)", style: .success)
         }
     }
 
-    private func getTerraformOutputs(in directory: String) async throws -> [String: String] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["terraform", "output", "-json"]
-        process.currentDirectoryURL = URL(fileURLWithPath: directory)
+    private func resolveProjectDirectory(_ path: String) throws -> String {
+        let cwd = FileManager.default.currentDirectoryPath
+        let expanded = (path as NSString).expandingTildeInPath
+        let url: URL
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-
-        try process.run()
-        process.waitUntilExit()
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return [:]
+        if expanded.hasPrefix("/") {
+            url = URL(fileURLWithPath: expanded).standardizedFileURL
+        } else {
+            url = URL(fileURLWithPath: cwd).appendingPathComponent(expanded).standardizedFileURL
         }
 
-        var outputs: [String: String] = [:]
-        for (key, value) in json {
-            if let dict = value as? [String: Any], let valueStr = dict["value"] as? String {
-                outputs[key] = valueStr
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw CLIError.configurationError("Project path does not exist or is not a directory: \(path)")
+        }
+
+        return url.path
+    }
+
+    private func defaultProvider(from plan: DeploymentPlan) -> String {
+        if plan.actors.contains(where: { $0.aws != nil }) {
+            return "aws"
+        }
+        if plan.actors.contains(where: { $0.fly != nil }) {
+            return "fly"
+        }
+        return "fly"
+    }
+
+    private func filterPlan(_ plan: DeploymentPlan, for provider: String) -> DeploymentPlan {
+        var copy = plan
+        copy.provider = provider
+
+        copy.actors = plan.actors.map { actor in
+            var next = actor
+            switch provider {
+            case "aws":
+                next.fly = nil
+            case "fly":
+                next.aws = nil
+            default:
+                break
+            }
+            return next
+        }
+
+        return copy
+    }
+
+    private func applyRegionOverride(_ plan: inout DeploymentPlan, provider: String, region: String) {
+        for idx in plan.actors.indices {
+            switch provider {
+            case "aws":
+                var aws = plan.actors[idx].aws ?? AWSDeploymentOptions()
+                aws.region = region
+                plan.actors[idx].aws = aws
+            case "fly":
+                var fly = plan.actors[idx].fly ?? FlyDeploymentOptions()
+                fly.region = region
+                plan.actors[idx].fly = fly
+            default:
+                break
+            }
+        }
+    }
+
+    private func printDryRun(plan: DeploymentPlan, terminal: Terminal) {
+        terminal.print("", style: .info)
+        terminal.print("Dry run - would deploy:", style: .header)
+        terminal.print("", style: .info)
+        terminal.print("  System: \(plan.systemName)", style: .info)
+        terminal.print("  Provider: \(plan.provider ?? "auto")", style: .info)
+        if let env = plan.environment {
+            terminal.print("  Environment: \(env)", style: .info)
+        }
+        terminal.print("", style: .info)
+
+        for actor in plan.actors {
+            terminal.print("  Actor: \(actor.actorType)", style: .info)
+            terminal.print("    Exposed as: \(actor.exposeName)", style: .dim)
+            if !actor.clusterPath.isEmpty {
+                terminal.print("    Clusters: \(actor.clusterPath.joined(separator: " -> "))", style: .dim)
+            }
+            if let state = actor.state {
+                terminal.print("    State: \(stateLabel(state))", style: .dim)
+            }
+            if let aws = actor.aws {
+                terminal.print("    AWS: region=\(aws.region ?? "default") memory=\(aws.memory.map(String.init) ?? "512") timeout=\(aws.timeout.map(String.init) ?? "30")", style: .dim)
+            }
+            if let fly = actor.fly {
+                terminal.print("    Fly: app=\(fly.app ?? "<auto>") region=\(fly.region ?? "iad") memoryMB=\(fly.memoryMB.map(String.init) ?? "default")", style: .dim)
             }
         }
 
-        return outputs
+        if !plan.warnings.isEmpty {
+            terminal.print("", style: .info)
+            terminal.print("Warnings:", style: .warning)
+            for warning in plan.warnings {
+                terminal.print("  • \(warning)", style: .dim)
+            }
+        }
+
+        let selectedProvider = plan.provider ?? "fly"
+        printDatabaseGuidance(plan: plan, provider: selectedProvider, terminal: terminal)
+    }
+
+    private func stateLabel(_ state: StateConfiguration) -> String {
+        switch state {
+        case .memory: return "memory (no persistence)"
+        case .dynamoDB(let table): return "DynamoDB (table: \(table))"
+        case .postgres(let url): return url != nil ? "PostgreSQL (configured)" : "PostgreSQL (no URL configured)"
+        case .surrealDB(let url): return url != nil ? "SurrealDB (configured)" : "SurrealDB (no URL configured)"
+        }
+    }
+
+    private func printDatabaseGuidance(plan: DeploymentPlan, provider: String, terminal: Terminal) {
+        let appName = plan.systemName
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "_", with: "-")
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber || $0 == "-" }
+
+        for actor in plan.actors {
+            guard let state = actor.state else { continue }
+
+            switch state {
+            case .memory, .dynamoDB:
+                // memory needs nothing; DynamoDB is auto-provisioned via Terraform
+                continue
+
+            case .postgres(let url) where url != nil:
+                continue
+
+            case .surrealDB(let url) where url != nil:
+                continue
+
+            case .postgres:
+                terminal.print("", style: .info)
+                terminal.print("Actor \(actor.actorType) uses PostgreSQL but no database URL is configured.", style: .warning)
+                terminal.print("", style: .info)
+
+                switch provider {
+                case "fly":
+                    let dbName = "\(appName)-db"
+                    terminal.print("  To provision on Fly.io:", style: .info)
+                    terminal.print("    fly postgres create --name \(dbName) --region iad", style: .dim)
+                    terminal.print("    fly postgres attach \(dbName) --app \(appName)", style: .dim)
+                    terminal.print("", style: .info)
+                    terminal.print("  This sets DATABASE_URL automatically on your app.", style: .dim)
+
+                case "aws":
+                    terminal.print("  To provision on AWS:", style: .info)
+                    terminal.print("    Create an RDS PostgreSQL instance in your VPC", style: .dim)
+                    terminal.print("    Then configure the connection:", style: .dim)
+                    terminal.print("      .state(.postgres(databaseURL: \"postgresql://user:pass@host:5432/db\"))", style: .dim)
+
+                default:
+                    terminal.print("  Configure the connection URL:", style: .info)
+                    terminal.print("    .state(.postgres(databaseURL: \"postgresql://user:pass@host:5432/db\"))", style: .dim)
+                }
+                terminal.print("", style: .info)
+
+            case .surrealDB:
+                terminal.print("", style: .info)
+                terminal.print("Actor \(actor.actorType) uses SurrealDB but no database URL is configured.", style: .warning)
+                terminal.print("", style: .info)
+
+                switch provider {
+                case "fly":
+                    let dbAppName = "\(appName)-surrealdb"
+                    terminal.print("  To provision on Fly.io:", style: .info)
+                    terminal.print("    fly apps create \(dbAppName)", style: .dim)
+                    terminal.print("    fly volumes create surrealdb_data --app \(dbAppName) --size 1 --region iad", style: .dim)
+                    terminal.print("    fly deploy --image surrealdb/surrealdb:latest --app \(dbAppName)", style: .dim)
+                    terminal.print("    fly secrets set SURREALDB_URL=ws://\(dbAppName).internal:8000 --app \(appName)", style: .dim)
+                    terminal.print("", style: .info)
+                    terminal.print("  Then configure the connection:", style: .dim)
+                    terminal.print("    .state(.surrealDB(url: \"ws://\(dbAppName).internal:8000\"))", style: .dim)
+
+                case "aws":
+                    terminal.print("  SurrealDB is not a managed AWS service. Options:", style: .info)
+                    terminal.print("    - Run SurrealDB on ECS/Fargate with an EBS volume", style: .dim)
+                    terminal.print("    - Use Surreal Cloud (https://surrealdb.com/cloud)", style: .dim)
+                    terminal.print("    - Consider .state(.dynamoDB(table: \"...\")) for native AWS integration", style: .dim)
+                    terminal.print("", style: .info)
+                    terminal.print("  Then configure the connection:", style: .dim)
+                    terminal.print("    .state(.surrealDB(url: \"ws://your-surrealdb-host:8000\"))", style: .dim)
+
+                default:
+                    terminal.print("  Configure the connection URL:", style: .info)
+                    terminal.print("    .state(.surrealDB(url: \"ws://your-surrealdb-host:8000\"))", style: .dim)
+                }
+                terminal.print("", style: .info)
+            }
+        }
+    }
+
+    private func saveDeploymentInfo(_ data: Data, to path: String) throws {
+        let dirPath = (path as NSString).deletingLastPathComponent
+        try FileManager.default.createDirectory(atPath: dirPath, withIntermediateDirectories: true)
+        try data.write(to: URL(fileURLWithPath: path))
     }
 }
 
-/// CLI errors
 public enum CLIError: Error, CustomStringConvertible {
+    case commandFailed(String)
     case buildFailed(String)
-    case terraformFailed(String)
-    case deploymentFailed(String)
     case configurationError(String)
 
     public var description: String {
         switch self {
+        case .commandFailed(let msg): return "Command failed: \(msg)"
         case .buildFailed(let msg): return "Build failed: \(msg)"
-        case .terraformFailed(let msg): return "Terraform failed: \(msg)"
-        case .deploymentFailed(let msg): return "Deployment failed: \(msg)"
         case .configurationError(let msg): return "Configuration error: \(msg)"
         }
     }

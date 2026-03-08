@@ -5,11 +5,11 @@ import Foundation
 ///
 /// This system manages the lifecycle of distributed actors and handles
 /// remote method invocations across the network.
-public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Sendable {
+public final class TrebuchetRuntime: DistributedActorSystem, @unchecked Sendable {
     /// Debug logging helper (automatically enabled in DEBUG builds)
     private static func debugLog(_ message: String, metadata: [String: String] = [:]) {
         #if DEBUG
-        var output = "[TrebuchetActorSystem] \(message)"
+        var output = "[TrebuchetRuntime] \(message)"
         if !metadata.isEmpty {
             let metadataStr = metadata.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
             output += " | \(metadataStr)"
@@ -397,12 +397,38 @@ public final class TrebuchetActorSystem: DistributedActorSystem, @unchecked Send
                 "actorID": envelope.actorID.id,
                 "method": envelope.targetIdentifier
             ])
-            return try await handler(envelope, actor!)
+            do {
+                return try await handler(envelope, actor!)
+            } catch let TrebuchetError.remoteInvocationFailed(message)
+                where message.hasPrefix("No streaming handler registered for actor type") {
+                Self.debugLog("Streaming handler had no matching registration, trying actor fallback", metadata: [
+                    "actorID": envelope.actorID.id,
+                    "method": envelope.targetIdentifier
+                ])
+            }
         }
 
-        // No streaming handler configured
+        if let streamingActor = actor as? any StreamingActor {
+            Self.debugLog("Using actor-provided streaming fallback", metadata: [
+                "actorID": envelope.actorID.id,
+                "method": envelope.targetIdentifier
+            ])
+
+            if let stream = await streamingActor._getStream(for: envelope.targetIdentifier) {
+                return stream
+            }
+
+            throw TrebuchetError.remoteInvocationFailed(
+                "Unknown streaming method '\(envelope.targetIdentifier)' for actor '\(envelope.actorID.id)'."
+            )
+        }
+
+        // No streaming handler configured and actor does not provide StreamingActor bridge
         Self.debugLog("No streaming handler configured", metadata: ["actorID": envelope.actorID.id])
-        throw TrebuchetError.remoteInvocationFailed("No streaming handler configured for actor")
+        throw TrebuchetError.remoteInvocationFailed(
+            "No streaming handler configured for actor '\(envelope.actorID.id)'. " +
+            "Configure streaming explicitly or use @Trebuchet @StreamedState auto-streaming."
+        )
     }
 
     // MARK: - Private Methods

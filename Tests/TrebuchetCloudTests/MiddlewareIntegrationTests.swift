@@ -67,7 +67,7 @@ struct MiddlewareIntegrationTests {
         )
 
         // Create a mock actor
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = MockActor(actorSystem: actorSystem)
 
         let context = MiddlewareContext()
@@ -102,7 +102,7 @@ struct MiddlewareIntegrationTests {
             arguments: []
         )
 
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = MockActor(actorSystem: actorSystem)
         let context = MiddlewareContext()
 
@@ -132,7 +132,7 @@ struct MiddlewareIntegrationTests {
             arguments: []
         )
 
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = MockActor(actorSystem: actorSystem)
         let context = MiddlewareContext()
 
@@ -167,7 +167,7 @@ struct MiddlewareIntegrationTests {
             arguments: [Data("test".utf8)]
         )
 
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = try MockActor(actorSystem: actorSystem)
         let context = MiddlewareContext()
 
@@ -195,7 +195,7 @@ struct MiddlewareIntegrationTests {
             arguments: [largeData]
         )
 
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = try MockActor(actorSystem: actorSystem)
         let context = MiddlewareContext()
 
@@ -223,7 +223,7 @@ struct MiddlewareIntegrationTests {
             arguments: []
         )
 
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = try MockActor(actorSystem: actorSystem)
         let context = MiddlewareContext()
 
@@ -263,7 +263,7 @@ struct MiddlewareIntegrationTests {
             arguments: []
         )
 
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = MockActor(actorSystem: actorSystem)
         let context = MiddlewareContext()
 
@@ -295,7 +295,7 @@ struct MiddlewareIntegrationTests {
             arguments: []
         )
 
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = MockActor(actorSystem: actorSystem)
         let context = MiddlewareContext()
 
@@ -335,7 +335,7 @@ struct MiddlewareIntegrationTests {
             arguments: []
         )
 
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = MockActor(actorSystem: actorSystem)
         var context = MiddlewareContext()
         context.principal = AnyPrincipal(principal)
@@ -371,7 +371,7 @@ struct MiddlewareIntegrationTests {
             arguments: []
         )
 
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = MockActor(actorSystem: actorSystem)
         var context = MiddlewareContext()
         context.principal = AnyPrincipal(principal)
@@ -403,7 +403,7 @@ struct MiddlewareIntegrationTests {
             arguments: []
         )
 
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = MockActor(actorSystem: actorSystem)
         let context = MiddlewareContext()
 
@@ -422,7 +422,7 @@ struct MiddlewareIntegrationTests {
         let limiter = TokenBucketLimiter(requestsPerSecond: 2, burstSize: 2)
         let middleware = RateLimitingMiddleware.global(limiter: limiter)
 
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = MockActor(actorSystem: actorSystem)
         let context = MiddlewareContext()
 
@@ -508,7 +508,7 @@ struct MiddlewareIntegrationTests {
             arguments: [Data("player1".utf8)]
         )
 
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         let mockActor = MockActor(actorSystem: actorSystem)
         let context = MiddlewareContext()
 

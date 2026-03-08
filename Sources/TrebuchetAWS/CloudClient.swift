@@ -8,7 +8,7 @@ import SotoCore
 
 /// Client for resolving and calling actors across Lambda invocations
 public actor TrebuchetCloudClient {
-    private let actorSystem: TrebuchetActorSystem
+    private let actorSystem: TrebuchetRuntime
     private let registry: any ServiceRegistry
     private let transportFactory: TransportFactory
 
@@ -19,7 +19,7 @@ public actor TrebuchetCloudClient {
     public typealias TransportFactory = @Sendable (CloudEndpoint) async throws -> any TrebuchetTransport
 
     public init(
-        actorSystem: TrebuchetActorSystem,
+        actorSystem: TrebuchetRuntime,
         registry: any ServiceRegistry,
         transportFactory: @escaping TransportFactory
     ) {
@@ -45,7 +45,7 @@ public actor TrebuchetCloudClient {
         region: String,
         namespace: String
     ) -> TrebuchetCloudClient {
-        let actorSystem = TrebuchetActorSystem()
+        let actorSystem = TrebuchetRuntime()
         // Convert String region to Soto Region enum
         let awsRegion = Region(rawValue: region)
 
@@ -77,7 +77,7 @@ public actor TrebuchetCloudClient {
     public func resolve<A: DistributedActor>(
         _ actorType: A.Type,
         id: String
-    ) async throws -> A where A.ActorSystem == TrebuchetActorSystem {
+    ) async throws -> A where A.ActorSystem == TrebuchetRuntime {
         // Look up the actor's endpoint
         guard let endpoint = try await registry.resolve(actorID: id) else {
             throw CloudError.actorNotFound(actorID: id, provider: .aws)
@@ -105,7 +105,7 @@ public actor TrebuchetCloudClient {
     public func resolveAll<A: DistributedActor>(
         _ actorType: A.Type,
         id: String
-    ) async throws -> [A] where A.ActorSystem == TrebuchetActorSystem {
+    ) async throws -> [A] where A.ActorSystem == TrebuchetRuntime {
         let endpoints = try await registry.resolveAll(actorID: id)
 
         var actors: [A] = []
@@ -134,7 +134,7 @@ public actor TrebuchetCloudClient {
     }
 
     /// The underlying actor system
-    public nonisolated var system: TrebuchetActorSystem {
+    public nonisolated var system: TrebuchetRuntime {
         actorSystem
     }
 
@@ -167,7 +167,7 @@ extension CloudActorResolver {
     public func resolve<A: DistributedActor>(
         _ actorType: A.Type,
         id: String
-    ) async throws -> A where A.ActorSystem == TrebuchetActorSystem {
+    ) async throws -> A where A.ActorSystem == TrebuchetRuntime {
         try await cloudClient.resolve(actorType, id: id)
     }
 }
@@ -208,7 +208,7 @@ public struct CloudLambdaContext: Sendable {
     public func resolve<A: DistributedActor>(
         _ actorType: A.Type,
         id: String
-    ) async throws -> A where A.ActorSystem == TrebuchetActorSystem {
+    ) async throws -> A where A.ActorSystem == TrebuchetRuntime {
         try await client.resolve(actorType, id: id)
     }
 }

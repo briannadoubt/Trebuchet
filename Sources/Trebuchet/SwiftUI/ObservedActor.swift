@@ -40,7 +40,7 @@ import Foundation
 /// ```
 @propertyWrapper
 public struct ObservedActor<Act: DistributedActor, State: Codable & Sendable>: DynamicProperty
-where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
+where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetRuntime {
 
     /// Debug logging helper (automatically enabled in DEBUG builds)
     private static func debugLog(_ message: String, metadata: [String: String] = [:]) {
@@ -441,7 +441,7 @@ where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
 /// Projection type for accessing observed actor and state.
 @MainActor
 public struct ObservedActorProjection<Act: DistributedActor, State: Codable & Sendable>: Sendable
-where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
+where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetRuntime {
     /// The resolved actor reference, or nil if not yet resolved.
     public let actor: Act?
 

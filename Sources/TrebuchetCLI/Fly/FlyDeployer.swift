@@ -8,15 +8,8 @@ public struct FlyDeployer {
         self.terminal = terminal
     }
 
-    /// Deploy to Fly.io
-    /// - Parameters:
-    ///   - config: Resolved configuration
-    ///   - actors: Discovered actors
-    ///   - projectPath: Path to the project
-    ///   - appName: Fly.io app name (optional, uses config.projectName if not provided)
-    ///   - region: Primary region (optional, defaults to auto-detect)
-    ///   - verbose: Enable verbose output
-    /// - Returns: Deployment result
+    /// Legacy deployment entrypoint retained for source compatibility.
+    /// Topology-first deploy now runs through `DeployCommand` + `DeploymentProvider`.
     func deploy(
         config: ResolvedConfig,
         actors: [ActorMetadata],
@@ -25,105 +18,14 @@ public struct FlyDeployer {
         region: String? = nil,
         verbose: Bool = false
     ) async throws -> FlyDeploymentResult {
-        // Check if flyctl is installed
-        try checkFlyctl()
-
-        // Validate state type
-        if let stateType = config.stateType {
-            guard ["memory", "postgresql", "postgres"].contains(stateType) else {
-                throw FlyError.invalidStateType(stateType)
-            }
-        }
-
-        // Generate server package with state store support
-        terminal.print("Generating server package...", style: .dim)
-
-        // Create TrebuchetConfig from ResolvedConfig for generator
-        let trebuchetConfig = TrebuchetConfig(
-            name: config.projectName,
-            defaults: DefaultSettings(
-                provider: config.provider,
-                region: config.region
-            ),
-            state: config.stateType.map { StateConfig(type: $0) }
-        )
-
-        let serverGen = FlyServerGenerator(terminal: terminal)
-        try serverGen.generate(
-            config: trebuchetConfig,
-            actors: actors,
-            projectPath: projectPath
-        )
-        terminal.print("  ✓ Server package generated", style: .success)
-
-        // Generate fly.toml
-        terminal.print("Generating Fly.io configuration...", style: .dim)
-        let flyToml = generateFlyToml(config: config, appName: appName, region: region)
-        try flyToml.write(toFile: "\(projectPath)/fly.toml", atomically: true, encoding: .utf8)
-        terminal.print("  ✓ Generated fly.toml", style: .success)
-
-        // Generate Dockerfile
-        let dockerfile = generateDockerfile(config: config)
-        try dockerfile.write(toFile: "\(projectPath)/Dockerfile", atomically: true, encoding: .utf8)
-        terminal.print("  ✓ Generated Dockerfile", style: .success)
-
-        // Generate .dockerignore
-        let dockerignore = generateDockerignore()
-        try dockerignore.write(toFile: "\(projectPath)/.dockerignore", atomically: true, encoding: .utf8)
-        terminal.print("  ✓ Generated .dockerignore", style: .success)
-
-        terminal.print("")
-
-        // Check if app exists
-        let resolvedAppName = appName ?? config.projectName
-        let appExists = try await checkAppExists(resolvedAppName)
-
-        if !appExists {
-            // Create new app
-            terminal.print("Creating Fly.io app '\(resolvedAppName)'...", style: .header)
-            try await createApp(resolvedAppName, region: region, verbose: verbose)
-            terminal.print("  ✓ App created", style: .success)
-        } else {
-            terminal.print("Using existing Fly.io app '\(resolvedAppName)'", style: .dim)
-        }
-
-        terminal.print("")
-
-        // Set up PostgreSQL if needed
-        var databaseUrl: String?
-        if config.stateType == "postgresql" || config.stateType == "postgres" {
-            terminal.print("⚠️  PostgreSQL on Fly.io requires a paid account", style: .warning)
-            terminal.print("   If you have a free account, consider using in-memory state or an external database", style: .dim)
-            terminal.print("")
-            terminal.print("Setting up PostgreSQL...", style: .header)
-            do {
-                databaseUrl = try await setupPostgreSQL(appName: resolvedAppName, verbose: verbose)
-                terminal.print("  ✓ PostgreSQL configured", style: .success)
-                terminal.print("")
-            } catch {
-                terminal.print("  ⚠️  PostgreSQL setup failed (may require paid account)", style: .warning)
-                terminal.print("     Continuing without database - actors will use in-memory state", style: .dim)
-                terminal.print("")
-            }
-        }
-
-        // Deploy
-        terminal.print("Deploying to Fly.io...", style: .header)
-        terminal.print("  Building and pushing Docker image...", style: .dim)
-        try await runFly(["deploy", "--app", resolvedAppName], in: projectPath, verbose: verbose)
-
-        terminal.print("  ✓ Deployed successfully", style: .success)
-        terminal.print("")
-
-        // Get app info
-        let appInfo = try await getAppInfo(resolvedAppName)
-
-        return FlyDeploymentResult(
-            appName: resolvedAppName,
-            region: appInfo.region,
-            hostname: appInfo.hostname,
-            status: appInfo.status,
-            databaseUrl: databaseUrl
+        _ = config
+        _ = actors
+        _ = projectPath
+        _ = appName
+        _ = region
+        _ = verbose
+        throw FlyError.commandFailed(
+            "Legacy Fly deploy path was removed. Use `trebuchet deploy --provider fly` with a `System` topology."
         )
     }
 

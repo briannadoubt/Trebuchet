@@ -32,7 +32,9 @@ public final class WebSocketTransport: TrebuchetTransport, @unchecked Sendable {
             self.eventLoopGroup = eventLoopGroup
             self.ownsEventLoopGroup = false
         } else {
-            self.eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+            self.eventLoopGroup = MultiThreadedEventLoopGroup(
+                numberOfThreads: ProcessInfo.processInfo.activeProcessorCount
+            )
             self.ownsEventLoopGroup = true
         }
 

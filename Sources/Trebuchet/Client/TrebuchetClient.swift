@@ -12,13 +12,16 @@ import Foundation
 /// ```
 public final class TrebuchetClient: Sendable {
     /// The actor system used by this client
-    public let actorSystem: TrebuchetActorSystem
+    public let actorSystem: TrebuchetRuntime
 
     /// The transport configuration
     private let transportConfig: TransportConfiguration
 
     /// The transport layer
     private let transport: any TrebuchetTransport
+
+    /// Error captured while resolving `.auto` configuration, if any.
+    private let transportConfigurationError: TrebuchetError?
 
     /// The server endpoint we're connecting to
     private let serverEndpoint: Endpoint
@@ -33,11 +36,13 @@ public final class TrebuchetClient: Sendable {
     /// Create a new client with the specified transport
     /// - Parameter transport: The transport configuration (e.g., `.webSocket(host: "localhost", port: 8080)`)
     public init(transport: TransportConfiguration) {
-        self.transportConfig = transport
-        self.serverEndpoint = transport.endpoint
-        self.actorSystem = TrebuchetActorSystem()
+        let resolved = transport.resolvedForRuntime()
+        self.transportConfig = resolved.resolved
+        self.transportConfigurationError = resolved.error
+        self.serverEndpoint = resolved.resolved.endpoint
+        self.actorSystem = TrebuchetRuntime()
 
-        switch transport {
+        switch resolved.resolved {
         case .webSocket(_, _, let tls):
             self.transport = WebSocketTransport(tlsConfiguration: tls)
 #if !os(WASI)
@@ -46,6 +51,9 @@ public final class TrebuchetClient: Sendable {
 #endif
         case .local:
             self.transport = LocalTransport.shared
+        case .auto:
+            // `.auto` is always resolved to a concrete transport above.
+            self.transport = WebSocketTransport(tlsConfiguration: nil)
         }
 
         // Configure the actor system with transport info
@@ -63,6 +71,10 @@ public final class TrebuchetClient: Sendable {
     ///
     /// - Throws: ``TrebuchetError/connectionFailed`` if the connection cannot be established.
     public func connect() async throws {
+        if let transportConfigurationError {
+            throw transportConfigurationError
+        }
+
         // Actually establish the connection - this will throw if the server is unreachable
         try await transport.connect(to: serverEndpoint)
 
@@ -83,7 +95,7 @@ public final class TrebuchetClient: Sendable {
     public func resolve<Act: DistributedActor>(
         _ actorType: Act.Type,
         id: String
-    ) throws -> Act where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetActorSystem {
+    ) throws -> Act where Act.ID == TrebuchetActorID, Act.ActorSystem == TrebuchetRuntime {
         let actorID = TrebuchetActorID(
             id: id,
             host: serverEndpoint.host,

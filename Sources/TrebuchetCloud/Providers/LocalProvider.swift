@@ -34,8 +34,8 @@ public actor LocalProvider: CloudProvider {
         _ actorType: A.Type,
         as actorID: String,
         config: LocalFunctionConfig,
-        factory: @Sendable (TrebuchetActorSystem) -> A
-    ) async throws -> LocalDeployment where A.ActorSystem == TrebuchetActorSystem {
+        factory: @Sendable (TrebuchetRuntime) -> A
+    ) async throws -> LocalDeployment where A.ActorSystem == TrebuchetRuntime {
         let port = nextPort
         nextPort += 1
 
@@ -192,15 +192,15 @@ extension LocalProvider {
         _ actorType: A.Type,
         as actorID: String,
         port: UInt16 = 8080,
-        factory: @Sendable @escaping (TrebuchetActorSystem) -> A
-    ) async throws -> (provider: LocalProvider, deployment: LocalDeployment, system: TrebuchetActorSystem) where A.ActorSystem == TrebuchetActorSystem {
+        factory: @Sendable @escaping (TrebuchetRuntime) -> A
+    ) async throws -> (provider: LocalProvider, deployment: LocalDeployment, system: TrebuchetRuntime) where A.ActorSystem == TrebuchetRuntime {
         let provider = LocalProvider(basePort: port)
         let deployment = try await provider.deploy(actorType, as: actorID, config: .default, factory: factory)
 
         // Get the gateway's actor system for creating actors
         let gateway = await provider.gateway(for: actorID)
 
-        return (provider, deployment, gateway?.system ?? TrebuchetActorSystem())
+        return (provider, deployment, gateway?.system ?? TrebuchetRuntime())
     }
 
     /// Get the gateway for a deployed actor (for testing)

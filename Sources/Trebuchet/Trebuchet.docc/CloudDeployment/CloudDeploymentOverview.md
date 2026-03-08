@@ -60,7 +60,7 @@ public protocol CloudProvider: Sendable {
         _ actorType: A.Type,
         as actorID: String,
         config: FunctionConfig,
-        factory: @Sendable (TrebuchetActorSystem) -> A
+        factory: @Sendable (TrebuchetRuntime) -> A
     ) async throws -> DeploymentResult
 
     func transport(for deployment: DeploymentResult) async throws -> any TrebuchetTransport

@@ -8,26 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Compote Integration** - Native container orchestration using Apple's Containerization framework
-  - Automatic runtime selection: Compote on macOS 15+, Docker fallback on older versions
-  - `--runtime` flag to force specific runtime (auto, compote, docker)
-  - `CompoteOrchestrator` wrapper with same interface as `DependencyOrchestrator`
-  - `ComposeFileGenerator` utility to generate Compote configurations from `trebuchet.yaml`
-  - Seamless integration - no changes needed to existing workflows
-  - Better performance and native macOS integration when using Compote
-
-- **Automatic State Store Initialization** in `trebuchet dev`
-  - Detects `state.type` from `trebuchet.yaml` configuration
-  - Automatically initializes SurrealDB, PostgreSQL, or DynamoDB state stores
-  - Generates proper import statements and connection code
-  - Injects state store into actors via closure capture
-  - Works with both Compote and Docker container runtimes
+- **`trebuchet doctor` command** to detect legacy artifacts and print migration guidance.
+- **Xcode System-package wiring** now supports explicit:
+  - `--system-path <path>`
+  - `--product <SystemExecutable>`
+- **Xcode session argument builder tests** to verify the spawned `dev` process always targets a System package with an explicit product.
 
 ### Changed
-- **Platform Requirements**: Bumped minimum macOS version to 15.0 to support Compote
-  - Trebuchet core library still works on macOS 14.0+
-  - CLI tools require macOS 15.0+ for Compote support
-  - Automatic fallback to Docker on unsupported platforms
+- **CLI contract is now System-first**:
+  - `trebuchet dev <system-package-path> --product <SystemExecutable>`
+  - `trebuchet deploy <system-package-path> --product <SystemExecutable>`
+- **Xcode integration scripts** now call `xcode session start` with `--system-path` and `--product`; no `--local` forwarding.
+- **`deploy` command help/argument docs** now consistently describe System-package usage.
+- **Top-level CLI abstract/help text** updated to emphasize System executables in Swift packages.
+
+### Removed
+- `trebuchet init` command removed from the root CLI surface.
+- `trebuchet run` command removed from the root CLI surface.
+- Legacy `--local` option removed from `xcode setup` and `xcode session start`.
 
 ## [0.4.0] - 2026-01-31
 

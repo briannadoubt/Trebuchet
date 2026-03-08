@@ -135,7 +135,7 @@ rm -rf .trebuchet
 ### "No distributed actors found"
 
 - Check that actors are in `TrebuchetDemo/TrebuchetDemo/Actors/`
-- Verify actors have `@Trebuchet` macro or `typealias ActorSystem = TrebuchetActorSystem`
+- Verify actors have `@Trebuchet` macro or `typealias ActorSystem = TrebuchetRuntime`
 
 ### Build fails
 
