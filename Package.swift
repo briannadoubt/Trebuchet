@@ -41,6 +41,10 @@ let package = Package(
             name: "TrebuchetSecurity",
             targets: ["TrebuchetSecurity"]
         ),
+        .library(
+            name: "TrebuchetSQLite",
+            targets: ["TrebuchetSQLite"]
+        ),
         .plugin(
             name: "TrebuchetPlugin",
             targets: ["TrebuchetPlugin"]
@@ -66,6 +70,8 @@ let package = Package(
         .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.21.0"),
         // SurrealDB support
         .package(url: "https://github.com/briannadoubt/surrealdb-swift.git", from: "0.2.0"),
+        // SQLite support (GRDB)
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.4.1"),
         // Cryptography (cross-platform)
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
         // CLI dependencies
@@ -179,6 +185,14 @@ let package = Package(
             ]
         ),
         .target(
+            name: "TrebuchetSQLite",
+            dependencies: [
+                "Trebuchet",
+                "TrebuchetCloud",
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ]
+        ),
+        .target(
             name: "TrebuchetObservability",
             dependencies: [
                 "Trebuchet",
@@ -252,6 +266,10 @@ let package = Package(
         .testTarget(
             name: "TrebuchetSurrealDBTests",
             dependencies: ["TrebuchetSurrealDB"]
+        ),
+        .testTarget(
+            name: "TrebuchetSQLiteTests",
+            dependencies: ["TrebuchetSQLite"]
         ),
         .testTarget(
             name: "TrebuchetCLITests",

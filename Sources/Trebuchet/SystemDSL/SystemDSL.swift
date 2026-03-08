@@ -758,6 +758,7 @@ public enum StateConfiguration: Codable, Sendable, Hashable {
     case dynamoDB(table: String)
     case postgres(databaseURL: String?)
     case surrealDB(url: String?)
+    case sqlite(path: String?)
 }
 
 public enum NetworkConfiguration: Codable, Sendable, Hashable {
