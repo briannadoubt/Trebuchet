@@ -175,7 +175,7 @@ struct DBRebalanceCommand: AsyncParsableCommand {
     }
 }
 
-// Mirror types for CLI (avoids importing TrebuchetSQLite)
+// Mirror types for CLI (matches runtime ShardMigrationStatus Codable encoding)
 private struct RebalanceOwnershipFile: Codable {
     var globalEpoch: UInt64
     var shards: [RebalanceOwnershipEntry]
@@ -185,6 +185,14 @@ private struct RebalanceOwnershipEntry: Codable {
     var shardID: Int
     var ownerNodeID: String
     var epoch: UInt64
-    var status: String
+    var status: RebalanceOwnershipStatus
     var lastUpdated: String
+}
+
+private struct RebalanceOwnershipStatus: Codable {
+    var type: String
+    var targetNodeID: String?
+
+    static let active = RebalanceOwnershipStatus(type: "active")
+    var isActive: Bool { type == "active" }
 }

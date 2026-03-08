@@ -122,16 +122,14 @@ struct RebalanceTests {
         #expect(afterMigrate?.status == .migrating(targetNodeID: "node-2"))
         #expect(afterMigrate?.ownerNodeID == "node-1") // still owned by source
 
-        // Begin drain
+        // Begin drain — preserves target node ID
         try await ownership.beginDrain(shardID: 1)
         let afterDrain = await ownership.records[1]
-        #expect(afterDrain?.status == .draining)
+        #expect(afterDrain?.status == .draining(targetNodeID: "node-2"))
 
         let epochBeforeComplete = await ownership.globalEpoch
 
-        // Complete migration
-        // Need to set it back to migrating for completeMigration to work
-        try await ownership.beginMigration(shardID: 1, targetNodeID: "node-2")
+        // Complete migration — works from .draining state since target is preserved
         try await ownership.completeMigration(shardID: 1)
 
         let afterComplete = await ownership.records[1]
@@ -381,7 +379,7 @@ struct RebalanceTests {
         // Step 2: Drain
         try await ownership.beginDrain(shardID: 0)
         let drainStatus = await ownership.records[0]?.status
-        #expect(drainStatus == .draining)
+        #expect(drainStatus == .draining(targetNodeID: "target-node"))
 
         // Step 3: Snapshot - checkpoint WAL into main file before copying.
         // Use writeWithoutTransaction to avoid nested transaction issues.
@@ -394,9 +392,6 @@ struct RebalanceTests {
 
         // Step 4: Transfer using LocalShardTransferAgent
         let transferAgent = LocalShardTransferAgent(targetRoot: targetRoot)
-
-        // Set back to migrating for completeMigration
-        try await ownership.beginMigration(shardID: 0, targetNodeID: "target-node")
 
         let targetPath = try await transferAgent.transfer(
             snapshotPath: sourcePath,

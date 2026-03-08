@@ -9,7 +9,8 @@ public enum ShardMigrationStatus: Codable, Sendable, Equatable {
     /// The shard is being moved to another node.
     case migrating(targetNodeID: String)
     /// The shard is quiescing writes before a snapshot is taken.
-    case draining
+    /// Preserves the target node ID so `completeMigration` can still read it.
+    case draining(targetNodeID: String)
 
     // MARK: Codable
 
@@ -28,7 +29,8 @@ public enum ShardMigrationStatus: Codable, Sendable, Equatable {
             let target = try container.decode(String.self, forKey: .targetNodeID)
             self = .migrating(targetNodeID: target)
         case "draining":
-            self = .draining
+            let target = try container.decode(String.self, forKey: .targetNodeID)
+            self = .draining(targetNodeID: target)
         default:
             throw DecodingError.dataCorruptedError(
                 forKey: .type,
@@ -46,8 +48,18 @@ public enum ShardMigrationStatus: Codable, Sendable, Equatable {
         case .migrating(let targetNodeID):
             try container.encode("migrating", forKey: .type)
             try container.encode(targetNodeID, forKey: .targetNodeID)
-        case .draining:
+        case .draining(let targetNodeID):
             try container.encode("draining", forKey: .type)
+            try container.encode(targetNodeID, forKey: .targetNodeID)
+        }
+    }
+
+    /// The target node ID, if this shard is migrating or draining.
+    public var targetNodeID: String? {
+        switch self {
+        case .active: return nil
+        case .migrating(let id): return id
+        case .draining(let id): return id
         }
     }
 }
@@ -212,13 +224,17 @@ public actor ShardOwnershipMap {
     }
 
     /// Transitions the shard to `.draining` so writes can quiesce before a snapshot.
+    /// Preserves the migration target node ID from the `.migrating` state.
     ///
-    /// - Throws: If the shard does not exist.
+    /// - Throws: If the shard does not exist or is not currently migrating.
     public func beginDrain(shardID: Int) throws {
         guard var record = records[shardID] else {
             throw ShardOwnershipError.shardNotFound(shardID)
         }
-        record.status = .draining
+        guard case .migrating(let targetNodeID) = record.status else {
+            throw ShardOwnershipError.notMigrating(shardID)
+        }
+        record.status = .draining(targetNodeID: targetNodeID)
         record.lastUpdated = Date()
         records[shardID] = record
     }
@@ -226,12 +242,14 @@ public actor ShardOwnershipMap {
     /// Completes a migration by flipping the owner to the target node, resetting
     /// status to `.active`, and bumping the global epoch.
     ///
-    /// - Throws: If the shard does not exist or is not currently migrating.
+    /// Accepts shards in either `.migrating` or `.draining` state.
+    ///
+    /// - Throws: If the shard does not exist or is not in a migration-related state.
     public func completeMigration(shardID: Int) throws {
         guard var record = records[shardID] else {
             throw ShardOwnershipError.shardNotFound(shardID)
         }
-        guard case .migrating(let targetNodeID) = record.status else {
+        guard let targetNodeID = record.status.targetNodeID else {
             throw ShardOwnershipError.notMigrating(shardID)
         }
         globalEpoch += 1

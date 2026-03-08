@@ -58,12 +58,25 @@ public actor SQLiteShardManager {
         return "\(configuration.root)/shards/\(shardName)/main.sqlite"
     }
 
-    /// Determine which shard owns a given key using deterministic hashing
+    /// Determine which shard owns a given key using deterministic FNV-1a hashing.
+    ///
+    /// Uses FNV-1a (64-bit) instead of Swift's `Hasher` because `Hasher` is
+    /// randomly seeded per process, which would break deterministic routing
+    /// across restarts and between nodes.
     public func shardID(for key: String) -> Int {
-        var hasher = Hasher()
-        hasher.combine(key)
-        let hash = hasher.finalize()
-        return abs(hash) % configuration.shardCount
+        let hash = Self.fnv1a(key)
+        return Int(hash % UInt64(configuration.shardCount))
+    }
+
+    /// FNV-1a 64-bit hash — stable, deterministic, and fast.
+    internal static func fnv1a(_ string: String) -> UInt64 {
+        var hash: UInt64 = 0xcbf29ce484222325  // FNV offset basis
+        let prime: UInt64 = 0x100000001b3       // FNV prime
+        for byte in string.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* prime
+        }
+        return hash
     }
 
     /// Get status information for all shards

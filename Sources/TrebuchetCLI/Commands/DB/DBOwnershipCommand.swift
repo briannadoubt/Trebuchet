@@ -53,25 +53,18 @@ struct DBOwnershipCommand: AsyncParsableCommand {
 
                 if verbose {
                     for shard in shards.sorted(by: { $0.shardID < $1.shardID }) {
-                        let statusStr: String
-                        switch shard.status {
-                        case "active": statusStr = "active"
-                        case let s where s.hasPrefix("migrating"): statusStr = s
-                        case "draining": statusStr = "draining"
-                        default: statusStr = shard.status
-                        }
-                        terminal.print("    shard-\(String(format: "%04d", shard.shardID)): epoch=\(shard.epoch) status=\(statusStr)", style: .dim)
+                        terminal.print("    shard-\(String(format: "%04d", shard.shardID)): epoch=\(shard.epoch) status=\(shard.status.displayString)", style: .dim)
                     }
                 }
             }
 
             // Show any migrating shards
-            let migrating = map.shards.filter { $0.status != "active" }
+            let migrating = map.shards.filter { !$0.status.isActive }
             if !migrating.isEmpty {
                 terminal.print("", style: .info)
                 terminal.print("In-flight migrations:", style: .warning)
                 for shard in migrating {
-                    terminal.print("  shard-\(String(format: "%04d", shard.shardID)): \(shard.status)", style: .warning)
+                    terminal.print("  shard-\(String(format: "%04d", shard.shardID)): \(shard.status.displayString)", style: .warning)
                 }
             }
 
@@ -114,7 +107,7 @@ struct DBOwnershipCommand: AsyncParsableCommand {
             let oldOwner = map.shards[idx].ownerNodeID
             map.shards[idx].ownerNodeID = nodeID
             map.shards[idx].epoch = map.globalEpoch + 1
-            map.shards[idx].status = "active"
+            map.shards[idx].status = .active
             map.shards[idx].lastUpdated = ISO8601DateFormatter().string(from: Date())
             map.globalEpoch += 1
 
@@ -167,7 +160,7 @@ struct DBOwnershipCommand: AsyncParsableCommand {
                     shardID: i,
                     ownerNodeID: nodeID,
                     epoch: 0,
-                    status: "active",
+                    status: .active,
                     lastUpdated: now
                 ))
             }
@@ -184,7 +177,7 @@ struct DBOwnershipCommand: AsyncParsableCommand {
 }
 
 // MARK: - Codable types for reading/writing ownership.json from CLI
-// (These mirror the TrebuchetSQLite types but avoid importing the module)
+// (These mirror the TrebuchetSQLite types to ensure wire-compatible encoding)
 
 private struct OwnershipFile: Codable {
     var globalEpoch: UInt64
@@ -195,6 +188,28 @@ private struct OwnershipEntry: Codable {
     var shardID: Int
     var ownerNodeID: String
     var epoch: UInt64
-    var status: String
+    var status: OwnershipStatus
     var lastUpdated: String
+}
+
+/// Matches the runtime `ShardMigrationStatus` Codable encoding:
+/// `{"type": "active"}`, `{"type": "migrating", "targetNodeID": "..."}`, etc.
+private struct OwnershipStatus: Codable {
+    var type: String
+    var targetNodeID: String?
+
+    static let active = OwnershipStatus(type: "active")
+
+    var displayString: String {
+        switch type {
+        case "migrating":
+            return "migrating(\(targetNodeID ?? "?"))"
+        case "draining":
+            return "draining(\(targetNodeID ?? "?"))"
+        default:
+            return type
+        }
+    }
+
+    var isActive: Bool { type == "active" }
 }

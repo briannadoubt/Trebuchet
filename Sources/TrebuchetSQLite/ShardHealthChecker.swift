@@ -184,9 +184,9 @@ public actor ShardHealthChecker {
         case .migrating(let target):
             migrationStatus = "migrating(\(target))"
             warnings.append("Shard is being migrated to \(target)")
-        case .draining:
-            migrationStatus = "draining"
-            warnings.append("Shard is draining (writes quiesced)")
+        case .draining(let target):
+            migrationStatus = "draining(\(target))"
+            warnings.append("Shard is draining (writes quiesced, target: \(target))")
         }
 
         // Try to open and check integrity
