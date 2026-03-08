@@ -27,7 +27,10 @@ fly auth login
 
 ## Quick Start
 
-### 1. Create `trebuchet.yaml`
+### 1. Configure Your System Package
+
+Use your `System` executable Swift package (for example `./Server`) as the deployment source.  
+The YAML snippets below are legacy migration examples.
 
 ```yaml
 name: my-game-server
@@ -48,7 +51,7 @@ actors:
 ### 2. Deploy
 
 ```bash
-trebuchet deploy --provider fly
+trebuchet deploy ./Server --product AuraSystem --provider fly
 
 # Output:
 # Discovering actors...
@@ -105,7 +108,7 @@ state:
 Deploy:
 
 ```bash
-trebuchet deploy --provider fly
+trebuchet deploy ./Server --product AuraSystem --provider fly
 
 # The CLI will:
 # 1. Create a PostgreSQL database
@@ -147,7 +150,7 @@ defaults:
 Redeploy:
 
 ```bash
-trebuchet deploy --provider fly
+trebuchet deploy ./Server --product AuraSystem --provider fly
 ```
 
 ### Horizontal Scaling (More Instances)

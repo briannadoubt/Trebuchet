@@ -2,6 +2,9 @@
 
 Deploy your distributed actors to Google Cloud Functions with Firestore and Service Directory.
 
+Canonical CLI shape remains system-first: `trebuchet deploy <system-package-path> --product <SystemExecutable> ...`.
+YAML snippets below are legacy migration examples.
+
 ## Overview
 
 > Note: GCP support is planned for a future release. This document describes the intended architecture.

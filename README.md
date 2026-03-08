@@ -38,7 +38,7 @@ Then add it to your target:
 
 ### CLI Tool
 
-The `trebuchet` CLI enables cloud deployment and local development. You can use it in three ways:
+The `trebuchet` CLI enables local development and cloud deployment for **System executables in Swift packages**. You can use it in three ways:
 
 #### Swift Package Plugin (Recommended for Projects)
 
@@ -53,27 +53,24 @@ dependencies: [
 Then use the plugin from the command line:
 
 ```bash
-# Initialize configuration
-swift package plugin --allow-writing-to-package-directory trebuchet init
+# Run locally
+swift package plugin --allow-writing-to-package-directory trebuchet dev . --product MySystem
 
 # Deploy to cloud
-swift package plugin --allow-writing-to-package-directory --allow-network-connections all trebuchet deploy
-
-# Run locally
-swift package plugin --allow-writing-to-package-directory trebuchet dev
+swift package plugin --allow-writing-to-package-directory --allow-network-connections all trebuchet deploy . --product MySystem --provider fly
 ```
 
 Or in **Xcode**:
 1. Add Trebuchet package dependency to your Xcode project
 2. Right-click on your project in the navigator
 3. Select **Trebuchet** from the plugin menu
-4. Choose a subcommand (init, deploy, dev, etc.)
+4. Choose a subcommand (`dev`, `deploy`, `xcode`, `doctor`, etc.)
 
 #### Mint (Recommended for Global Installation)
 
 ```bash
 mint install briannadoubt/Trebuchet
-trebuchet deploy --provider aws
+trebuchet deploy . --product MySystem --provider aws
 ```
 
 #### Build from Source
@@ -114,28 +111,26 @@ try await room.join(player: me)  // Looks local, works remotely!
 
 ## Local Development
 
-Run your actors locally with automatic discovery and hot reload:
+Run your System executable locally:
 
 ```bash
 # Start local development server
-trebuchet dev --port 8080
+trebuchet dev ./Server --product AuraSystem --port 8080
 
 # Customize host and port
-trebuchet dev --host 0.0.0.0 --port 3000
+trebuchet dev ./Server --product AuraSystem --host 0.0.0.0 --port 3000
 
 # Enable verbose output
-trebuchet dev --verbose
+trebuchet dev ./Server --product AuraSystem --verbose
 ```
 
 On macOS, if the CLI binary is missing virtualization entitlements, Trebuchet will automatically sign the binary and relaunch the command.
 
 The `dev` command:
-- Discovers all `@Trebuchet` actors in your project
-- **Works with both Swift Package Manager and Xcode projects**
-- Automatically analyzes and copies type dependencies
-- Builds and runs a local HTTP server
-- Exposes actors at `http://localhost:8080/invoke`
-- Provides health check at `http://localhost:8080/health`
+- Resolves your `@main ...: System` executable from a Swift package
+- Runs topology-driven local development mode
+- Starts optional dependency orchestration from compose manifests (`compote.yml` / `docker-compose.yml` / `compose.yml`)
+- Uses Compote by default on macOS and Docker Compose on non-macOS
 
 ## WebAssembly (WASI / Browser)
 
@@ -153,54 +148,27 @@ Run the checked-in end-to-end WASM WebSocket probe:
 
 ## Xcode Project Support
 
-Trebuchet CLI now fully supports Xcode projects with **automatic dependency analysis**:
+Trebuchet supports Xcode app projects with a **System package server** (commonly `./Server`):
 
 ```bash
 cd /path/to/YourXcodeProject
-trebuchet dev --verbose
-
-# Output:
-# Detected Xcode project, will copy actor sources...
-# Found actors:
-#   • GameRoom
-# Analyzing dependencies...
-# Found 4 required file(s)
-# ✓ Copied 4 source files (including dependencies)
-# Starting server on localhost:8080...
+trebuchet dev ./Server --product AuraSystem --verbose
 ```
 
 ### How It Works
 
 The CLI automatically:
-1. **Detects** `.xcodeproj` or `.xcworkspace` files
-2. **Analyzes** actor method signatures to extract types
-3. **Discovers** all type dependencies recursively
-4. **Copies** only the files you need (no cascade to unrelated code)
-5. **Generates** a standalone server package
+1. Uses your app project as the Xcode host
+2. Starts/stops a dev session for your System package executable
+3. Injects `TREBUCHET_HOST` / `TREBUCHET_PORT` into the managed scheme
+4. Keeps server code in one source of truth (your System package)
 
 ### Features
 
-✅ **Zero configuration** - Just run `trebuchet dev` in any Xcode project
-✅ **Smart dependency tracking** - Finds all types your actors use
-✅ **Cascade prevention** - Doesn't copy your entire app
-✅ **Works everywhere** - `dev`, `generate server`, `deploy` commands
-
-### Example
-
-```swift
-// Your Xcode project
-@Trebuchet
-distributed actor GameRoom {
-    distributed func join(player: PlayerInfo) -> RoomState
-}
-
-// Automatically discovers and copies:
-// - GameRoom.swift
-// - PlayerInfo.swift (used in signature)
-// - RoomState.swift (used in signature)
-// - GameStatus.swift (used by RoomState)
-// And nothing else!
-```
+✅ **Single source of truth** - System package remains canonical
+✅ **No generated harnesses** - No `.trebuchet` source-copy server path
+✅ **One workflow** - same `dev` / `deploy` contract locally and in CI
+✅ **Managed Xcode run loop** - pre-run start, post-run stop
 
 See **[Xcode Project Support](Sources/Trebuchet/Trebuchet.docc/XCODE_PROJECT_SUPPORT.md)** for detailed documentation.
 
@@ -210,7 +178,12 @@ Trebuchet can now wire an Xcode shared scheme that starts and stops the dev serv
 
 ```bash
 cd /path/to/YourXcodeProject
-trebuchet xcode setup --host localhost --port 8080
+trebuchet xcode setup \
+  --project-path . \
+  --system-path ./Server \
+  --product AuraSystem \
+  --host localhost \
+  --port 8080
 ```
 
 This creates:
@@ -241,20 +214,17 @@ Resolution order:
 
 ## Cloud Deployment
 
-Deploy your actors to the cloud with a single command:
+Deploy your System executable to the cloud with a single command:
 
 ```bash
-# Initialize configuration
-trebuchet init --name my-game-server --provider aws
-
 # Preview deployment
-trebuchet deploy --dry-run
+trebuchet deploy ./Server --product AuraSystem --dry-run
 
 # Deploy to AWS Lambda
-trebuchet deploy --provider aws --region us-east-1
+trebuchet deploy ./Server --product AuraSystem --provider aws --region us-east-1
 
 # Or deploy to Fly.io
-trebuchet deploy --provider fly --region iad
+trebuchet deploy ./Server --product AuraSystem --provider fly --region iad
 ```
 
 ### AWS Deployment (Untested)

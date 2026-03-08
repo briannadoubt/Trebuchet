@@ -4,7 +4,7 @@ import Foundation
 public struct XcodeCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "xcode",
-        abstract: "Set up and manage Xcode app + Trebuchet dev server workflows",
+        abstract: "Set up and manage Xcode app + System-package Trebuchet dev workflows",
         subcommands: [
             XcodeSetupCommand.self,
             XcodeTeardownCommand.self,
@@ -19,7 +19,7 @@ public struct XcodeCommand: AsyncParsableCommand {
 public struct XcodeSetupCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "setup",
-        abstract: "Create or update a Trebuchet-managed shared Xcode scheme"
+        abstract: "Create or update a Trebuchet-managed shared Xcode scheme for a System package"
     )
 
     @Option(name: .long, help: "Path to the app project root (directory containing .xcodeproj)")
@@ -40,8 +40,11 @@ public struct XcodeSetupCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Port for dev server sessions")
     public var port: UInt16 = 8080
 
-    @Option(name: .long, help: "Path to local Trebuchet checkout to pass to `trebuchet dev --local`")
-    public var local: String?
+    @Option(name: .long, help: "Path to the Swift package containing the @main ...: System executable (auto-detects ./Server when present)")
+    public var systemPath: String?
+
+    @Option(name: .long, help: "System executable product name (auto-resolves when unambiguous)")
+    public var product: String?
 
     @Option(name: .long, help: "Container runtime passed to `trebuchet dev` (compote on macOS, docker on non-macOS)")
     public var runtime: String = {
@@ -70,6 +73,8 @@ public struct XcodeSetupCommand: AsyncParsableCommand {
         let terminal = Terminal()
         let projectRoot = resolveProjectRoot(from: projectPath)
         let project = try XcodeIntegration.findProject(at: projectRoot)
+        let resolvedSystemPath = try resolveSystemPackagePath(from: projectRoot, explicitSystemPath: systemPath)
+        let resolvedProduct = try resolveSystemProduct(systemPath: resolvedSystemPath, explicitProduct: product)
 
         let baseScheme = try XcodeIntegration.resolveBaseSchemeName(
             preferredScheme: scheme,
@@ -81,9 +86,10 @@ public struct XcodeSetupCommand: AsyncParsableCommand {
         let cliPath = XcodeIntegration.resolveCLIExecutablePath()
         let startScript = XcodeIntegration.startScriptContents(
             cliExecutablePath: cliPath,
+            systemPath: resolvedSystemPath,
+            product: resolvedProduct,
             host: host,
             port: port,
-            local: local,
             runtime: runtime,
             noDeps: noDeps
         )
@@ -125,6 +131,8 @@ public struct XcodeSetupCommand: AsyncParsableCommand {
         terminal.print("Project: \(project.xcodeprojPath)", style: .dim)
         terminal.print("Base scheme: \(baseScheme)", style: .dim)
         terminal.print("Destination scheme: \(destinationScheme)", style: .dim)
+        terminal.print("System package: \(resolvedSystemPath)", style: .dim)
+        terminal.print("System product: \(resolvedProduct)", style: .dim)
         terminal.print("Server endpoint: \(host):\(port)", style: .dim)
         terminal.print("")
 
@@ -333,7 +341,7 @@ public struct XcodeSessionCommand: AsyncParsableCommand {
 public struct XcodeSessionStartCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "start",
-        abstract: "Start (or reuse) a Trebuchet dev session for the current project"
+        abstract: "Start (or reuse) a Trebuchet dev session for a System package"
     )
 
     @Option(name: .long, help: "Path to the app project root")
@@ -345,8 +353,11 @@ public struct XcodeSessionStartCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Port for dev server")
     public var port: UInt16 = 8080
 
-    @Option(name: .long, help: "Path to local Trebuchet checkout to pass to `trebuchet dev --local`")
-    public var local: String?
+    @Option(name: .long, help: "Path to the Swift package containing the @main ...: System executable (auto-detects ./Server when present)")
+    public var systemPath: String?
+
+    @Option(name: .long, help: "System executable product name (auto-resolves when unambiguous)")
+    public var product: String?
 
     @Option(name: .long, help: "Container runtime passed to `trebuchet dev` (compote on macOS, docker on non-macOS)")
     public var runtime: String = {
@@ -368,6 +379,7 @@ public struct XcodeSessionStartCommand: AsyncParsableCommand {
     public mutating func run() async throws {
         let terminal = Terminal()
         let projectRoot = resolveProjectRoot(from: projectPath)
+        let resolvedSystemPath = try resolveSystemPackagePath(from: projectRoot, explicitSystemPath: systemPath)
         let manager = XcodeSessionManager(
             projectPath: projectRoot,
             cliExecutablePath: XcodeIntegration.resolveCLIExecutablePath(),
@@ -377,9 +389,10 @@ public struct XcodeSessionStartCommand: AsyncParsableCommand {
 
         do {
             try manager.start(
+                systemPath: resolvedSystemPath,
+                product: product,
                 host: host,
                 port: port,
-                local: local,
                 runtime: runtime,
                 noDeps: noDeps
             )
@@ -462,6 +475,58 @@ private func resolveProjectRoot(from inputPath: String) -> String {
         return URL(fileURLWithPath: expanded).standardizedFileURL.path
     }
     return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        .appendingPathComponent(expanded)
+        .standardizedFileURL
+        .path
+}
+
+private func resolveSystemPackagePath(
+    from projectRoot: String,
+    explicitSystemPath: String?
+) throws -> String {
+    let fileManager = FileManager.default
+
+    let candidates: [String] = if let explicitSystemPath, !explicitSystemPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        [resolvePath(explicitSystemPath, relativeTo: projectRoot)]
+    } else {
+        ["Server", "."].map { resolvePath($0, relativeTo: projectRoot) }
+    }
+
+    for candidate in candidates {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: candidate, isDirectory: &isDirectory), isDirectory.boolValue else {
+            continue
+        }
+
+        let packagePath = URL(fileURLWithPath: candidate).appendingPathComponent("Package.swift").path
+        if fileManager.fileExists(atPath: packagePath) {
+            return candidate
+        }
+    }
+
+    if let explicitSystemPath, !explicitSystemPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        throw CLIError.configurationError(
+            "No Swift package found at system path '\(explicitSystemPath)'. Expected Package.swift at '\(resolvePath(explicitSystemPath, relativeTo: projectRoot))'."
+        )
+    }
+
+    throw CLIError.configurationError(
+        "Could not auto-detect a System package. Pass --system-path (for example --system-path ./Server)."
+    )
+}
+
+private func resolveSystemProduct(systemPath: String, explicitProduct: String?) throws -> String {
+    let resolver = SystemProductResolver()
+    return try resolver.resolve(projectPath: systemPath, explicitProduct: explicitProduct).product
+}
+
+private func resolvePath(_ path: String, relativeTo base: String) -> String {
+    let expanded = (path as NSString).expandingTildeInPath
+    if expanded.hasPrefix("/") {
+        return URL(fileURLWithPath: expanded).standardizedFileURL.path
+    }
+
+    return URL(fileURLWithPath: base)
         .appendingPathComponent(expanded)
         .standardizedFileURL
         .path

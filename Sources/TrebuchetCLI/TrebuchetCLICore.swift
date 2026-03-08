@@ -5,7 +5,7 @@ import Foundation
 public struct TrebuchetCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "trebuchet",
-        abstract: "Deploy Swift distributed actors to the cloud",
+        abstract: "Run and deploy Swift System executables with Trebuchet",
         version: "0.1.0",
         subcommands: [
             DeployCommand.self,
@@ -13,8 +13,7 @@ public struct TrebuchetCommand: AsyncParsableCommand {
             UndeployCommand.self,
             DevCommand.self,
             XcodeCommand.self,
-            InitCommand.self,
-            RunCommand.self,
+            DoctorCommand.self,
         ],
         defaultSubcommand: nil
     )

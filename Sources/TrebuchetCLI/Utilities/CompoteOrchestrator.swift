@@ -105,7 +105,7 @@ public enum CompoteOrchestratorError: Error, CustomStringConvertible {
         case .compoteNotAvailable:
             return "Compote is not available."
         case .configNotFound:
-            return "Could not load trebuchet.yaml configuration."
+            return "Could not load dependency configuration."
         }
     }
 }

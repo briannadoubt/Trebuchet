@@ -70,12 +70,12 @@ For detailed information on task management, subtasks, and agent delegation patt
 
 ## Xcode Project Support
 
-Trebuchet CLI now supports both Swift Package Manager projects and Xcode projects.
+Trebuchet CLI supports Xcode app workflows that run a System executable from a Swift package.
 
 ### Automatic Detection
 - Detects `.xcodeproj` or `.xcworkspace` files
-- Automatically adapts package generation and file copying
-- Works across all commands: `dev`, `generate server`, `deploy`
+- Generates managed pre/post Run scripts in `.trebuchet-xcode`
+- Runs `xcode session start` with `--system-path` and `--product`
 
 ### Automatic Dependency Analysis
 - Uses SwiftSyntax to analyze actor method signatures
@@ -229,17 +229,14 @@ Integration tests use Swift Testing framework with:
 ## CLI Commands
 
 ```bash
-# Initialize a new trebuchet.yaml configuration
-trebuchet init --name my-project --provider aws
-
-# Deploy actors to AWS Lambda
-trebuchet deploy --provider aws --region us-east-1
+# Run a System executable package locally
+trebuchet dev ./Server --product AuraSystem
 
 # Deploy to Fly.io
-trebuchet deploy --provider fly --region iad
+trebuchet deploy ./Server --product AuraSystem --provider fly --region iad
 
 # Deploy with dry-run to preview changes
-trebuchet deploy --dry-run --verbose
+trebuchet deploy ./Server --product AuraSystem --dry-run --verbose
 
 # Check deployment status
 trebuchet status
@@ -247,14 +244,11 @@ trebuchet status
 # Remove deployed infrastructure
 trebuchet undeploy
 
-# Run actors locally for development
-trebuchet dev --port 8080 --host localhost
+# Set up managed Xcode session scripts
+trebuchet xcode setup --project-path /path/to/App --system-path /path/to/App/Server --product AuraSystem
 
-# Run dev server with verbose output
-trebuchet dev --verbose
-
-# Generate a standalone server package
-trebuchet generate server --output ./my-server
+# Diagnose legacy artifacts and migration state
+trebuchet doctor
 ```
 
 ## Architecture
@@ -318,14 +312,15 @@ Sources/TrebuchetAWS/
 Sources/TrebuchetCLI/
 ├── TrebuchetCLICore.swift          # CLI entry point (@main)
 ├── Commands/
-│   ├── DeployCommand.swift         # Deploy actors to cloud
+│   ├── DeployCommand.swift         # Deploy System packages to cloud
 │   ├── StatusCommand.swift         # Check deployment status
 │   ├── UndeployCommand.swift       # Remove infrastructure
-│   ├── DevCommand.swift            # Local development server
-│   └── InitCommand.swift           # Initialize configuration
+│   ├── DevCommand.swift            # Local System-package development server
+│   ├── XcodeCommand.swift          # Xcode app + System-package integration
+│   └── DoctorCommand.swift         # Migration diagnostics
 ├── Config/
-│   ├── TrebuchetConfig.swift        # Configuration model (trebuchet.yaml)
-│   └── ConfigLoader.swift          # YAML parsing and resolution
+│   ├── TrebuchetConfig.swift        # Legacy compatibility config model
+│   └── ConfigLoader.swift          # Legacy config parsing helpers
 ├── Discovery/
 │   ├── ActorMetadata.swift         # Actor/method metadata types
 │   └── ActorDiscovery.swift        # SwiftSyntax-based actor discovery
@@ -434,7 +429,7 @@ Sources/TrebuchetSurrealDB/
 
 #### CLI Types (TrebuchetCLI)
 
-- **TrebuchetConfig**: Configuration model parsed from trebuchet.yaml
+- **TrebuchetConfig**: Legacy compatibility configuration model
 - **ActorDiscovery**: SwiftSyntax-based scanner for @Trebuchet actors
 - **ActorMetadata**: Metadata about discovered actors and their methods
 - **DockerBuilder**: Builds Swift projects for Lambda (arm64)
@@ -493,35 +488,9 @@ struct LobbyView: View {
 
 ### Cloud Deployment Pattern
 
-```yaml
-# trebuchet.yaml
-name: my-game-server
-version: "1"
-
-defaults:
-  provider: aws
-  region: us-east-1
-  memory: 512
-  timeout: 30
-
-actors:
-  GameRoom:
-    memory: 1024
-    stateful: true
-  Lobby:
-    memory: 256
-
-state:
-  type: dynamodb
-
-discovery:
-  type: cloudmap
-  namespace: my-game
-```
-
 ```bash
 # Deploy to AWS
-$ trebuchet deploy --provider aws
+$ trebuchet deploy ./Server --product AuraSystem --provider aws --region us-east-1
 
 Discovering actors...
   ✓ GameRoom

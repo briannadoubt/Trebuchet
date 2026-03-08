@@ -109,6 +109,50 @@ struct XcodeIntegrationTests {
         #expect(xml.contains("ReferencedContainer = \"container:App.xcodeproj\""))
     }
 
+    @Test("Start script includes system path and product")
+    func startScriptIncludesSystemPathAndProduct() {
+        let script = XcodeIntegration.startScriptContents(
+            cliExecutablePath: "/usr/local/bin/trebuchet",
+            systemPath: "/tmp/Aura/Server",
+            product: "AuraSystem",
+            host: "127.0.0.1",
+            port: 8080,
+            runtime: "auto",
+            noDeps: true
+        )
+
+        #expect(script.contains("--system-path '/tmp/Aura/Server'"))
+        #expect(script.contains("--product 'AuraSystem'"))
+        #expect(script.contains("--no-deps"))
+        #expect(!script.contains("--local"))
+    }
+
+    @Test("Session manager dev args include product and omit local")
+    func sessionManagerDevArgs() {
+        let args = XcodeSessionManager.devCommandArguments(
+            systemPath: "/tmp/Aura/Server",
+            product: "AuraSystem",
+            host: "127.0.0.1",
+            port: 8080,
+            runtime: "auto",
+            noDeps: false
+        )
+
+        #expect(args == [
+            "dev",
+            "/tmp/Aura/Server",
+            "--product",
+            "AuraSystem",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8080",
+            "--runtime",
+            "auto",
+            "--verbose",
+        ])
+    }
+
     @Test("Setup marks managed scheme visible in scheme management plists")
     func ensureSharedSchemeVisibleWritesPlists() throws {
         let tempRoot = try makeTemporaryDirectory()

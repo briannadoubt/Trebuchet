@@ -4,10 +4,10 @@ import Foundation
 public struct DevCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "dev",
-        abstract: "Run a System executable locally for development"
+        abstract: "Run a System executable from a Swift package for local development"
     )
 
-    @Argument(help: "Path to the Swift package project")
+    @Argument(help: "Path to the Swift package containing the @main ...: System executable")
     public var projectPath: String = "."
 
     @Option(name: .shortAndLong, help: "Port to listen on")

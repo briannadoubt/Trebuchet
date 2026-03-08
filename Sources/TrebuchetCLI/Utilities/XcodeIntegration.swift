@@ -441,9 +441,10 @@ public enum XcodeIntegration {
 
     public static func startScriptContents(
         cliExecutablePath: String,
+        systemPath: String,
+        product: String,
         host: String,
         port: UInt16,
-        local: String?,
         runtime: String,
         noDeps: Bool
     ) -> String {
@@ -453,6 +454,10 @@ public enum XcodeIntegration {
             "start",
             "--project-path",
             "\"${PROJECT_DIR:-$PWD}\"",
+            "--system-path",
+            shellEscape(systemPath),
+            "--product",
+            shellEscape(product),
             "--host",
             shellEscape(host),
             "--port",
@@ -462,10 +467,6 @@ public enum XcodeIntegration {
         ]
         if noDeps {
             args.append("--no-deps")
-        }
-        if let local, !local.isEmpty {
-            args.append("--local")
-            args.append(shellEscape(local))
         }
 
         let command = args.joined(separator: " ")
@@ -836,9 +837,10 @@ public struct XcodeSessionManager {
     }
 
     public func start(
+        systemPath: String,
+        product: String?,
         host: String,
         port: UInt16,
-        local: String?,
         runtime: String,
         noDeps: Bool
     ) throws {
@@ -877,23 +879,18 @@ public struct XcodeSessionManager {
         defer { try? logHandle.close() }
         try logHandle.seekToEnd()
 
-        var commandArgs = [
-            "dev",
-            projectPath,
-            "--host",
-            host,
-            "--port",
-            "\(port)",
-            "--runtime",
-            runtime,
-            "--verbose",
-        ]
-        if noDeps {
-            commandArgs.append("--no-deps")
-        }
-        if let local, !local.isEmpty {
-            commandArgs.append(contentsOf: ["--local", local])
-        }
+        let resolvedProduct = try SystemProductResolver()
+            .resolve(projectPath: systemPath, explicitProduct: product)
+            .product
+
+        let commandArgs = Self.devCommandArguments(
+            systemPath: systemPath,
+            product: resolvedProduct,
+            host: host,
+            port: port,
+            runtime: runtime,
+            noDeps: noDeps
+        )
 
         let process = Process()
         if cliExecutablePath.contains("/") {
@@ -914,13 +911,14 @@ public struct XcodeSessionManager {
         try process.run()
 
         let pid = process.processIdentifier
-        // First-time `swift build` for generated dev runners can take multiple minutes.
+        // First-time `swift build` for System packages can take multiple minutes.
         // Keep this generous so Xcode pre-run actions remain reliable.
         let readinessDeadline = Date().addingTimeInterval(600)
         var ready = false
 
         while Date() < readinessDeadline {
-            if Self.listeningPIDs(on: port).contains(pid) {
+            let listenerPIDs = Self.listeningPIDs(on: port)
+            if listenerPIDs.contains(pid) || !listenerPIDs.isEmpty {
                 ready = true
                 break
             }
@@ -1072,5 +1070,34 @@ public struct XcodeSessionManager {
             return false
         }
         return contents.contains("Server running on ws://")
+    }
+
+    static func devCommandArguments(
+        systemPath: String,
+        product: String,
+        host: String,
+        port: UInt16,
+        runtime: String,
+        noDeps: Bool
+    ) -> [String] {
+        var args = [
+            "dev",
+            systemPath,
+            "--product",
+            product,
+            "--host",
+            host,
+            "--port",
+            "\(port)",
+            "--runtime",
+            runtime,
+            "--verbose",
+        ]
+
+        if noDeps {
+            args.append("--no-deps")
+        }
+
+        return args
     }
 }

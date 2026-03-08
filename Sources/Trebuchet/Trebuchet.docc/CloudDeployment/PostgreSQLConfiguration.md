@@ -2,6 +2,9 @@
 
 Configure PostgreSQL for reliable actor state persistence and multi-instance synchronization.
 
+Use this with System-package workflows (`trebuchet dev <system-package-path> --product <SystemExecutable>` and `trebuchet deploy <system-package-path> --product <SystemExecutable> ...`).
+Any `trebuchet.yaml` snippets in this page are legacy migration examples.
+
 ## Overview
 
 The TrebuchetPostgreSQL module provides production-ready PostgreSQL integration for:

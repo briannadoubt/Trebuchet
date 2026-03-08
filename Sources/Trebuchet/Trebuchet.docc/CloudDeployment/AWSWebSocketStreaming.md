@@ -38,7 +38,13 @@ Lambda (WebSocket Handler)
 
 ## Configuration
 
-Create a `trebuchet.yaml` configuration file:
+Define configuration in your `System` executable package and deploy with:
+
+```bash
+trebuchet deploy ./Server --product AuraSystem --provider aws --region us-east-1
+```
+
+Legacy YAML example (migration reference):
 
 ```yaml
 name: my-streaming-app
@@ -81,10 +87,10 @@ Deploy your streaming actors to AWS:
 
 ```bash
 # Preview what will be deployed
-trebuchet deploy --dry-run --verbose
+trebuchet deploy ./Server --product AuraSystem --provider aws --region us-east-1 --dry-run --verbose
 
 # Deploy to AWS
-trebuchet deploy --provider aws --region us-east-1
+trebuchet deploy ./Server --product AuraSystem --provider aws --region us-east-1
 
 # Output:
 # ✓ Lambda: arn:aws:lambda:us-east-1:123:function:my-app-websocket

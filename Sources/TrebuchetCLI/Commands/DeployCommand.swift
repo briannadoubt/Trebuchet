@@ -5,10 +5,10 @@ import Trebuchet
 public struct DeployCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "deploy",
-        abstract: "Deploy a System executable to the cloud"
+        abstract: "Deploy a System executable from a Swift package to the cloud"
     )
 
-    @Argument(help: "Path to the Swift package project")
+    @Argument(help: "Path to the Swift package containing the @main ...: System executable")
     public var projectPath: String = "."
 
     @Option(name: .shortAndLong, help: "Cloud provider (aws, fly)")
@@ -19,9 +19,6 @@ public struct DeployCommand: AsyncParsableCommand {
 
     @Option(name: .shortAndLong, help: "Environment name (production, staging)")
     public var environment: String?
-
-    @Option(name: .long, help: "Path to trebuchet.yaml (deprecated; ignored in topology-first mode)")
-    public var config: String?
 
     @Option(name: .long, help: "Executable product to deploy")
     public var product: String?
@@ -37,10 +34,6 @@ public struct DeployCommand: AsyncParsableCommand {
     public mutating func run() async throws {
         let terminal = Terminal()
         let projectDirectory = try resolveProjectDirectory(projectPath)
-
-        if config != nil {
-            terminal.print("`--config` is ignored in topology-first mode.", style: .warning)
-        }
 
         let resolver = SystemProductResolver()
         let resolvedProduct = try resolver.resolve(projectPath: projectDirectory, explicitProduct: product)

@@ -2,6 +2,9 @@
 
 Deploy your distributed actors to Azure Functions with Cosmos DB and Service Fabric.
 
+Canonical CLI shape remains system-first: `trebuchet deploy <system-package-path> --product <SystemExecutable> ...`.
+YAML snippets below are legacy migration examples.
+
 ## Overview
 
 > Note: Azure support is planned for a future release. This document describes the intended architecture.

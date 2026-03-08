@@ -2,6 +2,9 @@
 
 This document provides detailed cost estimates for running Trebuchet's realtime streaming infrastructure on AWS Lambda with WebSocket API Gateway.
 
+Canonical deployment path: `trebuchet deploy <system-package-path> --product <SystemExecutable> ...`.
+Any `trebuchet.yaml` snippets in this page are legacy migration examples.
+
 ## Quick Summary
 
 **1-hour benchmark (10,000 connections): ~$2.71**
