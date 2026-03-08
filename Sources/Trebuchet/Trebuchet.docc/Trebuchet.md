@@ -31,6 +31,7 @@ try await room.join(player: me)
 
 - <doc:GettingStarted>
 - <doc:DefiningActors>
+- <doc:DefiningSystem>
 - <doc:SwiftUIIntegration>
 - <doc:Streaming>
 - <doc:AdvancedStreaming>
@@ -52,6 +53,7 @@ try await room.join(player: me)
 - ``Endpoint``
 - ``TransportMessage``
 - ``TransportConfiguration``
+- ``AutoTransportOptions``
 
 ### Serialization
 
@@ -66,6 +68,10 @@ try await room.join(player: me)
 - ``TrebuchetConnection``
 - ``TrebuchetConnectionManager``
 - ``ConnectionState``
+
+### CLI Tools
+
+- <doc:XCODE_PROJECT_SUPPORT>
 
 ### Cloud Deployment
 
