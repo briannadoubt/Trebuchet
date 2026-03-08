@@ -503,6 +503,18 @@ struct DevDependencyRuntime: Sendable {
                         retries: 20
                     )
                 )
+            case .surrealDB:
+                byName["surrealdb"] = DependencyConfig(
+                    name: "surrealdb",
+                    image: "surrealdb/surrealdb:latest",
+                    ports: ["8000:8000"],
+                    command: ["start", "--log", "info", "--user", "root", "--pass", "root", "memory"],
+                    healthcheck: HealthCheckConfig(
+                        port: 8000,
+                        interval: 2,
+                        retries: 15
+                    )
+                )
             }
         }
 

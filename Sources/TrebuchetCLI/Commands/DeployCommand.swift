@@ -60,6 +60,8 @@ public struct DeployCommand: AsyncParsableCommand {
             return
         }
 
+        printDatabaseGuidance(plan: plan, provider: selectedProvider, terminal: terminal)
+
         if verbose, !plan.warnings.isEmpty {
             terminal.print("Deployment merge warnings:", style: .warning)
             for warning in plan.warnings {
@@ -172,6 +174,9 @@ public struct DeployCommand: AsyncParsableCommand {
             if !actor.clusterPath.isEmpty {
                 terminal.print("    Clusters: \(actor.clusterPath.joined(separator: " -> "))", style: .dim)
             }
+            if let state = actor.state {
+                terminal.print("    State: \(stateLabel(state))", style: .dim)
+            }
             if let aws = actor.aws {
                 terminal.print("    AWS: region=\(aws.region ?? "default") memory=\(aws.memory.map(String.init) ?? "512") timeout=\(aws.timeout.map(String.init) ?? "30")", style: .dim)
             }
@@ -185,6 +190,100 @@ public struct DeployCommand: AsyncParsableCommand {
             terminal.print("Warnings:", style: .warning)
             for warning in plan.warnings {
                 terminal.print("  • \(warning)", style: .dim)
+            }
+        }
+
+        let selectedProvider = plan.provider ?? "fly"
+        printDatabaseGuidance(plan: plan, provider: selectedProvider, terminal: terminal)
+    }
+
+    private func stateLabel(_ state: StateConfiguration) -> String {
+        switch state {
+        case .memory: return "memory (no persistence)"
+        case .dynamoDB(let table): return "DynamoDB (table: \(table))"
+        case .postgres(let url): return url != nil ? "PostgreSQL (configured)" : "PostgreSQL (no URL configured)"
+        case .surrealDB(let url): return url != nil ? "SurrealDB (configured)" : "SurrealDB (no URL configured)"
+        }
+    }
+
+    private func printDatabaseGuidance(plan: DeploymentPlan, provider: String, terminal: Terminal) {
+        let appName = plan.systemName
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "_", with: "-")
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber || $0 == "-" }
+
+        for actor in plan.actors {
+            guard let state = actor.state else { continue }
+
+            switch state {
+            case .memory, .dynamoDB:
+                // memory needs nothing; DynamoDB is auto-provisioned via Terraform
+                continue
+
+            case .postgres(let url) where url != nil:
+                continue
+
+            case .surrealDB(let url) where url != nil:
+                continue
+
+            case .postgres:
+                terminal.print("", style: .info)
+                terminal.print("Actor \(actor.actorType) uses PostgreSQL but no database URL is configured.", style: .warning)
+                terminal.print("", style: .info)
+
+                switch provider {
+                case "fly":
+                    let dbName = "\(appName)-db"
+                    terminal.print("  To provision on Fly.io:", style: .info)
+                    terminal.print("    fly postgres create --name \(dbName) --region iad", style: .dim)
+                    terminal.print("    fly postgres attach \(dbName) --app \(appName)", style: .dim)
+                    terminal.print("", style: .info)
+                    terminal.print("  This sets DATABASE_URL automatically on your app.", style: .dim)
+
+                case "aws":
+                    terminal.print("  To provision on AWS:", style: .info)
+                    terminal.print("    Create an RDS PostgreSQL instance in your VPC", style: .dim)
+                    terminal.print("    Then configure the connection:", style: .dim)
+                    terminal.print("      .state(.postgres(databaseURL: \"postgresql://user:pass@host:5432/db\"))", style: .dim)
+
+                default:
+                    terminal.print("  Configure the connection URL:", style: .info)
+                    terminal.print("    .state(.postgres(databaseURL: \"postgresql://user:pass@host:5432/db\"))", style: .dim)
+                }
+                terminal.print("", style: .info)
+
+            case .surrealDB:
+                terminal.print("", style: .info)
+                terminal.print("Actor \(actor.actorType) uses SurrealDB but no database URL is configured.", style: .warning)
+                terminal.print("", style: .info)
+
+                switch provider {
+                case "fly":
+                    let dbAppName = "\(appName)-surrealdb"
+                    terminal.print("  To provision on Fly.io:", style: .info)
+                    terminal.print("    fly apps create \(dbAppName)", style: .dim)
+                    terminal.print("    fly volumes create surrealdb_data --app \(dbAppName) --size 1 --region iad", style: .dim)
+                    terminal.print("    fly deploy --image surrealdb/surrealdb:latest --app \(dbAppName)", style: .dim)
+                    terminal.print("    fly secrets set SURREALDB_URL=ws://\(dbAppName).internal:8000 --app \(appName)", style: .dim)
+                    terminal.print("", style: .info)
+                    terminal.print("  Then configure the connection:", style: .dim)
+                    terminal.print("    .state(.surrealDB(url: \"ws://\(dbAppName).internal:8000\"))", style: .dim)
+
+                case "aws":
+                    terminal.print("  SurrealDB is not a managed AWS service. Options:", style: .info)
+                    terminal.print("    - Run SurrealDB on ECS/Fargate with an EBS volume", style: .dim)
+                    terminal.print("    - Use Surreal Cloud (https://surrealdb.com/cloud)", style: .dim)
+                    terminal.print("    - Consider .state(.dynamoDB(table: \"...\")) for native AWS integration", style: .dim)
+                    terminal.print("", style: .info)
+                    terminal.print("  Then configure the connection:", style: .dim)
+                    terminal.print("    .state(.surrealDB(url: \"ws://your-surrealdb-host:8000\"))", style: .dim)
+
+                default:
+                    terminal.print("  Configure the connection URL:", style: .info)
+                    terminal.print("    .state(.surrealDB(url: \"ws://your-surrealdb-host:8000\"))", style: .dim)
+                }
+                terminal.print("", style: .info)
             }
         }
     }
