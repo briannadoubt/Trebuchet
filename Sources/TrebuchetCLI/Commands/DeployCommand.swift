@@ -203,6 +203,7 @@ public struct DeployCommand: AsyncParsableCommand {
         case .dynamoDB(let table): return "DynamoDB (table: \(table))"
         case .postgres(let url): return url != nil ? "PostgreSQL (configured)" : "PostgreSQL (no URL configured)"
         case .surrealDB(let url): return url != nil ? "SurrealDB (configured)" : "SurrealDB (no URL configured)"
+        case .sqlite(let path): return path != nil ? "SQLite (\(path!))" : "SQLite (default path)"
         }
     }
 
@@ -217,7 +218,7 @@ public struct DeployCommand: AsyncParsableCommand {
             guard let state = actor.state else { continue }
 
             switch state {
-            case .memory, .dynamoDB:
+            case .memory, .dynamoDB, .sqlite:
                 // memory needs nothing; DynamoDB is auto-provisioned via Terraform
                 continue
 

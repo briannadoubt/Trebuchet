@@ -515,6 +515,9 @@ struct DevDependencyRuntime: Sendable {
                         retries: 15
                     )
                 )
+            case .sqlite:
+                // SQLite requires no external dependencies - it's local storage
+                continue
             }
         }
 
