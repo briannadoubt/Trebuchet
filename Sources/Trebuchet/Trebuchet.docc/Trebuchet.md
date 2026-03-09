@@ -77,6 +77,7 @@ try await room.join(player: me)
 - <doc:DeployingToGCP>
 - <doc:DeployingToAzure>
 - <doc:CloudDeployment/FlyDeployment>
+- <doc:CloudDeployment/SQLitePersistence>
 - <doc:CloudDeployment/PostgreSQLConfiguration>
 
 ### Module Reference
