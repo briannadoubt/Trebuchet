@@ -20,7 +20,7 @@ TrebuchetCloud provides the abstractions needed to deploy Swift distributed acto
 │                              ↓                                │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐    │
 │  │  StateStore  │  │   Registry   │  │   HTTP Endpoint   │    │
-│  │ (DynamoDB)   │  │  (CloudMap)  │  │  (API Gateway)    │    │
+│  │  (SQLite*)   │  │  (CloudMap)  │  │  (API Gateway)    │    │
 │  └──────────────┘  └──────────────┘  └───────────────────┘    │
 └───────────────────────────────────────────────────────────────┘
 ```
@@ -90,6 +90,26 @@ public protocol ActorStateStore: Sendable {
     func delete(for actorID: String) async throws
 }
 ```
+
+## State Store Options
+
+SQLite is the recommended state store for most deployments. It requires no external services, works with persistent volumes on platforms like Fly.io, and provides full ACID guarantees:
+
+```swift
+import TrebuchetSQLite
+
+let stateStore = try SQLiteStateStore(path: "/data/trebuchet.db")
+let gateway = CloudGateway(configuration: .init(
+    host: "0.0.0.0",
+    port: 8080,
+    stateStore: stateStore,
+    registry: myRegistry
+))
+```
+
+For deployments that need a shared external database (e.g., multi-instance with shared state), use DynamoDB or PostgreSQL instead.
+
+*\* SQLite is the recommended default. DynamoDB and PostgreSQL are available as alternatives for specialized needs.*
 
 ## Local Development
 

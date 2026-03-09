@@ -380,6 +380,12 @@ Sources/TrebuchetSurrealDB/
 ├── SurrealDBStateStore.swift        # ActorStateStore using SurrealDB with ORM
 ├── Configuration.swift              # Configuration types and environment loading
 └── CloudGatewayExtensions.swift     # Gateway integration and connection pooling
+
+Sources/TrebuchetSQLite/
+├── TrebuchetSQLite.swift            # Module exports, re-exports GRDB
+├── SQLiteStateStore.swift           # ActorStateStore using local SQLite via GRDB
+├── SQLiteConfiguration.swift        # GRDB pool configuration (WAL mode, pragmas)
+└── SQLiteShardManager.swift         # Shard directory layout and pool lifecycle
 ```
 
 ### Key Types
@@ -559,6 +565,7 @@ let players = try await lobby.getPlayers()  // Invokes another Lambda
 - **Yams**: YAML configuration parsing
 - **postgres-nio**: PostgreSQL client (TrebuchetPostgreSQL)
 - **surrealdb-swift**: SurrealDB client with ORM support (TrebuchetSurrealDB)
+- **GRDB.swift**: SQLite integration with record mapping, migrations, connection pooling (TrebuchetSQLite)
 - **swift-crypto**: Cryptographic operations (TrebuchetSecurity, TrebuchetAWS)
 - **soto (AWS SDK)**: AWS service clients (Lambda, DynamoDB, IAM, CloudWatch, ServiceDiscovery, ApiGatewayManagementApi)
 - **swift-macro-testing**: Macro testing utilities (TrebuchetMacrosTests)
@@ -578,6 +585,7 @@ Test suites:
 - `TrebuchetObservabilityTests`: Logging, metrics, distributed tracing
 - `TrebuchetPostgreSQLTests`: PostgreSQL state store and stream adapter
 - `TrebuchetSurrealDBTests`: SurrealDB state store, ORM patterns, schema generation, graph relationships
+- `TrebuchetSQLiteTests`: SQLite state store, shard manager, optimistic locking
 
 ## Release Process
 

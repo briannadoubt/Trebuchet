@@ -7,6 +7,32 @@ import Trebuchet
 ///
 /// Since serverless functions are stateless, actors deployed to Lambda/Cloud Functions
 /// need external storage for their state. This protocol abstracts the storage backend.
+///
+/// ## Recommended Implementation: SQLite (TrebuchetSQLite)
+///
+/// For most deployments, ``SQLiteStateStore`` from the `TrebuchetSQLite` module is the
+/// recommended implementation. It provides zero-config local persistence with WAL mode,
+/// sharded storage for horizontal scaling, and built-in optimistic locking via sequence
+/// numbers -- all without requiring an external database service.
+///
+/// ```swift
+/// import TrebuchetSQLite
+///
+/// // Single-file store (simplest)
+/// let store = try await SQLiteStateStore(path: ".trebuchet/db/state.sqlite")
+///
+/// // Sharded store for higher throughput
+/// let config = SQLiteStorageConfiguration(root: ".trebuchet/db", shardCount: 4)
+/// let manager = SQLiteShardManager(configuration: config)
+/// try await manager.initialize()
+/// ```
+///
+/// ## Other Implementations
+///
+/// - ``DynamoDBStateStore`` (TrebuchetAWS) -- DynamoDB-backed store for AWS Lambda deployments.
+/// - ``SurrealDBStateStore`` (TrebuchetSurrealDB) -- SurrealDB-backed store with ORM support.
+/// - ``PostgreSQLStateStore`` (TrebuchetPostgreSQL) -- PostgreSQL-backed store with LISTEN/NOTIFY.
+/// - ``InMemoryStateStore`` -- Ephemeral store for testing and local development.
 public protocol ActorStateStore: Sendable {
     /// Load state for an actor
     /// - Parameters:

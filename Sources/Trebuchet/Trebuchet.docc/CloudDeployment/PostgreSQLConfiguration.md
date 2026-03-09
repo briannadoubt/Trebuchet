@@ -24,12 +24,16 @@ The TrebuchetPostgreSQL module provides production-ready PostgreSQL integration 
 
 Compare to other state stores:
 
-| Feature | PostgreSQL | DynamoDB | Redis |
-|---------|-----------|----------|-------|
-| **Transactions** | ✅ ACID | ❌ Limited | ❌ None |
-| **Cost** | Free | Pay per request | Pay per hour |
-| **Pub/Sub** | ✅ LISTEN/NOTIFY | ❌ Streams only | ✅ Pub/Sub |
-| **Consistency** | ✅ Strong | ⚠️ Eventual | ⚠️ Eventual |
+| Feature | SQLite | PostgreSQL | DynamoDB | Redis |
+|---------|--------|-----------|----------|-------|
+| **Transactions** | ✅ ACID | ✅ ACID | ❌ Limited | ❌ None |
+| **Cost** | Free (no server) | Free | Pay per request | Pay per hour |
+| **Pub/Sub** | ❌ None | ✅ LISTEN/NOTIFY | ❌ Streams only | ✅ Pub/Sub |
+| **Consistency** | ✅ Strong | ✅ Strong | ⚠️ Eventual | ⚠️ Eventual |
+| **Setup** | Zero config | Server required | AWS account | Server required |
+| **Multi-instance** | ❌ Single node | ✅ Shared | ✅ Shared | ✅ Shared |
+
+> Tip: For most single-instance deployments, **SQLite is the recommended choice** -- it requires no external services and provides full ACID guarantees. Use PostgreSQL when you need a shared external database for multi-instance state synchronization via LISTEN/NOTIFY.
 
 ## Database Setup
 

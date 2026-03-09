@@ -28,7 +28,7 @@ Add Trebuchet to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/briannadoubt/Trebuchet.git", from: "0.6.0")
+    .package(url: "https://github.com/briannadoubt/Trebuchet.git", from: "0.7.0")
 ]
 ```
 
@@ -49,7 +49,7 @@ struct MyGame: System {
     var topology: some Topology {
         GameRoom.self
             .expose(as: "room")
-            .state(.surrealDB(url: nil))
+            .state(.sqlite())  // Recommended: zero-config, file-based persistence
 
         Lobby.self
             .expose(as: "lobby")
@@ -57,7 +57,7 @@ struct MyGame: System {
         Cluster("matchmaking") {
             MatchMaker.self
                 .expose(as: "matcher")
-                .state(.dynamoDB(table: "matches"))
+                .state(.sqlite(path: "matches.db"))
         }
     }
 
@@ -225,6 +225,18 @@ trebuchet deploy ./Server --product MyGame --provider fly --region iad
 
 Deploys as a Fly app with auto-scaling and zero-downtime deploys.
 
+### SQLite + Persistent Volume (Recommended)
+
+The simplest and cheapest deployment option. No external database to provision or manage — just attach a persistent volume and go:
+
+```bash
+trebuchet deploy ./Server --product MyGame --provider fly --region iad
+# SQLite state is stored on the attached volume automatically.
+# No database to provision, no connection strings, no monthly bills.
+```
+
+For AWS, SQLite works with EFS-backed Lambda or ECS with EBS volumes.
+
 ### Database Guidance
 
 If your actors use PostgreSQL or SurrealDB without a configured connection URL, the deploy command tells you exactly what to run:
@@ -241,12 +253,29 @@ If your actors use PostgreSQL or SurrealDB without a configured connection URL, 
 
 ### State Stores
 
-| Store | Configuration | Auto-Provisioned |
-|-------|--------------|------------------|
-| In-memory | `.state(.memory)` | N/A |
-| DynamoDB | `.state(.dynamoDB(table: "my-table"))` | Yes (AWS) |
-| PostgreSQL | `.state(.postgres(databaseURL: "..."))` | Fly.io guided |
-| SurrealDB | `.state(.surrealDB(url: "..."))` | Guided |
+| Store | Best For | Status |
+|-------|----------|--------|
+| SQLite | Local file, zero ops, sharded | **Recommended** |
+| In-memory | Testing and ephemeral actors | Built-in |
+| DynamoDB | AWS-native, auto-scaling | For AWS deployments |
+| PostgreSQL | Existing Postgres infrastructure | For specialized needs |
+| SurrealDB | Graph relationships, complex queries | For specialized needs |
+
+SQLite is recommended for most use cases. It requires no external database, no connection strings, and no ops overhead. Other stores are available when you have specialized requirements like multi-region replication (DynamoDB) or graph queries (SurrealDB).
+
+```swift
+// Recommended: SQLite with defaults (zero config)
+.state(.sqlite())
+
+// SQLite with explicit path and sharding
+.state(.sqlite(path: "state.db", shards: 4))
+
+// Other stores for specialized needs
+.state(.dynamoDB(table: "my-table"))
+.state(.postgres(databaseURL: "..."))
+.state(.surrealDB(url: "..."))
+.state(.memory)  // Testing only
+```
 
 ## Local Development
 
@@ -291,12 +320,13 @@ The TCP transport and server-side `listen` are compiled out on WASI. Client `con
 |--------|---------|
 | `Trebuchet` | Core framework — actors, transports, streaming, SwiftUI |
 | `TrebuchetCloud` | Cloud gateway, provider protocol, state stores, service registry |
+| `TrebuchetSQLite` | Local SQLite persistence with sharding, migration, health checks |
 | `TrebuchetAWS` | AWS Lambda, DynamoDB, CloudMap implementations |
 | `TrebuchetPostgreSQL` | PostgreSQL state store with LISTEN/NOTIFY sync |
 | `TrebuchetSurrealDB` | SurrealDB state store with ORM, schema generation, graph relationships |
 | `TrebuchetSecurity` | Authentication (API key, JWT), RBAC authorization, rate limiting |
 | `TrebuchetObservability` | Structured logging, metrics, distributed tracing, CloudWatch |
-| `TrebuchetCLI` | CLI library for `trebuchet dev`, `deploy`, `xcode`, `doctor` |
+| `TrebuchetCLI` | CLI library for `trebuchet dev`, `deploy`, `xcode`, `doctor`, `db` |
 
 ## CLI
 
@@ -308,6 +338,9 @@ trebuchet status                                 # Check deployment
 trebuchet undeploy                               # Tear down infrastructure
 trebuchet xcode setup ...                        # Wire Xcode scheme
 trebuchet doctor                                 # Diagnose issues
+trebuchet db inspect                             # Show SQLite database stats and health
+trebuchet db ownership                           # Display actor-to-shard ownership map
+trebuchet db rebalance                           # Rebalance actors across shards
 ```
 
 Install via Mint:

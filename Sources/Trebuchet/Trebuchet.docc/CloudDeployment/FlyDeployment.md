@@ -8,7 +8,8 @@ Deploy your Trebuchet actors to Fly.io for a simple, cost-effective production d
 - ✅ **Cheap**: $0-5/month for most apps
 - ✅ **Fast**: Global edge locations
 - ✅ **WebSocket-native**: No API Gateway needed
-- ✅ **Built-in PostgreSQL**: Optional state storage
+- ✅ **Persistent Volumes**: SQLite state storage with no external dependencies
+- ✅ **Built-in PostgreSQL**: Optional shared state storage
 
 ## Prerequisites
 
@@ -83,9 +84,9 @@ trebuchet deploy ./Server --product AuraSystem --provider fly
 
 That's it! Your actors are now running on Fly.io.
 
-## With PostgreSQL State
+## With SQLite State (Recommended)
 
-If your actors need persistent state:
+If your actors need persistent state, SQLite with a Fly volume is the simplest option:
 
 ```yaml
 name: my-game-server
@@ -102,7 +103,45 @@ actors:
     stateful: true  # Enables state persistence
 
 state:
-  type: postgresql  # Use PostgreSQL for state storage
+  type: sqlite  # Use SQLite for state storage (recommended)
+```
+
+Deploy:
+
+```bash
+# Create a persistent volume for SQLite
+fly volumes create trebuchet_data --size 1 --region ord --app my-game-server
+
+trebuchet deploy ./Server --product AuraSystem --provider fly
+
+# The CLI will:
+# 1. Mount the volume at /data
+# 2. Configure SQLite at /data/trebuchet.db
+# 3. Your actors can now use saveState() and loadState()
+```
+
+No external database to manage, no connection strings, no additional cost.
+
+## With PostgreSQL State
+
+If your actors need a shared external database (e.g., multiple instances sharing state):
+
+```yaml
+name: my-game-server
+version: "1"
+
+defaults:
+  provider: fly
+  region: ord
+  memory: 512
+
+actors:
+  GameRoom:
+    memory: 512
+    stateful: true  # Enables state persistence
+
+state:
+  type: postgresql  # Use PostgreSQL for shared state storage
 ```
 
 Deploy:
@@ -192,6 +231,7 @@ Now you have 6 instances across 3 continents!
 | shared-cpu-1x (256MB) | $1.94/month |
 | shared-cpu-1x (512MB) | $3.88/month |
 | shared-cpu-1x (1GB) | $7.75/month |
+| Fly Volume (1GB, for SQLite) | $0.15/GB/month |
 | PostgreSQL (1GB) | Free |
 | PostgreSQL (10GB) | $0.15/GB/month |
 | Bandwidth | $0.02/GB (first 100GB free) |
@@ -302,7 +342,7 @@ actors:
     stateful: true
 
 state:
-  type: postgresql
+  type: sqlite  # Simplest option; use postgresql for multi-instance shared state
 
 observability:
   logging:
@@ -325,7 +365,7 @@ trebuchet deploy --provider fly
 
 Result:
 - 3 actor types running
-- PostgreSQL for stateful actors
+- SQLite for stateful actors (on persistent volume)
 - Logging and metrics enabled
 - API key authentication
 - Rate limiting at 100 req/sec
@@ -339,7 +379,7 @@ Result:
 | **Cost** | $3-10/month | $15-50/month |
 | **Cold starts** | None (always warm) | 100-500ms |
 | **WebSocket** | Native | Via API Gateway |
-| **State** | PostgreSQL local | DynamoDB |
+| **State** | SQLite (recommended) or PostgreSQL | DynamoDB |
 | **Complexity** | Low | High |
 | **Best for** | Always-on apps | Bursty workloads |
 

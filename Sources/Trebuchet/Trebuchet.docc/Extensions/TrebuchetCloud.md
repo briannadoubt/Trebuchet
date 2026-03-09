@@ -40,6 +40,7 @@ The module defines three key protocols:
 - `StateStoreOptions` - Options for state operations
 - `ConsistencyLevel` - Consistency guarantees (eventual, strong)
 - `StateSnapshot` - Point-in-time state snapshot
+- `SQLiteStateStore` - SQLite-based implementation (recommended for production)
 - `InMemoryStateStore` - In-memory implementation for testing
 
 ## Errors
