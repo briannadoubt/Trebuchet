@@ -147,6 +147,7 @@ public struct DockerBuilder {
         # Trebuchet Lambda Build Image
         FROM swift:6.2-amazonlinux2 AS builder
 
+        RUN yum install -y sqlite-devel
         WORKDIR /app
         COPY . .
 

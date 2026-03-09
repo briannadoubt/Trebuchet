@@ -110,6 +110,7 @@ struct FlyDeploymentProvider: DeploymentProvider {
         let contents = """
         FROM swift:6.2-amazonlinux2 AS build
 
+        RUN yum install -y sqlite-devel
         WORKDIR /build
         COPY . .
         RUN swift build -c release --product \(product) --static-swift-stdlib -Xlinker -s
@@ -117,7 +118,7 @@ struct FlyDeploymentProvider: DeploymentProvider {
         FROM amazonlinux:2023
         WORKDIR /app
 
-        RUN dnf install -y ca-certificates libgcc libstdc++ && dnf clean all
+        RUN dnf install -y ca-certificates libgcc libstdc++ sqlite-libs && dnf clean all
 
         COPY --from=build /build/.build/release/\(product) /app/server
 
