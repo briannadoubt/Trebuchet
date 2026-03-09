@@ -22,10 +22,6 @@ let package = Package(
             targets: ["TrebuchetCloud"]
         ),
         .library(
-            name: "TrebuchetAWS",
-            targets: ["TrebuchetAWS"]
-        ),
-        .library(
             name: "TrebuchetPostgreSQL",
             targets: ["TrebuchetPostgreSQL"]
         ),
@@ -155,20 +151,6 @@ let package = Package(
             ]
         ),
         .target(
-            name: "TrebuchetAWS",
-            dependencies: [
-                "Trebuchet",
-                "TrebuchetCloud",
-                .product(name: "Crypto", package: "swift-crypto"),
-                .product(name: "SotoDynamoDB", package: "soto"),
-                .product(name: "SotoServiceDiscovery", package: "soto"),
-                .product(name: "SotoCloudWatch", package: "soto"),
-                .product(name: "SotoLambda", package: "soto"),
-                .product(name: "SotoIAM", package: "soto"),
-                .product(name: "SotoApiGatewayManagementApi", package: "soto"),
-            ]
-        ),
-        .target(
             name: "TrebuchetPostgreSQL",
             dependencies: [
                 "Trebuchet",
@@ -251,10 +233,6 @@ let package = Package(
         .testTarget(
             name: "TrebuchetCloudTests",
             dependencies: ["TrebuchetCloud"]
-        ),
-        .testTarget(
-            name: "TrebuchetAWSTests",
-            dependencies: ["TrebuchetAWS"]
         ),
         .testTarget(
             name: "TrebuchetPostgreSQLTests",
