@@ -42,7 +42,7 @@ public actor SQLiteShardManager {
         }
 
         let path = shardPath(shardID)
-        let pool = try SQLiteStorageConfiguration.makeDatabasePool(path: path)
+        let pool = try SQLiteStorageConfiguration.makeDatabasePool(path: path, cacheSizeKB: configuration.cacheSizeKB)
         shardPools[shardID] = pool
         return pool
     }
