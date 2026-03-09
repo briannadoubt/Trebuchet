@@ -16,6 +16,9 @@ public actor SQLiteShardManager {
     private let configuration: SQLiteStorageConfiguration
     private var shardPools: [Int: DatabasePool] = [:]
 
+    /// The number of shards managed by this instance.
+    public var shardCount: Int { configuration.shardCount }
+
     public init(configuration: SQLiteStorageConfiguration) {
         self.configuration = configuration
     }
