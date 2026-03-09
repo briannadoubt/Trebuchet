@@ -94,12 +94,47 @@ public struct ShardOwnershipRecord: Codable, Sendable {
     }
 }
 
+// MARK: - RoutingMigrationState
+
+/// Persisted state tracking an in-progress shard routing migration.
+///
+/// When the configured shard count changes, this struct captures the old
+/// configuration so that ``ShardedStateStore`` can perform lazy read-through
+/// migration (and ``RoutingMigrationSweeper`` can migrate cold actors in the
+/// background).
+public struct RoutingMigrationState: Codable, Sendable, Equatable {
+    /// The shard count before the change.
+    public var previousShardCount: Int
+    /// Maglev table size before the change.
+    public var previousTableSize: Int
+    /// When the migration was started.
+    public var startedAt: Date
+    /// How many actors have been migrated so far (updated by the sweeper).
+    public var migratedCount: Int
+
+    public init(
+        previousShardCount: Int,
+        previousTableSize: Int = 65537,
+        startedAt: Date = Date(),
+        migratedCount: Int = 0
+    ) {
+        self.previousShardCount = previousShardCount
+        self.previousTableSize = previousTableSize
+        self.startedAt = startedAt
+        self.migratedCount = migratedCount
+    }
+}
+
 // MARK: - Persistence Model
 
 /// On-disk representation of the full ownership map (`ownership.json`).
-private struct OwnershipFile: Codable {
+struct OwnershipFile: Codable {
     var globalEpoch: UInt64
     var shards: [ShardOwnershipRecord]
+    /// The persisted shard count (used to detect expansion/compaction).
+    var shardCount: Int?
+    /// Active routing migration state, if any.
+    var routingMigration: RoutingMigrationState?
 }
 
 // MARK: - ShardOwnershipMap
@@ -123,6 +158,12 @@ public actor ShardOwnershipMap {
     /// Alias for `globalEpoch` used by the migration coordinator.
     public var currentEpoch: UInt64 { globalEpoch }
 
+    /// The persisted shard count (nil = not yet tracked).
+    public private(set) var shardCount: Int?
+
+    /// Active routing migration state, if any.
+    public private(set) var routingMigration: RoutingMigrationState?
+
     /// Filesystem directory where `ownership.json` is stored.
     public let metadataPath: String
 
@@ -133,6 +174,8 @@ public actor ShardOwnershipMap {
         self.metadataPath = metadataPath
         self.records = [:]
         self.globalEpoch = 0
+        self.shardCount = nil
+        self.routingMigration = nil
     }
 
     // MARK: Persistence
@@ -152,13 +195,17 @@ public actor ShardOwnershipMap {
             map[record.shardID] = record
         }
         self.globalEpoch = file.globalEpoch
+        self.shardCount = file.shardCount
+        self.routingMigration = file.routingMigration
     }
 
     /// Writes the current ownership state to `ownership.json` in `metadataPath`.
     public func save() throws {
         let file = OwnershipFile(
             globalEpoch: globalEpoch,
-            shards: records.values.sorted { $0.shardID < $1.shardID }
+            shards: records.values.sorted { $0.shardID < $1.shardID },
+            shardCount: shardCount,
+            routingMigration: routingMigration
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -273,6 +320,21 @@ public actor ShardOwnershipMap {
     }
 
     // MARK: Bootstrap
+
+    /// Updates the persisted shard count.
+    public func setShardCount(_ count: Int) {
+        self.shardCount = count
+    }
+
+    /// Sets the active routing migration state.
+    public func setMigrationState(_ state: RoutingMigrationState) {
+        self.routingMigration = state
+    }
+
+    /// Clears the routing migration state (called when migration completes).
+    public func clearMigrationState() {
+        self.routingMigration = nil
+    }
 
     /// Creates a default ownership map assigning all shards to this node with epoch 0.
     public func initializeDefault(shardCount: Int) {

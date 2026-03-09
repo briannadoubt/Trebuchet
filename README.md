@@ -255,7 +255,7 @@ If your actors use PostgreSQL or SurrealDB without a configured connection URL, 
 
 | Store | Best For | Status |
 |-------|----------|--------|
-| SQLite | Local file, zero ops, sharded | **Recommended** |
+| SQLite | Local file, zero ops, Maglev-sharded, auto-migration | **Recommended** |
 | In-memory | Testing and ephemeral actors | Built-in |
 | DynamoDB | AWS-native, auto-scaling | For AWS deployments |
 | PostgreSQL | Existing Postgres infrastructure | For specialized needs |
@@ -320,7 +320,7 @@ The TCP transport and server-side `listen` are compiled out on WASI. Client `con
 |--------|---------|
 | `Trebuchet` | Core framework — actors, transports, streaming, SwiftUI |
 | `TrebuchetCloud` | Cloud gateway, provider protocol, state stores, service registry |
-| `TrebuchetSQLite` | Local SQLite persistence with sharding, migration, health checks |
+| `TrebuchetSQLite` | Local SQLite persistence with Maglev consistent hashing, automatic shard routing, lazy migration |
 | `TrebuchetAWS` | AWS Lambda, DynamoDB, CloudMap implementations |
 | `TrebuchetPostgreSQL` | PostgreSQL state store with LISTEN/NOTIFY sync |
 | `TrebuchetSurrealDB` | SurrealDB state store with ORM, schema generation, graph relationships |

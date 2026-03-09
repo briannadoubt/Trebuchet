@@ -16,8 +16,16 @@ public actor SQLiteShardManager {
     private let configuration: SQLiteStorageConfiguration
     private var shardPools: [Int: DatabasePool] = [:]
 
+    /// The Maglev consistent hasher used to assign keys to shards.
+    public let hasher: MaglevHasher
+
+    /// The number of shards managed by this instance.
+    public var shardCount: Int { configuration.shardCount }
+
     public init(configuration: SQLiteStorageConfiguration) {
         self.configuration = configuration
+        let names = (0..<configuration.shardCount).map { "shard-\(String(format: "%04d", $0))" }
+        self.hasher = MaglevHasher(shardNames: names, tableSize: configuration.maglevTableSize)
     }
 
     /// Initialize the database directory layout and create shard files
@@ -42,7 +50,7 @@ public actor SQLiteShardManager {
         }
 
         let path = shardPath(shardID)
-        let pool = try SQLiteStorageConfiguration.makeDatabasePool(path: path)
+        let pool = try SQLiteStorageConfiguration.makeDatabasePool(path: path, cacheSizeKB: configuration.cacheSizeKB)
         shardPools[shardID] = pool
         return pool
     }
@@ -58,14 +66,11 @@ public actor SQLiteShardManager {
         return "\(configuration.root)/shards/\(shardName)/main.sqlite"
     }
 
-    /// Determine which shard owns a given key using deterministic FNV-1a hashing.
+    /// Determine which shard owns a given key using Maglev consistent hashing.
     ///
-    /// Uses FNV-1a (64-bit) instead of Swift's `Hasher` because `Hasher` is
-    /// randomly seeded per process, which would break deterministic routing
-    /// across restarts and between nodes.
+    /// Only ~1/(N+1) of keys remap when shards are added or removed.
     public func shardID(for key: String) -> Int {
-        let hash = Self.fnv1a(key)
-        return Int(hash % UInt64(configuration.shardCount))
+        hasher.shardIndex(for: key)
     }
 
     /// FNV-1a 64-bit hash — stable, deterministic, and fast.

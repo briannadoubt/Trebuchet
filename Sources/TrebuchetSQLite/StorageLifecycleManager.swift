@@ -19,6 +19,9 @@ public enum StorageLifecycleEvent: Sendable {
     case recoveryStarted(shardID: Int)
     case recoveryCompleted(shardID: Int)
     case walCheckpointed(shardID: Int)
+    case routingMigrationStarted(oldShardCount: Int, newShardCount: Int)
+    case routingMigrationResumed(state: RoutingMigrationState)
+    case routingMigrationCompleted
     case error(String)
 }
 
@@ -109,9 +112,59 @@ public actor StorageLifecycleManager {
         // Load or initialize ownership
         do {
             try await ownership.load()
+
+            let ownershipShardCount = await ownership.shardCount
+            let ownershipRecordCount = await ownership.records.count
+            let persistedShardCount = ownershipShardCount ?? ownershipRecordCount
+            let existingMigration = await ownership.routingMigration
+
+            let shardCountChanged = persistedShardCount != configuration.shardCount
+
+            if shardCountChanged {
+                if let existing = existingMigration {
+                    // Migration already in progress — resume it
+                    emit(.routingMigrationResumed(state: existing))
+                } else {
+                    // Start a new migration
+                    let previousTableSize = existingMigration?.previousTableSize ?? 65537
+
+                    let migrationState = RoutingMigrationState(
+                        previousShardCount: persistedShardCount,
+                        previousTableSize: previousTableSize,
+                        startedAt: Date(),
+                        migratedCount: 0
+                    )
+                    await ownership.setMigrationState(migrationState)
+                    await ownership.setShardCount(configuration.shardCount)
+
+                    // Create new shard directories if expanding
+                    if configuration.shardCount > persistedShardCount {
+                        let shardsDir = "\(configuration.root)/shards"
+                        for i in persistedShardCount..<configuration.shardCount {
+                            let shardDir = "\(shardsDir)/shard-\(String(format: "%04d", i))"
+                            try FileManager.default.createDirectory(
+                                atPath: shardDir,
+                                withIntermediateDirectories: true
+                            )
+                        }
+                    }
+
+                    // Update ownership records for new shard count
+                    await ownership.initializeDefault(shardCount: configuration.shardCount)
+                    await ownership.setShardCount(configuration.shardCount)
+                    await ownership.setMigrationState(migrationState)
+                    try await ownership.save()
+
+                    emit(.routingMigrationStarted(
+                        oldShardCount: persistedShardCount,
+                        newShardCount: configuration.shardCount
+                    ))
+                }
+            }
         } catch {
             // No existing ownership file — initialize defaults
             await ownership.initializeDefault(shardCount: configuration.shardCount)
+            await ownership.setShardCount(configuration.shardCount)
             try await ownership.save()
         }
     }
@@ -229,6 +282,11 @@ public actor StorageLifecycleManager {
     /// Whether the manager is in an active state accepting operations.
     public var isActive: Bool {
         phase == .active
+    }
+
+    /// The current routing migration state, if any.
+    public func routingMigration() async -> RoutingMigrationState? {
+        await ownership.routingMigration
     }
 
     // MARK: - Private

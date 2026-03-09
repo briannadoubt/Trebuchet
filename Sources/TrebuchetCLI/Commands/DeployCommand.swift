@@ -203,7 +203,10 @@ public struct DeployCommand: AsyncParsableCommand {
         case .dynamoDB(let table): return "DynamoDB (table: \(table))"
         case .postgres(let url): return url != nil ? "PostgreSQL (configured)" : "PostgreSQL (no URL configured)"
         case .surrealDB(let url): return url != nil ? "SurrealDB (configured)" : "SurrealDB (no URL configured)"
-        case .sqlite(let path): return path != nil ? "SQLite (\(path!))" : "SQLite (default path)"
+        case .sqlite(let path, let shards):
+            let pathLabel = path ?? "default path"
+            let shardLabel = shards == 1 ? "" : ", \(shards) shards"
+            return "SQLite (\(pathLabel)\(shardLabel))"
         }
     }
 

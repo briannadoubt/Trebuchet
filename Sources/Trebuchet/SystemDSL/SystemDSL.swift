@@ -13,12 +13,33 @@ public protocol System {
     @DeploymentsBuilder
     var deployments: DeploymentsBody { get }
 
+    /// Create a state store from the topology's ``StateConfiguration``.
+    ///
+    /// Override this to provide persistence. Downstream modules like
+    /// `TrebuchetSQLite` offer one-liner convenience methods:
+    ///
+    /// ```swift
+    /// static func makeStateStore(
+    ///     for config: StateConfiguration
+    /// ) async throws -> (any Sendable)? {
+    ///     try await Self.makeSQLiteStateStore(for: config)
+    /// }
+    /// ```
+    ///
+    /// The returned value is stored on the actor system and accessible via
+    /// `actorSystem.stateStore` (when `TrebuchetCloud` is imported).
+    static func makeStateStore(for config: StateConfiguration) async throws -> (any Sendable)?
+
     init()
 }
 
 public extension System {
     var deployments: EmptyDeployments {
         EmptyDeployments()
+    }
+
+    static func makeStateStore(for config: StateConfiguration) async throws -> (any Sendable)? {
+        nil
     }
 
     static func descriptor() throws -> SystemDescriptor {
@@ -758,7 +779,7 @@ public enum StateConfiguration: Codable, Sendable, Hashable {
     case dynamoDB(table: String)
     case postgres(databaseURL: String?)
     case surrealDB(url: String?)
-    case sqlite(path: String?)
+    case sqlite(path: String? = nil, shards: Int = 1)
 }
 
 public enum NetworkConfiguration: Codable, Sendable, Hashable {
@@ -794,12 +815,19 @@ enum TrebuchetSystemEntrypoint {
         case .dev, .run:
             let host = options.host ?? ProcessInfo.processInfo.environment["TREBUCHET_HOST"] ?? "127.0.0.1"
             let port = options.port ?? UInt16(ProcessInfo.processInfo.environment["TREBUCHET_PORT"] ?? "8080") ?? 8080
-            try await runDev(graph: graph, host: host, port: port)
+            try await runDev(graph: graph, systemType: systemType, host: host, port: port)
         }
     }
 
-    private static func runDev(graph: BuiltSystemGraph, host: String, port: UInt16) async throws {
+    private static func runDev<S: System>(graph: BuiltSystemGraph, systemType: S.Type, host: String, port: UInt16) async throws {
         let server = TrebuchetServer(transport: .webSocket(host: host, port: port))
+
+        // Resolve state store from topology configuration
+        if let config = graph.stateConfig {
+            if let store = try await S.makeStateStore(for: config) {
+                server.actorSystem._stateStoreBox = store
+            }
+        }
 
         if !graph.dynamicRegistrations.isEmpty {
             let dynamicRegistrations = graph.dynamicRegistrations
@@ -840,10 +868,14 @@ enum TrebuchetSystemEntrypoint {
             deploymentRules: rules
         )
 
+        // Extract the state configuration from the topology (use the first one found)
+        let stateConfig = collector.descriptors.compactMap(\.state).first
+
         return BuiltSystemGraph(
             descriptor: descriptor,
             runtimeRegistrations: collector.runtimeRegistrations,
-            dynamicRegistrations: collector.dynamicRegistrations
+            dynamicRegistrations: collector.dynamicRegistrations,
+            stateConfig: stateConfig
         )
     }
 
@@ -1022,6 +1054,7 @@ private struct BuiltSystemGraph {
     let descriptor: SystemDescriptor
     let runtimeRegistrations: [RuntimeActorRegistration]
     let dynamicRegistrations: [RuntimeDynamicRegistration]
+    let stateConfig: StateConfiguration?
 }
 
 private enum DeploymentRuleSource {
