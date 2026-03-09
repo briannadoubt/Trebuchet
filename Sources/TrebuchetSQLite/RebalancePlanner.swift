@@ -152,4 +152,30 @@ public struct RebalancePlanner: Sendable {
         let remainingNodes = allNodes.filter { $0 != removedNodeID }
         return plan(currentOwnership: currentOwnership, targetNodes: remainingNodes)
     }
+
+    /// Plan actor migrations needed when expanding the shard count under Maglev routing.
+    ///
+    /// This delegates to ``MaglevMigrationPlanner`` to determine which actors need
+    /// to move. Unlike node-level rebalancing, this handles the case where the
+    /// number of shards changes on a single node.
+    ///
+    /// - Parameters:
+    ///   - actorIDs: All known actor IDs to evaluate.
+    ///   - oldShardCount: Current number of shards.
+    ///   - newShardCount: Target number of shards.
+    ///   - tableSize: Maglev table size (default 65537).
+    /// - Returns: List of actor migrations needed.
+    public func planShardExpansion(
+        actorIDs: [String],
+        oldShardCount: Int,
+        newShardCount: Int,
+        tableSize: Int = 65537
+    ) -> [ActorMigration] {
+        let planner = MaglevMigrationPlanner(tableSize: tableSize)
+        return planner.actorsToMigrate(
+            actorIDs: actorIDs,
+            oldShardCount: oldShardCount,
+            newShardCount: newShardCount
+        )
+    }
 }

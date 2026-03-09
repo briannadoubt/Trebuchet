@@ -10,7 +10,7 @@ struct ShardedStateStoreTests {
         let config = SQLiteStorageConfiguration(root: root, shardCount: shardCount)
         let manager = SQLiteShardManager(configuration: config)
         try await manager.initialize()
-        let store = ShardedStateStore(shardManager: manager)
+        let store = await ShardedStateStore(shardManager: manager)
         return (store, root)
     }
 

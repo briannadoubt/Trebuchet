@@ -19,6 +19,10 @@ public enum StorageLifecycleEvent: Sendable {
     case recoveryStarted(shardID: Int)
     case recoveryCompleted(shardID: Int)
     case walCheckpointed(shardID: Int)
+    case routingMigrationRequired(from: String, to: String)
+    case routingMigrationStarted(from: String, to: String, oldShardCount: Int, newShardCount: Int)
+    case routingMigrationResumed(state: RoutingMigrationState)
+    case routingMigrationCompleted
     case error(String)
 }
 
@@ -36,6 +40,8 @@ public struct StorageLifecycleConfiguration: Sendable {
     public var verifyIntegrityOnBootstrap: Bool
     /// Maximum acceptable WAL size in bytes before warning
     public var walSizeWarningThreshold: UInt64
+    /// Expected routing mode for this deployment
+    public var routing: RoutingMode
 
     public init(
         root: String = ".trebuchet/db",
@@ -43,7 +49,8 @@ public struct StorageLifecycleConfiguration: Sendable {
         nodeID: String = "local",
         checkpointOnShutdown: Bool = true,
         verifyIntegrityOnBootstrap: Bool = true,
-        walSizeWarningThreshold: UInt64 = 50 * 1024 * 1024  // 50 MB
+        walSizeWarningThreshold: UInt64 = 50 * 1024 * 1024,  // 50 MB
+        routing: RoutingMode = .maglev()
     ) {
         self.root = root
         self.shardCount = shardCount
@@ -51,6 +58,7 @@ public struct StorageLifecycleConfiguration: Sendable {
         self.checkpointOnShutdown = checkpointOnShutdown
         self.verifyIntegrityOnBootstrap = verifyIntegrityOnBootstrap
         self.walSizeWarningThreshold = walSizeWarningThreshold
+        self.routing = routing
     }
 }
 
@@ -109,11 +117,88 @@ public actor StorageLifecycleManager {
         // Load or initialize ownership
         do {
             try await ownership.load()
+
+            let persistedMode = await ownership.routingMode
+            let configuredName = configuration.routing.persistedName
+            let persistedName = persistedMode ?? "modulo"
+            let ownershipShardCount = await ownership.shardCount
+            let ownershipRecordCount = await ownership.records.count
+            let persistedShardCount = ownershipShardCount ?? ownershipRecordCount
+            let existingMigration = await ownership.routingMigration
+
+            let routingChanged = persistedName != configuredName
+            let shardCountChanged = persistedShardCount != configuration.shardCount
+
+            if routingChanged || shardCountChanged {
+                if let existing = existingMigration {
+                    // Migration already in progress — resume it
+                    emit(.routingMigrationResumed(state: existing))
+                } else {
+                    // Start a new migration
+                    let previousTableSize: Int?
+                    if case .maglev(let ts) = RoutingMode.from(persistedName: persistedName) {
+                        previousTableSize = ts
+                    } else {
+                        previousTableSize = nil
+                    }
+
+                    let migrationState = RoutingMigrationState(
+                        previousRoutingMode: persistedName,
+                        previousShardCount: persistedShardCount,
+                        previousTableSize: previousTableSize,
+                        startedAt: Date(),
+                        migratedCount: 0
+                    )
+                    await ownership.setMigrationState(migrationState)
+                    await ownership.setShardCount(configuration.shardCount)
+                    await ownership.setRoutingMode(configuredName)
+
+                    // Create new shard directories if expanding
+                    if configuration.shardCount > persistedShardCount {
+                        let shardsDir = "\(configuration.root)/shards"
+                        for i in persistedShardCount..<configuration.shardCount {
+                            let shardDir = "\(shardsDir)/shard-\(String(format: "%04d", i))"
+                            try FileManager.default.createDirectory(
+                                atPath: shardDir,
+                                withIntermediateDirectories: true
+                            )
+                        }
+                    }
+
+                    // Update ownership records for new shard count
+                    await ownership.initializeDefault(shardCount: configuration.shardCount)
+                    await ownership.setRoutingMode(configuredName)
+                    await ownership.setShardCount(configuration.shardCount)
+                    await ownership.setMigrationState(migrationState)
+                    try await ownership.save()
+
+                    emit(.routingMigrationStarted(
+                        from: persistedName,
+                        to: configuredName,
+                        oldShardCount: persistedShardCount,
+                        newShardCount: configuration.shardCount
+                    ))
+                }
+            }
         } catch {
             // No existing ownership file — initialize defaults
             await ownership.initializeDefault(shardCount: configuration.shardCount)
+            await ownership.setRoutingMode(configuration.routing.persistedName)
+            await ownership.setShardCount(configuration.shardCount)
             try await ownership.save()
         }
+    }
+
+    /// Migrate the persisted routing strategy to match the current configuration.
+    ///
+    /// This updates the ownership metadata to record the new routing mode.
+    /// **Important:** This does NOT move actor data between shards. Use
+    /// ``RebalancePlanner/planShardExpansion(actorIDs:oldShardCount:newShardCount:tableSize:)``
+    /// to compute the required data migrations, then execute them before calling this method.
+    public func migrateRoutingStrategy() async throws {
+        let configuredName = configuration.routing.persistedName
+        await ownership.setRoutingMode(configuredName)
+        try await ownership.save()
     }
 
     /// Phase 2: Prepare
@@ -229,6 +314,11 @@ public actor StorageLifecycleManager {
     /// Whether the manager is in an active state accepting operations.
     public var isActive: Bool {
         phase == .active
+    }
+
+    /// The current routing migration state, if any.
+    public func routingMigration() async -> RoutingMigrationState? {
+        await ownership.routingMigration
     }
 
     // MARK: - Private

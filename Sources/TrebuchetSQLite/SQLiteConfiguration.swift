@@ -12,6 +12,14 @@ public struct SQLiteStorageConfiguration: Sendable {
     /// SQLite operating mode
     public var mode: SQLiteMode
 
+    /// Shard routing strategy.
+    ///
+    /// - `.modulo` — Legacy `fnv1a(key) % shardCount`. Simple but remaps ~75% of keys
+    ///   when adding one shard to a 4-shard cluster.
+    /// - `.maglev()` — Maglev consistent hashing. Only ~1/(N+1) of keys remap on expansion.
+    ///   Default for new deployments.
+    public var routing: RoutingMode
+
     /// Page cache size per connection in kilobytes.
     ///
     /// Each GRDB `DatabasePool` opens multiple connections (1 writer + up to 5
@@ -29,11 +37,13 @@ public struct SQLiteStorageConfiguration: Sendable {
         root: String = ".trebuchet/db",
         shardCount: Int = 1,
         mode: SQLiteMode = .persistentNodes,
+        routing: RoutingMode = .maglev(),
         cacheSizeKB: Int = 2048
     ) {
         self.root = root
         self.shardCount = shardCount
         self.mode = mode
+        self.routing = routing
         self.cacheSizeKB = cacheSizeKB
     }
 
@@ -57,6 +67,43 @@ public struct SQLiteStorageConfiguration: Sendable {
         )
 
         return try DatabasePool(path: path, configuration: config)
+    }
+}
+
+/// Shard routing mode.
+public enum RoutingMode: Sendable, Equatable {
+    /// Legacy modulo routing: `fnv1a(key) % shardCount`.
+    case modulo
+    /// Maglev consistent hashing with configurable table size.
+    case maglev(tableSize: Int = 65537)
+
+    /// The string identifier persisted in ownership metadata.
+    public var persistedName: String {
+        switch self {
+        case .modulo: return "modulo"
+        case .maglev: return "maglev"
+        }
+    }
+
+    /// Reconstruct from a persisted name. Returns `.modulo` for nil (backward compat).
+    public static func from(persistedName: String?) -> RoutingMode {
+        switch persistedName {
+        case "maglev": return .maglev()
+        case "modulo", nil: return .modulo
+        default: return .modulo
+        }
+    }
+
+    /// Reconstruct the old routing mode from a persisted migration state.
+    public static func from(migrationState: RoutingMigrationState) -> RoutingMode {
+        switch migrationState.previousRoutingMode {
+        case "maglev":
+            return .maglev(tableSize: migrationState.previousTableSize ?? 65537)
+        case "modulo":
+            return .modulo
+        default:
+            return .modulo
+        }
     }
 }
 
