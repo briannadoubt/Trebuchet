@@ -52,6 +52,12 @@ public final class TrebuchetRuntime: DistributedActorSystem, @unchecked Sendable
     /// Used when onActorRequest creates an actor with a name that needs to be resolved
     public var nameToIDTranslator: (@Sendable (String) async -> TrebuchetActorID?)?
 
+    /// Opaque state store reference, injected by the System DSL runtime.
+    ///
+    /// Downstream modules (e.g. TrebuchetCloud) provide typed access via extensions.
+    /// Set before actors are created in `runDev` so actors can access it in `init`.
+    public var _stateStoreBox: (any Sendable)?
+
     /// The transport layer for network communication
     private var transport: (any TrebuchetTransport)?
 
