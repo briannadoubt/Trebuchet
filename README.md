@@ -290,6 +290,8 @@ This:
 4. Injects connection URLs into the environment
 
 Compote uses Apple's Containerization framework for sub-second container startup on macOS — no Docker Desktop required.
+On macOS, if your compose manifest exposes ports, install `socat` (`brew install socat`) so Compote can set up port forwarding.
+You can override runtime selection with `--runtime compote` or `--runtime docker`.
 
 ## Xcode Integration
 
@@ -321,12 +323,10 @@ The TCP transport and server-side `listen` are compiled out on WASI. Client `con
 | `Trebuchet` | Core framework — actors, transports, streaming, SwiftUI |
 | `TrebuchetCloud` | Cloud gateway, provider protocol, state stores, service registry |
 | `TrebuchetSQLite` | Local SQLite persistence with Maglev consistent hashing, automatic shard routing, lazy migration |
-| `TrebuchetAWS` | AWS Lambda, DynamoDB, CloudMap implementations |
-| `TrebuchetPostgreSQL` | PostgreSQL state store with LISTEN/NOTIFY sync |
-| `TrebuchetSurrealDB` | SurrealDB state store with ORM, schema generation, graph relationships |
 | `TrebuchetSecurity` | Authentication (API key, JWT), RBAC authorization, rate limiting |
 | `TrebuchetObservability` | Structured logging, metrics, distributed tracing, CloudWatch |
 | `TrebuchetCLI` | CLI library for `trebuchet dev`, `deploy`, `xcode`, `doctor`, `db` |
+| `TrebuchetPlugin` | SwiftPM command plugin entry point |
 
 ## CLI
 
@@ -338,8 +338,17 @@ trebuchet status                                 # Check deployment
 trebuchet undeploy                               # Tear down infrastructure
 trebuchet xcode setup ...                        # Wire Xcode scheme
 trebuchet doctor                                 # Diagnose issues
+trebuchet db status                              # Show DB status and shard health
 trebuchet db inspect                             # Show SQLite database stats and health
-trebuchet db ownership                           # Display actor-to-shard ownership map
+trebuchet db doctor                              # Run SQLite diagnostics
+trebuchet db migrate                             # Run pending migrations
+trebuchet db snapshot                            # Create DB snapshot
+trebuchet db restore                             # Restore from snapshot
+trebuchet db compact                             # Compact SQLite shards
+trebuchet db shell                               # Open interactive SQLite shell
+trebuchet db ownership show                      # Display actor-to-shard ownership map
+trebuchet db ownership init                      # Initialize ownership map
+trebuchet db ownership set                       # Manually set shard ownership
 trebuchet db rebalance                           # Rebalance actors across shards
 ```
 
@@ -359,6 +368,9 @@ swift package plugin trebuchet dev . --product MyGame
 
 - Swift 6.2+
 - macOS 15+ / iOS 17+ / tvOS 17+ / watchOS 10+ / WASI
+- Local dependency runtime:
+  - macOS: `compote` on `PATH` (and `socat` when ports are exposed)
+  - non-macOS: Docker Compose (`docker compose` or `docker-compose`)
 
 ## Documentation
 
