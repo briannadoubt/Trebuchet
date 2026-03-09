@@ -61,8 +61,6 @@ let package = Package(
         // CLI dependencies
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.0"),
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
-        // AWS SDK (Soto) - individual service packages
-        .package(url: "https://github.com/soto-project/soto.git", from: "7.0.0"),
     ],
     targets: [
         .target(
@@ -150,7 +148,6 @@ let package = Package(
             name: "TrebuchetObservability",
             dependencies: [
                 "Trebuchet",
-                .product(name: "SotoCloudWatch", package: "soto"),
             ]
         ),
         .target(
@@ -218,7 +215,6 @@ let package = Package(
             name: "TrebuchetObservabilityTests",
             dependencies: [
                 "TrebuchetObservability",
-                .product(name: "SotoCloudWatch", package: "soto"),
             ]
         ),
         .testTarget(

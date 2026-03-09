@@ -3,7 +3,6 @@
 
 import Testing
 import Foundation
-import SotoCore
 @testable import TrebuchetObservability
 
 @Suite("Metrics Tests")
@@ -265,32 +264,6 @@ struct MetricsTests {
         #expect(TrebuchetMetrics.invocationsErrors == "trebuchet.invocations.errors")
         #expect(TrebuchetMetrics.connectionsActive == "trebuchet.connections.active")
         #expect(TrebuchetMetrics.stateOperationsCount == "trebuchet.state.operations.count")
-    }
-
-    // MARK: - CloudWatch Configuration Tests
-
-    @Test("CloudWatch configuration")
-    func testCloudWatchConfiguration() {
-        let config = CloudWatchConfiguration(
-            namespace: "Trebuchet/Production",
-            region: .useast1,
-            flushInterval: .seconds(60),
-            maxBatchSize: 20
-        )
-
-        #expect(config.namespace == "Trebuchet/Production")
-        #expect(config.region == .useast1)
-        #expect(config.flushInterval == .seconds(60))
-        #expect(config.maxBatchSize == 20)
-    }
-
-    @Test("CloudWatch configuration defaults")
-    func testCloudWatchConfigurationDefaults() {
-        let config = CloudWatchConfiguration(namespace: "Test")
-
-        #expect(config.region == .useast1)
-        #expect(config.flushInterval == .seconds(60))
-        #expect(config.maxBatchSize == 20)
     }
 
     // MARK: - Integration Tests
