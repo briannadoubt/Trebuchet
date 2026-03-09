@@ -385,7 +385,17 @@ Sources/TrebuchetSQLite/
 ├── TrebuchetSQLite.swift            # Module exports, re-exports GRDB
 ├── SQLiteStateStore.swift           # ActorStateStore using local SQLite via GRDB
 ├── SQLiteConfiguration.swift        # GRDB pool configuration (WAL mode, pragmas)
-└── SQLiteShardManager.swift         # Shard directory layout and pool lifecycle
+├── SQLiteShardManager.swift         # Shard directory layout and pool lifecycle with Maglev routing
+├── ShardedStateStore.swift          # Sharding-aware ActorStateStore with migration support
+├── MaglevHasher.swift               # Maglev consistent hashing for shard assignment
+├── MaglevMigrationPlanner.swift     # Migration planning for shard count changes
+├── RoutingMigrationSweeper.swift    # Background actor for cold-actor migration
+├── ShardOwnership.swift             # Shard ownership map and migration state persistence
+├── StorageLifecycleManager.swift    # Storage lifecycle phases and migration detection
+├── ShardHealthChecker.swift         # Per-shard SQLite integrity and WAL monitoring
+├── StorageMetrics.swift             # Read/write/delete latency sampling
+├── ShardMigrationCoordinator.swift  # Live shard moves between nodes
+└── RebalancePlanner.swift           # Minimal shard move computation for even distribution
 ```
 
 ### Key Types
@@ -585,7 +595,7 @@ Test suites:
 - `TrebuchetObservabilityTests`: Logging, metrics, distributed tracing
 - `TrebuchetPostgreSQLTests`: PostgreSQL state store and stream adapter
 - `TrebuchetSurrealDBTests`: SurrealDB state store, ORM patterns, schema generation, graph relationships
-- `TrebuchetSQLiteTests`: SQLite state store, shard manager, optimistic locking
+- `TrebuchetSQLiteTests`: SQLite state store, shard manager, optimistic locking, Maglev hashing, routing migration, sharded state store
 
 ## Release Process
 

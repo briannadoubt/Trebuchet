@@ -13,8 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--system-path <path>`
   - `--product <SystemExecutable>`
 - **Xcode session argument builder tests** to verify the spawned `dev` process always targets a System package with an explicit product.
+- **Maglev consistent hashing** for shard assignment (`MaglevHasher`). Only ~1/(N+1) keys remap when adding a shard, compared to ~75% with modulo hashing. Uses dual-hash permutations (FNV-1a + DJB2) over a configurable lookup table (default 65537).
+- **`ShardedStateStore`** — sharding-aware `ActorStateStore` that automatically routes reads and writes to the correct shard via Maglev hashing. Supports transparent migration when shard count changes.
+- **Lazy read-through migration** for shard expansion/contraction. When shard count changes in config, actors migrate on first access with zero downtime:
+  - Reads fall back to old shard on miss, copy row to new shard, delete from old
+  - Writes clean up stale copies on old shards
+  - `RoutingMigrationSweeper` migrates cold actors in the background
+  - Migration state persisted in `ownership.json` to survive restarts
+  - Crash-safe via `INSERT OR REPLACE` ordering
+- **`MaglevMigrationPlanner`** for computing migration operations when shard count changes.
+- **Configurable `cache_size`** for SQLite WAL memory tuning via `SQLiteStorageConfiguration.cacheSizeKB`.
 
 ### Changed
+- **TrebuchetSQLite routing simplified** — removed `ShardRoutingStrategy` protocol, `ModuloRouting`, `RoutingMode` enum. Maglev consistent hashing is now the only and automatic routing strategy.
+- **`SQLiteShardManager`** now uses `MaglevHasher` directly instead of a pluggable routing strategy.
+- **`StorageLifecycleManager`** now detects shard count changes on bootstrap and initiates migration automatically.
 - **CLI contract is now System-first**:
   - `trebuchet dev <system-package-path> --product <SystemExecutable>`
   - `trebuchet deploy <system-package-path> --product <SystemExecutable>`

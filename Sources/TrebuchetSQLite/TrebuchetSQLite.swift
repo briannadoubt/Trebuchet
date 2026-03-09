@@ -31,8 +31,14 @@
 ///     topology.json
 /// ```
 ///
-/// Actors are assigned to shards via consistent hashing on their actor ID, ensuring
-/// even distribution and minimal reshuffling when shards are added or removed.
+/// Actors are assigned to shards via Maglev consistent hashing on their actor ID,
+/// ensuring even distribution and minimal reshuffling when shards are added or
+/// removed -- only ~1/(N+1) keys remap on a topology change versus ~75% with naive
+/// modulo hashing.
+///
+/// When the shard count changes, actors migrate lazily on first access -- no downtime
+/// or manual migration required. A background sweeper handles cold actors that aren't
+/// accessed organically.
 ///
 /// ## Key Types
 ///
@@ -64,6 +70,23 @@
 /// - ``RebalancePlanner`` -- Given the current shard distribution and set of live nodes,
 ///   computes a minimal set of ``ShardMove`` operations to reach an even distribution.
 ///
+/// - ``ShardedStateStore`` -- Sharding-aware ``ActorStateStore`` that automatically
+///   routes operations to the correct shard via Maglev consistent hashing. During
+///   migration, reads fall back to old shards on miss, writes clean up stale copies,
+///   and a background sweeper handles cold actors.
+///
+/// - ``MaglevHasher`` -- Consistent hash ring using Google's Maglev algorithm. Only
+///   ~1/(N+1) keys remap when a shard is added, vs ~75% with modulo hashing. Uses
+///   dual-hash permutations (FNV-1a + DJB2) over a fixed-size lookup table
+///   (default 65537).
+///
+/// - ``RoutingMigrationSweeper`` -- Background actor that migrates cold actors from
+///   old shards after a shard count change. Iterates old shards in batches with
+///   cursor-based pagination, throttled to avoid starving normal traffic.
+///
+/// - ``MaglevMigrationPlanner`` -- Plans migration operations when shard count changes,
+///   computing which actors need to move based on old vs new Maglev hash assignments.
+///
 /// ## Usage
 ///
 /// ```swift
@@ -72,12 +95,11 @@
 /// // Simplest setup -- single database file
 /// let store = try await SQLiteStateStore(path: ".trebuchet/db/state.sqlite")
 ///
-/// // Sharded setup for higher throughput
+/// // Sharded setup with automatic Maglev routing
 /// let config = SQLiteStorageConfiguration(root: ".trebuchet/db", shardCount: 4)
 /// let manager = SQLiteShardManager(configuration: config)
 /// try await manager.initialize()
-/// let pool = try await manager.pool(for: 0)
-/// let store = try await SQLiteStateStore(dbPool: pool)
+/// let store = await ShardedStateStore(shardManager: manager)
 ///
 /// // Wire into a CloudGateway
 /// let gateway = CloudGateway(configuration: .init(stateStore: store))

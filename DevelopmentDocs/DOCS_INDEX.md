@@ -50,6 +50,28 @@ Complete documentation for Xcode project support with automatic dependency analy
   - Recommendation (hybrid approach wins)
   - User workflow and best practices
 
+## SQLite Persistence & Sharding
+
+### Architecture
+- **[trebuchet_sqlite_architecture_canvas.md](../trebuchet_sqlite_architecture_canvas.md)** - Full SQLite architecture design
+  - Storage modes (persistent node, portable log)
+  - Maglev consistent hashing for shard assignment
+  - Lazy read-through migration on shard count changes
+  - Lifecycle phases and operational model
+  - CLI `trebuchet db` subcommands
+
+### Key Source Files
+
+#### Persistence & Sharding
+- `Sources/TrebuchetSQLite/SQLiteStateStore.swift` - Core ActorStateStore implementation
+- `Sources/TrebuchetSQLite/ShardedStateStore.swift` - Shard-routing ActorStateStore with migration support
+- `Sources/TrebuchetSQLite/SQLiteShardManager.swift` - Shard directory layout and pool lifecycle
+- `Sources/TrebuchetSQLite/MaglevHasher.swift` - Maglev consistent hashing algorithm
+- `Sources/TrebuchetSQLite/MaglevMigrationPlanner.swift` - Migration planning for shard changes
+- `Sources/TrebuchetSQLite/RoutingMigrationSweeper.swift` - Background cold-actor migration
+- `Sources/TrebuchetSQLite/ShardOwnership.swift` - Ownership map and migration state persistence
+- `Sources/TrebuchetSQLite/StorageLifecycleManager.swift` - Lifecycle phases and migration detection
+
 ## Architecture Documentation
 
 ### Key Source Files
