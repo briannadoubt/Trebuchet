@@ -15,13 +15,13 @@ import TrebuchetCloud
 /// migrates cold actors.
 public actor ShardedStateStore: ActorStateStore {
     private let shardManager: SQLiteShardManager
-    private let newRoutingStrategy: any ShardRoutingStrategy
+    private let newHasher: MaglevHasher
     private var storeCache: [Int: SQLiteStateStore] = [:]
 
     // MARK: - Migration State
 
     private var migrationState: RoutingMigrationState?
-    private var oldRoutingStrategy: (any ShardRoutingStrategy)?
+    private var oldHasher: MaglevHasher?
     private var oldShardPools: [Int: DatabasePool]?
 
     /// Whether the store is currently in migration mode.
@@ -31,7 +31,7 @@ public actor ShardedStateStore: ActorStateStore {
 
     public init(shardManager: SQLiteShardManager) async {
         self.shardManager = shardManager
-        self.newRoutingStrategy = shardManager.routingStrategy
+        self.newHasher = await shardManager.hasher
     }
 
     /// Creates a sharded store in migration mode.
@@ -40,18 +40,21 @@ public actor ShardedStateStore: ActorStateStore {
     ///   - shardManager: The shard manager for the new configuration.
     ///   - migrationState: The persisted migration state from `ownership.json`.
     ///   - oldShardPools: Pre-opened pools for old shard files.
-    ///   - oldRoutingStrategy: The routing strategy from the previous configuration.
+    ///   - oldShardCount: The shard count before the configuration change.
+    ///   - oldTableSize: The Maglev table size before the change. Default 65537.
     public init(
         shardManager: SQLiteShardManager,
         migrationState: RoutingMigrationState,
         oldShardPools: [Int: DatabasePool],
-        oldRoutingStrategy: any ShardRoutingStrategy
+        oldShardCount: Int,
+        oldTableSize: Int = 65537
     ) async {
         self.shardManager = shardManager
-        self.newRoutingStrategy = shardManager.routingStrategy
+        self.newHasher = await shardManager.hasher
         self.migrationState = migrationState
         self.oldShardPools = oldShardPools
-        self.oldRoutingStrategy = oldRoutingStrategy
+        let names = (0..<oldShardCount).map { "shard-\(String(format: "%04d", $0))" }
+        self.oldHasher = MaglevHasher(shardNames: names, tableSize: oldTableSize)
     }
 
     // MARK: - ActorStateStore Conformance
@@ -260,7 +263,7 @@ public actor ShardedStateStore: ActorStateStore {
     /// Called by ``RoutingMigrationSweeper`` when the background sweep finishes.
     public func completeMigration() {
         migrationState = nil
-        oldRoutingStrategy = nil
+        oldHasher = nil
         oldShardPools = nil
     }
 
@@ -269,14 +272,14 @@ public actor ShardedStateStore: ActorStateStore {
         oldShardPools
     }
 
-    /// The old routing strategy, exposed for the sweeper.
-    public func getOldRoutingStrategy() -> (any ShardRoutingStrategy)? {
-        oldRoutingStrategy
+    /// The old Maglev hasher, exposed for the sweeper.
+    public func getOldHasher() -> MaglevHasher? {
+        oldHasher
     }
 
-    /// The new routing strategy, exposed for the sweeper.
-    public func getNewRoutingStrategy() -> any ShardRoutingStrategy {
-        newRoutingStrategy
+    /// The new Maglev hasher, exposed for the sweeper.
+    public func getNewHasher() -> MaglevHasher {
+        newHasher
     }
 
     // MARK: - Private
@@ -293,13 +296,13 @@ public actor ShardedStateStore: ActorStateStore {
     }
 
     /// Returns the old shard's pool if the actor routes to a different shard
-    /// under the old strategy, or nil if not migrating or same shard.
+    /// under the old hasher, or nil if not migrating or same shard.
     private func oldPoolForActor(_ actorID: String) -> DatabasePool? {
-        guard let oldStrategy = oldRoutingStrategy,
+        guard let oldH = oldHasher,
               let pools = oldShardPools else { return nil }
 
-        let oldShardID = oldStrategy.shardID(for: actorID)
-        let newShardID = newRoutingStrategy.shardID(for: actorID)
+        let oldShardID = oldH.shardIndex(for: actorID)
+        let newShardID = newHasher.shardIndex(for: actorID)
 
         // Same physical shard file — no migration needed.
         // This covers both "same shard ID with same count" and

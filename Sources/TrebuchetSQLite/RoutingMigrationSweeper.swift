@@ -14,8 +14,8 @@ import GRDB
 public actor RoutingMigrationSweeper {
     private let shardedStore: ShardedStateStore
     private let oldShardPools: [Int: DatabasePool]
-    private let oldRoutingStrategy: any ShardRoutingStrategy
-    private let newRoutingStrategy: any ShardRoutingStrategy
+    private let oldHasher: MaglevHasher
+    private let newHasher: MaglevHasher
     private let batchSize: Int
     private let delayBetweenBatches: Duration
 
@@ -36,22 +36,22 @@ public actor RoutingMigrationSweeper {
     /// - Parameters:
     ///   - shardedStore: The store that owns the migration logic.
     ///   - oldShardPools: Map of old shard ID → DatabasePool for reading old data.
-    ///   - oldRoutingStrategy: The routing strategy before the config change.
-    ///   - newRoutingStrategy: The routing strategy after the config change.
+    ///   - oldHasher: The Maglev hasher from the previous configuration.
+    ///   - newHasher: The Maglev hasher for the current configuration.
     ///   - batchSize: Number of actors to process per batch. Default 100.
     ///   - delayBetweenBatches: Sleep duration between batches. Default 100ms.
     public init(
         shardedStore: ShardedStateStore,
         oldShardPools: [Int: DatabasePool],
-        oldRoutingStrategy: any ShardRoutingStrategy,
-        newRoutingStrategy: any ShardRoutingStrategy,
+        oldHasher: MaglevHasher,
+        newHasher: MaglevHasher,
         batchSize: Int = 100,
         delayBetweenBatches: Duration = .milliseconds(100)
     ) {
         self.shardedStore = shardedStore
         self.oldShardPools = oldShardPools
-        self.oldRoutingStrategy = oldRoutingStrategy
-        self.newRoutingStrategy = newRoutingStrategy
+        self.oldHasher = oldHasher
+        self.newHasher = newHasher
         self.batchSize = batchSize
         self.delayBetweenBatches = delayBetweenBatches
     }
@@ -123,8 +123,8 @@ public actor RoutingMigrationSweeper {
                 for actorID in actorIDs {
                     try Task.checkCancellation()
 
-                    let oldShard = oldRoutingStrategy.shardID(for: actorID)
-                    let newShard = newRoutingStrategy.shardID(for: actorID)
+                    let oldShard = oldHasher.shardIndex(for: actorID)
+                    let newShard = newHasher.shardIndex(for: actorID)
 
                     _scannedCount += 1
 

@@ -16,20 +16,16 @@ public actor SQLiteShardManager {
     private let configuration: SQLiteStorageConfiguration
     private var shardPools: [Int: DatabasePool] = [:]
 
-    /// The routing strategy used to assign keys to shards.
-    public let routingStrategy: any ShardRoutingStrategy
+    /// The Maglev consistent hasher used to assign keys to shards.
+    public let hasher: MaglevHasher
 
     /// The number of shards managed by this instance.
     public var shardCount: Int { configuration.shardCount }
 
     public init(configuration: SQLiteStorageConfiguration) {
         self.configuration = configuration
-        switch configuration.routing {
-        case .modulo:
-            self.routingStrategy = ModuloRouting(shardCount: configuration.shardCount)
-        case .maglev(let tableSize):
-            self.routingStrategy = MaglevRouting(shardCount: configuration.shardCount, tableSize: tableSize)
-        }
+        let names = (0..<configuration.shardCount).map { "shard-\(String(format: "%04d", $0))" }
+        self.hasher = MaglevHasher(shardNames: names, tableSize: configuration.maglevTableSize)
     }
 
     /// Initialize the database directory layout and create shard files
@@ -70,13 +66,11 @@ public actor SQLiteShardManager {
         return "\(configuration.root)/shards/\(shardName)/main.sqlite"
     }
 
-    /// Determine which shard owns a given key using the configured routing strategy.
+    /// Determine which shard owns a given key using Maglev consistent hashing.
     ///
-    /// With `.modulo` routing this uses `fnv1a(key) % shardCount`.
-    /// With `.maglev` routing this uses Maglev consistent hashing for minimal
-    /// disruption when the shard count changes.
+    /// Only ~1/(N+1) of keys remap when shards are added or removed.
     public func shardID(for key: String) -> Int {
-        routingStrategy.shardID(for: key)
+        hasher.shardIndex(for: key)
     }
 
     /// FNV-1a 64-bit hash — stable, deterministic, and fast.

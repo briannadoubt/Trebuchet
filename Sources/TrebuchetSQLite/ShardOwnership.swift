@@ -98,30 +98,26 @@ public struct ShardOwnershipRecord: Codable, Sendable {
 
 /// Persisted state tracking an in-progress shard routing migration.
 ///
-/// When the configured shard count or routing mode changes, this struct captures
-/// the old configuration so that ``ShardedStateStore`` can perform lazy
-/// read-through migration (and ``RoutingMigrationSweeper`` can migrate cold actors
-/// in the background).
+/// When the configured shard count changes, this struct captures the old
+/// configuration so that ``ShardedStateStore`` can perform lazy read-through
+/// migration (and ``RoutingMigrationSweeper`` can migrate cold actors in the
+/// background).
 public struct RoutingMigrationState: Codable, Sendable, Equatable {
-    /// The routing mode name before the change (e.g. "modulo" or "maglev").
-    public var previousRoutingMode: String
     /// The shard count before the change.
     public var previousShardCount: Int
-    /// Maglev table size before the change (nil for modulo).
-    public var previousTableSize: Int?
+    /// Maglev table size before the change.
+    public var previousTableSize: Int
     /// When the migration was started.
     public var startedAt: Date
     /// How many actors have been migrated so far (updated by the sweeper).
     public var migratedCount: Int
 
     public init(
-        previousRoutingMode: String,
         previousShardCount: Int,
-        previousTableSize: Int? = nil,
+        previousTableSize: Int = 65537,
         startedAt: Date = Date(),
         migratedCount: Int = 0
     ) {
-        self.previousRoutingMode = previousRoutingMode
         self.previousShardCount = previousShardCount
         self.previousTableSize = previousTableSize
         self.startedAt = startedAt
@@ -135,8 +131,6 @@ public struct RoutingMigrationState: Codable, Sendable, Equatable {
 struct OwnershipFile: Codable {
     var globalEpoch: UInt64
     var shards: [ShardOwnershipRecord]
-    /// The routing strategy name. `nil` means legacy modulo (backward compat).
-    var routingMode: String?
     /// The persisted shard count (used to detect expansion/compaction).
     var shardCount: Int?
     /// Active routing migration state, if any.
@@ -164,9 +158,6 @@ public actor ShardOwnershipMap {
     /// Alias for `globalEpoch` used by the migration coordinator.
     public var currentEpoch: UInt64 { globalEpoch }
 
-    /// The persisted routing mode name (nil = legacy modulo).
-    public private(set) var routingMode: String?
-
     /// The persisted shard count (nil = not yet tracked).
     public private(set) var shardCount: Int?
 
@@ -183,7 +174,6 @@ public actor ShardOwnershipMap {
         self.metadataPath = metadataPath
         self.records = [:]
         self.globalEpoch = 0
-        self.routingMode = nil
         self.shardCount = nil
         self.routingMigration = nil
     }
@@ -205,7 +195,6 @@ public actor ShardOwnershipMap {
             map[record.shardID] = record
         }
         self.globalEpoch = file.globalEpoch
-        self.routingMode = file.routingMode
         self.shardCount = file.shardCount
         self.routingMigration = file.routingMigration
     }
@@ -215,7 +204,6 @@ public actor ShardOwnershipMap {
         let file = OwnershipFile(
             globalEpoch: globalEpoch,
             shards: records.values.sorted { $0.shardID < $1.shardID },
-            routingMode: routingMode,
             shardCount: shardCount,
             routingMigration: routingMigration
         )
@@ -332,11 +320,6 @@ public actor ShardOwnershipMap {
     }
 
     // MARK: Bootstrap
-
-    /// Updates the persisted routing mode.
-    public func setRoutingMode(_ mode: String?) {
-        self.routingMode = mode
-    }
 
     /// Updates the persisted shard count.
     public func setShardCount(_ count: Int) {

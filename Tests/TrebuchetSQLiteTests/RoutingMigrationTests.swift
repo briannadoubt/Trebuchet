@@ -8,14 +8,13 @@ struct RoutingMigrationTests {
 
     // MARK: - Helpers
 
-    /// Creates a sharded store with `shardCount` shards using modulo routing,
-    /// populates it with actors, then creates a new store with `newShardCount`
-    /// shards using maglev routing in migration mode.
+    /// Creates a sharded store with `oldShardCount` shards, populates it with actors,
+    /// then creates a new store with `newShardCount` shards in migration mode.
     private func makeMigrationScenario(
         oldShardCount: Int = 4,
         newShardCount: Int = 5,
-        oldRouting: RoutingMode = .modulo,
-        newRouting: RoutingMode = .maglev(tableSize: 997),
+        oldTableSize: Int = 997,
+        newTableSize: Int = 997,
         actorIDs: [String] = []
     ) async throws -> (
         oldStore: ShardedStateStore,
@@ -28,7 +27,7 @@ struct RoutingMigrationTests {
 
         // Set up old store
         let oldConfig = SQLiteStorageConfiguration(
-            root: root, shardCount: oldShardCount, routing: oldRouting
+            root: root, shardCount: oldShardCount, maglevTableSize: oldTableSize
         )
         let oldManager = SQLiteShardManager(configuration: oldConfig)
         try await oldManager.initialize()
@@ -53,33 +52,26 @@ struct RoutingMigrationTests {
             }
         }
 
-        // Build old routing strategy
-        let oldStrategy: any ShardRoutingStrategy
-        switch oldRouting {
-        case .modulo:
-            oldStrategy = ModuloRouting(shardCount: oldShardCount)
-        case .maglev(let tableSize):
-            oldStrategy = MaglevRouting(shardCount: oldShardCount, tableSize: tableSize)
-        }
-
         // Open old shard pools (re-use the files created by oldManager)
+        // and ensure actor_state table exists on every shard
         var oldPools: [Int: DatabasePool] = [:]
         for i in 0..<oldShardCount {
-            oldPools[i] = try await oldManager.openShard(i)
+            let pool = try await oldManager.openShard(i)
+            _ = try await SQLiteStateStore(dbPool: pool)
+            oldPools[i] = pool
         }
 
         // Create migration state
         let migrationState = RoutingMigrationState(
-            previousRoutingMode: oldRouting.persistedName,
             previousShardCount: oldShardCount,
-            previousTableSize: oldRouting == .modulo ? nil : 997,
+            previousTableSize: oldTableSize,
             startedAt: Date(),
             migratedCount: 0
         )
 
         // Create new manager + store in migration mode
         let newConfig = SQLiteStorageConfiguration(
-            root: root, shardCount: newShardCount, routing: newRouting
+            root: root, shardCount: newShardCount, maglevTableSize: newTableSize
         )
         let newManager = SQLiteShardManager(configuration: newConfig)
         try await newManager.initialize()
@@ -88,7 +80,8 @@ struct RoutingMigrationTests {
             shardManager: newManager,
             migrationState: migrationState,
             oldShardPools: oldPools,
-            oldRoutingStrategy: oldStrategy
+            oldShardCount: oldShardCount,
+            oldTableSize: oldTableSize
         )
 
         return (oldStore, newStore, root, oldManager, newManager)
@@ -112,53 +105,73 @@ struct RoutingMigrationTests {
 
     @Test("Save cleans up old shard")
     func saveCleanup() async throws {
+        // Find an actor that routes to different shards under old (4) vs new (5)
+        let oldShardNames = (0..<4).map { "shard-\(String(format: "%04d", $0))" }
+        let newShardNames = (0..<5).map { "shard-\(String(format: "%04d", $0))" }
+        let oldHasher = MaglevHasher(shardNames: oldShardNames, tableSize: 997)
+        let newHasher = MaglevHasher(shardNames: newShardNames, tableSize: 997)
+
+        let movedActor = (0..<1000)
+            .map { "cleanup-\($0)" }
+            .first { oldHasher.shardIndex(for: $0) != newHasher.shardIndex(for: $0) }
+            ?? "actor-cleanup"
+
         let (_, newStore, root, oldManager, _) = try await makeMigrationScenario(
-            actorIDs: ["actor-cleanup"]
+            actorIDs: [movedActor]
         )
         defer { try? FileManager.default.removeItem(atPath: root) }
 
         // Save through new store
-        try await newStore.save(TestState(name: "updated", count: 99), for: "actor-cleanup")
+        try await newStore.save(TestState(name: "updated", count: 99), for: movedActor)
 
         // Verify old shard is cleaned up
-        let oldRouting = ModuloRouting(shardCount: 4)
-        let oldShardID = oldRouting.shardID(for: "actor-cleanup")
+        let oldShardID = oldHasher.shardIndex(for: movedActor)
         let oldPool = try await oldManager.openShard(oldShardID)
 
         let count = try await oldPool.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM actor_state WHERE actorId = ?",
-                           arguments: ["actor-cleanup"]) ?? 0
+                           arguments: [movedActor]) ?? 0
         }
         #expect(count == 0, "Old shard should have no copy after save")
 
         // Verify new store has the updated data
-        let loaded = try await newStore.load(for: "actor-cleanup", as: TestState.self)
+        let loaded = try await newStore.load(for: movedActor, as: TestState.self)
         #expect(loaded?.name == "updated")
     }
 
     @Test("Delete hits both shards")
     func deleteBothShards() async throws {
+        // Find an actor that routes to different shards under old (4) vs new (5)
+        let oldShardNames = (0..<4).map { "shard-\(String(format: "%04d", $0))" }
+        let newShardNames = (0..<5).map { "shard-\(String(format: "%04d", $0))" }
+        let oldHasher = MaglevHasher(shardNames: oldShardNames, tableSize: 997)
+        let newHasher = MaglevHasher(shardNames: newShardNames, tableSize: 997)
+
+        let movedActor = (0..<1000)
+            .map { "delete-\($0)" }
+            .first { oldHasher.shardIndex(for: $0) != newHasher.shardIndex(for: $0) }
+            ?? "actor-delete"
+
         let (_, newStore, root, oldManager, _) = try await makeMigrationScenario(
-            actorIDs: ["actor-delete"]
+            actorIDs: [movedActor]
         )
         defer { try? FileManager.default.removeItem(atPath: root) }
 
         // Delete through new store
-        try await newStore.delete(for: "actor-delete")
+        try await newStore.delete(for: movedActor)
 
         // Verify gone from old shard
-        let oldRouting = ModuloRouting(shardCount: 4)
-        let oldShardID = oldRouting.shardID(for: "actor-delete")
+        let oldShardID = oldHasher.shardIndex(for: movedActor)
         let oldPool = try await oldManager.openShard(oldShardID)
 
         let count = try await oldPool.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM actor_state WHERE actorId = ?",
-                           arguments: ["actor-delete"]) ?? 0
+                           arguments: [movedActor]) ?? 0
         }
         #expect(count == 0)
 
         // Verify gone from new store
-        #expect(try await newStore.exists(for: "actor-delete") == false)
+        #expect(try await newStore.exists(for: movedActor) == false)
     }
 
     @Test("exists checks both shards")
@@ -182,7 +195,7 @@ struct RoutingMigrationTests {
         let root = NSTemporaryDirectory() + "trebuchet-seqmig-\(UUID().uuidString)"
         defer { try? FileManager.default.removeItem(atPath: root) }
 
-        let oldConfig = SQLiteStorageConfiguration(root: root, shardCount: 4, routing: .modulo)
+        let oldConfig = SQLiteStorageConfiguration(root: root, shardCount: 4)
         let oldManager = SQLiteShardManager(configuration: oldConfig)
         try await oldManager.initialize()
         let oldStore = await ShardedStateStore(shardManager: oldManager)
@@ -196,21 +209,23 @@ struct RoutingMigrationTests {
         #expect(originalSeq == 3)
 
         // Create new store in migration mode
-        let oldStrategy = ModuloRouting(shardCount: 4)
         var oldPools: [Int: DatabasePool] = [:]
-        for i in 0..<4 { oldPools[i] = try await oldManager.openShard(i) }
+        for i in 0..<4 {
+            let pool = try await oldManager.openShard(i)
+            _ = try await SQLiteStateStore(dbPool: pool)
+            oldPools[i] = pool
+        }
 
         // Expand to 5 shards
         let shardsDir = "\(root)/shards"
         let shardDir = "\(shardsDir)/shard-\(String(format: "%04d", 4))"
         try FileManager.default.createDirectory(atPath: shardDir, withIntermediateDirectories: true)
 
-        let newConfig = SQLiteStorageConfiguration(root: root, shardCount: 5, routing: .maglev(tableSize: 997))
+        let newConfig = SQLiteStorageConfiguration(root: root, shardCount: 5)
         let newManager = SQLiteShardManager(configuration: newConfig)
         try await newManager.initialize()
 
         let migrationState = RoutingMigrationState(
-            previousRoutingMode: "modulo",
             previousShardCount: 4,
             startedAt: Date()
         )
@@ -219,7 +234,8 @@ struct RoutingMigrationTests {
             shardManager: newManager,
             migrationState: migrationState,
             oldShardPools: oldPools,
-            oldRoutingStrategy: oldStrategy
+            oldShardCount: 4,
+            oldTableSize: 65537
         )
 
         // Load triggers migration — sequence number should be preserved
@@ -235,7 +251,7 @@ struct RoutingMigrationTests {
         let root = NSTemporaryDirectory() + "trebuchet-savever-\(UUID().uuidString)"
         defer { try? FileManager.default.removeItem(atPath: root) }
 
-        let oldConfig = SQLiteStorageConfiguration(root: root, shardCount: 4, routing: .modulo)
+        let oldConfig = SQLiteStorageConfiguration(root: root, shardCount: 4)
         let oldManager = SQLiteShardManager(configuration: oldConfig)
         try await oldManager.initialize()
         let oldStore = await ShardedStateStore(shardManager: oldManager)
@@ -246,28 +262,31 @@ struct RoutingMigrationTests {
         // Sequence number is now 2
 
         // Create migration scenario
-        let oldStrategy = ModuloRouting(shardCount: 4)
         var oldPools: [Int: DatabasePool] = [:]
-        for i in 0..<4 { oldPools[i] = try await oldManager.openShard(i) }
+        for i in 0..<4 {
+            let pool = try await oldManager.openShard(i)
+            _ = try await SQLiteStateStore(dbPool: pool)
+            oldPools[i] = pool
+        }
 
         let shardsDir = "\(root)/shards"
         try FileManager.default.createDirectory(
             atPath: "\(shardsDir)/shard-0004", withIntermediateDirectories: true
         )
 
-        let newConfig = SQLiteStorageConfiguration(root: root, shardCount: 5, routing: .maglev(tableSize: 997))
+        let newConfig = SQLiteStorageConfiguration(root: root, shardCount: 5)
         let newManager = SQLiteShardManager(configuration: newConfig)
         try await newManager.initialize()
 
         let newStore = await ShardedStateStore(
             shardManager: newManager,
             migrationState: RoutingMigrationState(
-                previousRoutingMode: "modulo",
                 previousShardCount: 4,
                 startedAt: Date()
             ),
             oldShardPools: oldPools,
-            oldRoutingStrategy: oldStrategy
+            oldShardCount: 4,
+            oldTableSize: 65537
         )
 
         // saveIfVersion with expected=2 should work (migrate first, then CAS)
@@ -289,17 +308,23 @@ struct RoutingMigrationTests {
         )
         defer { try? FileManager.default.removeItem(atPath: root) }
 
-        let oldStrategy = ModuloRouting(shardCount: 4)
-        let newStrategy = await newManager.routingStrategy
+        let oldShardNames = (0..<4).map { "shard-\(String(format: "%04d", $0))" }
+        let oldHasher = MaglevHasher(shardNames: oldShardNames, tableSize: 997)
+        let newShardNames = (0..<5).map { "shard-\(String(format: "%04d", $0))" }
+        let newHasher = MaglevHasher(shardNames: newShardNames, tableSize: 997)
 
         var oldPools: [Int: DatabasePool] = [:]
-        for i in 0..<4 { oldPools[i] = try await oldManager.openShard(i) }
+        for i in 0..<4 {
+            let pool = try await oldManager.openShard(i)
+            _ = try await SQLiteStateStore(dbPool: pool)
+            oldPools[i] = pool
+        }
 
         let sweeper = RoutingMigrationSweeper(
             shardedStore: newStore,
             oldShardPools: oldPools,
-            oldRoutingStrategy: oldStrategy,
-            newRoutingStrategy: newStrategy,
+            oldHasher: oldHasher,
+            newHasher: newHasher,
             batchSize: 5,
             delayBetweenBatches: .milliseconds(10)
         )
@@ -330,8 +355,8 @@ struct RoutingMigrationTests {
 
         // Verify actors that moved are on their new shard (not the old one)
         for actorID in actorIDs {
-            let oldShardID = oldStrategy.shardID(for: actorID)
-            let newShardID = newStrategy.shardID(for: actorID)
+            let oldShardID = oldHasher.shardIndex(for: actorID)
+            let newShardID = newHasher.shardIndex(for: actorID)
             if oldShardID != newShardID {
                 // This actor moved — verify it's on the new shard
                 let newPool = try await newManager.openShard(newShardID)
@@ -351,8 +376,6 @@ struct RoutingMigrationTests {
         let (_, newStore, root, _, _) = try await makeMigrationScenario(
             oldShardCount: 1,
             newShardCount: 1,
-            oldRouting: .modulo,
-            newRouting: .maglev(tableSize: 997),
             actorIDs: ["actor-single"]
         )
         defer { try? FileManager.default.removeItem(atPath: root) }
@@ -365,13 +388,15 @@ struct RoutingMigrationTests {
     @Test("Same-shard actors don't trigger migration")
     func sameShard() async throws {
         // Find an actor that routes to the same shard under both strategies
-        let oldStrategy = ModuloRouting(shardCount: 4)
-        let newStrategy = MaglevRouting(shardCount: 5, tableSize: 997)
+        let oldShardNames = (0..<4).map { "shard-\(String(format: "%04d", $0))" }
+        let newShardNames = (0..<5).map { "shard-\(String(format: "%04d", $0))" }
+        let oldHasher = MaglevHasher(shardNames: oldShardNames, tableSize: 997)
+        let newHasher = MaglevHasher(shardNames: newShardNames, tableSize: 997)
 
         var sameShard: String? = nil
         for i in 0..<1000 {
             let key = "stable-\(i)"
-            if oldStrategy.shardID(for: key) == newStrategy.shardID(for: key) {
+            if oldHasher.shardIndex(for: key) == newHasher.shardIndex(for: key) {
                 sameShard = key
                 break
             }
@@ -423,9 +448,8 @@ struct RoutingMigrationTests {
     @Test("RoutingMigrationState round-trips through JSON")
     func migrationStatePersistence() throws {
         let state = RoutingMigrationState(
-            previousRoutingMode: "modulo",
             previousShardCount: 4,
-            previousTableSize: nil,
+            previousTableSize: 65537,
             startedAt: Date(timeIntervalSince1970: 1000000),
             migratedCount: 42
         )
@@ -444,7 +468,6 @@ struct RoutingMigrationTests {
     @Test("OwnershipFile round-trips with migration state")
     func ownershipFileWithMigration() throws {
         let migration = RoutingMigrationState(
-            previousRoutingMode: "maglev",
             previousShardCount: 8,
             previousTableSize: 65537,
             startedAt: Date(timeIntervalSince1970: 1000000),
@@ -454,7 +477,6 @@ struct RoutingMigrationTests {
         let file = OwnershipFile(
             globalEpoch: 5,
             shards: [],
-            routingMode: "maglev",
             shardCount: 10,
             routingMigration: migration
         )
@@ -469,27 +491,5 @@ struct RoutingMigrationTests {
 
         #expect(decoded.shardCount == 10)
         #expect(decoded.routingMigration == migration)
-    }
-
-    @Test("RoutingMode.from(migrationState:) reconstructs correctly")
-    func routingModeFromMigrationState() {
-        let moduloState = RoutingMigrationState(
-            previousRoutingMode: "modulo",
-            previousShardCount: 4
-        )
-        #expect(RoutingMode.from(migrationState: moduloState) == .modulo)
-
-        let maglevState = RoutingMigrationState(
-            previousRoutingMode: "maglev",
-            previousShardCount: 8,
-            previousTableSize: 997
-        )
-        #expect(RoutingMode.from(migrationState: maglevState) == .maglev(tableSize: 997))
-
-        let maglevDefaultState = RoutingMigrationState(
-            previousRoutingMode: "maglev",
-            previousShardCount: 4
-        )
-        #expect(RoutingMode.from(migrationState: maglevDefaultState) == .maglev(tableSize: 65537))
     }
 }

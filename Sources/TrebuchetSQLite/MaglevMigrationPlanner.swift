@@ -77,13 +77,19 @@ public struct MaglevMigrationPlanner: Sendable {
         oldShardCount: Int,
         newShardCount: Int
     ) -> [ActorMigration] {
-        let oldRouting = MaglevRouting(shardCount: oldShardCount, tableSize: tableSize)
-        let newRouting = MaglevRouting(shardCount: newShardCount, tableSize: tableSize)
+        let oldHasher = MaglevHasher(
+            shardNames: shardNames(count: oldShardCount),
+            tableSize: tableSize
+        )
+        let newHasher = MaglevHasher(
+            shardNames: shardNames(count: newShardCount),
+            tableSize: tableSize
+        )
 
         var migrations: [ActorMigration] = []
         for id in actorIDs {
-            let oldShard = oldRouting.shardID(for: id)
-            let newShard = newRouting.shardID(for: id)
+            let oldShard = oldHasher.shardIndex(for: id)
+            let newShard = newHasher.shardIndex(for: id)
             if oldShard != newShard {
                 migrations.append(ActorMigration(
                     actorID: id,
