@@ -78,6 +78,7 @@ try await room.join(player: me)
 - <doc:DeployingToAzure>
 - <doc:CloudDeployment/FlyDeployment>
 - <doc:CloudDeployment/PostgreSQLConfiguration>
+- <doc:CloudDeployment/SQLiteConfiguration>
 
 ### Module Reference
 
@@ -86,3 +87,4 @@ try await room.join(player: me)
 - <doc:TrebuchetObservability>
 - <doc:TrebuchetSecurity>
 - <doc:TrebuchetPostgreSQL>
+- <doc:TrebuchetSQLite>
