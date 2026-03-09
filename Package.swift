@@ -22,14 +22,6 @@ let package = Package(
             targets: ["TrebuchetCloud"]
         ),
         .library(
-            name: "TrebuchetPostgreSQL",
-            targets: ["TrebuchetPostgreSQL"]
-        ),
-        .library(
-            name: "TrebuchetSurrealDB",
-            targets: ["TrebuchetSurrealDB"]
-        ),
-        .library(
             name: "TrebuchetObservability",
             targets: ["TrebuchetObservability"]
         ),
@@ -62,10 +54,6 @@ let package = Package(
         .package(url: "https://github.com/swiftwasm/JavaScriptKit.git", exact: "0.19.2"),
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin.git", from: "1.4.0"),
-        // PostgreSQL support
-        .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.21.0"),
-        // SurrealDB support
-        .package(url: "https://github.com/briannadoubt/surrealdb-swift.git", from: "0.2.0"),
         // SQLite support (GRDB)
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.4.1"),
         // Cryptography (cross-platform)
@@ -151,22 +139,6 @@ let package = Package(
             ]
         ),
         .target(
-            name: "TrebuchetPostgreSQL",
-            dependencies: [
-                "Trebuchet",
-                "TrebuchetCloud",
-                .product(name: "PostgresNIO", package: "postgres-nio"),
-            ]
-        ),
-        .target(
-            name: "TrebuchetSurrealDB",
-            dependencies: [
-                "Trebuchet",
-                "TrebuchetCloud",
-                .product(name: "SurrealDB", package: "surrealdb-swift"),
-            ]
-        ),
-        .target(
             name: "TrebuchetSQLite",
             dependencies: [
                 "Trebuchet",
@@ -233,17 +205,6 @@ let package = Package(
         .testTarget(
             name: "TrebuchetCloudTests",
             dependencies: ["TrebuchetCloud"]
-        ),
-        .testTarget(
-            name: "TrebuchetPostgreSQLTests",
-            dependencies: ["TrebuchetPostgreSQL"],
-            resources: [
-                .copy("setup.sql")
-            ]
-        ),
-        .testTarget(
-            name: "TrebuchetSurrealDBTests",
-            dependencies: ["TrebuchetSurrealDB"]
         ),
         .testTarget(
             name: "TrebuchetSQLiteTests",

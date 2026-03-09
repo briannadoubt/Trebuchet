@@ -1,5 +1,5 @@
 {
-  "originHash" : "54e782d2bbca08451a956b24a26fb116b24d8bf1c0eca8365da2e7664e8606b8",
+  "originHash" : "a670550d0e9cd4f4819ecc2557809696a569e9450462b41534bfd6df1b29b4ac",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -38,15 +38,6 @@
       }
     },
     {
-      "identity" : "postgres-nio",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/vapor/postgres-nio.git",
-      "state" : {
-        "revision" : "d578b86fb2c8321b114d97cd70831d1a3e9531a6",
-        "version" : "1.30.1"
-      }
-    },
-    {
       "identity" : "soto",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/soto-project/soto.git",
@@ -62,15 +53,6 @@
       "state" : {
         "revision" : "b4371f0475e71453597307a7e0de0f502eb49d39",
         "version" : "7.10.0"
-      }
-    },
-    {
-      "identity" : "surrealdb-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/briannadoubt/surrealdb-swift.git",
-      "state" : {
-        "revision" : "1149ada4dfb934d7acb25521799bf2bd5e970e64",
-        "version" : "0.2.0"
       }
     },
     {
