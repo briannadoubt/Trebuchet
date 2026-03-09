@@ -39,6 +39,7 @@ public struct SQLiteStorageConfiguration: Sendable {
         maglevTableSize: Int = 65537,
         cacheSizeKB: Int = 2048
     ) {
+        precondition(cacheSizeKB > 0, "cacheSizeKB must be positive, got \(cacheSizeKB)")
         self.root = root
         self.shardCount = shardCount
         self.mode = mode
@@ -48,6 +49,7 @@ public struct SQLiteStorageConfiguration: Sendable {
 
     /// Create a configured GRDB DatabasePool for a given path
     public static func makeDatabasePool(path: String, cacheSizeKB: Int = 2048) throws -> DatabasePool {
+        precondition(cacheSizeKB > 0, "cacheSizeKB must be positive, got \(cacheSizeKB)")
         var config = Configuration()
         let cacheKB = cacheSizeKB
         config.prepareDatabase { db in
