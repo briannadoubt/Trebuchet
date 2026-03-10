@@ -28,7 +28,7 @@ Add Trebuchet to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/briannadoubt/Trebuchet.git", from: "0.7.0")
+    .package(url: "https://github.com/briannadoubt/Trebuchet.git", from: "0.9.1")
 ]
 ```
 
@@ -324,7 +324,7 @@ The TCP transport and server-side `listen` are compiled out on WASI. Client `con
 | `TrebuchetCloud` | Cloud gateway, provider protocol, state stores, service registry |
 | `TrebuchetSQLite` | Local SQLite persistence with Maglev consistent hashing, automatic shard routing, lazy migration |
 | `TrebuchetSecurity` | Authentication (API key, JWT), RBAC authorization, rate limiting |
-| `TrebuchetObservability` | Structured logging, metrics, distributed tracing, CloudWatch |
+| `TrebuchetObservability` | Structured logging, metrics, distributed tracing |
 | `TrebuchetCLI` | CLI library for `trebuchet dev`, `deploy`, `xcode`, `doctor`, `db` |
 | `TrebuchetPlugin` | SwiftPM command plugin entry point |
 
@@ -361,7 +361,7 @@ mint install briannadoubt/Trebuchet
 Or as a Swift package plugin — add Trebuchet as a dependency and use:
 
 ```bash
-swift package plugin trebuchet dev . --product MyGame
+swift package trebuchet dev . --product MyGame
 ```
 
 ## Requirements
