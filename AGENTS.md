@@ -16,3 +16,6 @@
 - Prefer one focused PR per task; update the existing PR with additional commits when continuing the same task.
 - After opening a PR, verify title/body/labels and use `gh pr edit` to correct metadata when needed.
 - Apply `codex` and `codex-automation` labels when those labels exist in the repository; otherwise use the closest existing label.
+- Before documentation edits, run publish preflight checks: `git status -sb`, `git branch --show-current`, `gh auth status`, and a GitHub reachability check (`gh pr view` or `git ls-remote origin`).
+- For publish failures caused by transient network errors, retry `git push`/`gh pr` up to 3 times with short backoff before treating the run as blocked.
+- When blocked, record the exact command/error and the next recovery command in automation memory so the next run can resume without repeating work.
