@@ -343,12 +343,12 @@ trebuchet db inspect                             # Show SQLite database stats an
 trebuchet db doctor                              # Run SQLite diagnostics
 trebuchet db migrate                             # Run pending migrations
 trebuchet db snapshot                            # Create DB snapshot
-trebuchet db restore                             # Restore from snapshot
+trebuchet db restore <snapshot>                   # Restore from snapshot
 trebuchet db compact                             # Compact SQLite shards
 trebuchet db shell                               # Open interactive SQLite shell
 trebuchet db ownership show                      # Display actor-to-shard ownership map
 trebuchet db ownership init                      # Initialize ownership map
-trebuchet db ownership set                       # Manually set shard ownership
+trebuchet db ownership set <shard> <node>         # Manually set shard ownership
 trebuchet db rebalance                           # Rebalance actors across shards
 ```
 
