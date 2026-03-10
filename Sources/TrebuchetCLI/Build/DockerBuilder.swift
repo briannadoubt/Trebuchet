@@ -145,9 +145,9 @@ public struct DockerBuilder {
     private func generateDockerfile(productName: String) -> String {
         """
         # Trebuchet Lambda Build Image
-        FROM swift:6.2-amazonlinux2 AS builder
+        FROM swift:noble AS builder
 
-        RUN yum install -y sqlite-devel
+        RUN apt-get update && apt-get install -y --no-install-recommends libsqlite3-dev && rm -rf /var/lib/apt/lists/*
         WORKDIR /app
         COPY . .
 
