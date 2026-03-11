@@ -2,7 +2,7 @@ import NIO
 import NIOHTTP1
 import NIOFoundationCompat
 import Foundation
-import CommonCrypto
+import Crypto
 
 final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @unchecked Sendable {
     typealias InboundIn = HTTPServerRequestPart
@@ -121,12 +121,8 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
     }
 
     private static func sha256Hex(_ input: String) -> String {
-        let data = Data(input.utf8)
-        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-        data.withUnsafeBytes { ptr in
-            _ = CC_SHA256(ptr.baseAddress, CC_LONG(data.count), &hash)
-        }
-        return hash.map { String(format: "%02x", $0) }.joined()
+        let digest = SHA256.hash(data: Data(input.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: - Request routing

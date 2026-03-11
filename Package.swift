@@ -223,6 +223,7 @@ let package = Package(
                 .product(name: "NIOHTTP1", package: "swift-nio"),
                 .product(name: "NIOFoundationCompat", package: "swift-nio"),
                 .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "Crypto", package: "swift-crypto"),
             ]
         ),
         .testTarget(

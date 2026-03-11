@@ -909,7 +909,14 @@ enum TrebuchetSystemEntrypoint {
         var observabilityConfig = graph.observabilityConfig
         #if !os(WASI)
         if let collector = graph.collectorStartups.first {
-            let collectorEndpoint = "http://127.0.0.1:\(collector.descriptor.port)"
+            let collectorHost: String
+            switch collector.descriptor.host {
+            case "0.0.0.0", "::", "0:0:0:0:0:0:0:0":
+                collectorHost = "127.0.0.1"
+            default:
+                collectorHost = collector.descriptor.host
+            }
+            let collectorEndpoint = "http://\(collectorHost):\(collector.descriptor.port)"
             let collectorAuthToken = collector.descriptor.authToken
 
             // Auto-wire tracing to collector if not explicitly configured

@@ -21,7 +21,7 @@ public enum ObservabilityBootstrap {
     ///   - config: The resolved observability config from the System DSL
     ///   - serviceName: The service name for resource identification
     public static func apply(_ config: ResolvedObservability, serviceName: String) {
-        bootstrapLogging(config.logging)
+        bootstrapLogging(config.logging, serviceName: serviceName)
         bootstrapMetrics(config.metrics, serviceName: serviceName)
         bootstrapTracing(config.tracing, serviceName: serviceName)
     }
@@ -40,7 +40,7 @@ public enum ObservabilityBootstrap {
 
     // MARK: - Logging
 
-    private static func bootstrapLogging(_ config: LoggingDeclaration?) {
+    private static func bootstrapLogging(_ config: LoggingDeclaration?, serviceName: String) {
         let level = config?.level ?? .info
         let format = config?.format ?? .console
         let swiftLogLevel = level.toSwiftLogLevel()
@@ -48,7 +48,7 @@ public enum ObservabilityBootstrap {
         if let endpoint = config?.endpoint {
             let exporter = OTLPLogExporter(
                 endpoint: endpoint,
-                serviceName: "trebuchet",
+                serviceName: serviceName,
                 authToken: config?.authToken
             )
             _logExporter = exporter
