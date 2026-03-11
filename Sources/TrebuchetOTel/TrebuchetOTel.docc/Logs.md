@@ -55,11 +55,11 @@ Each log record includes `traceId` and `spanId` fields. Use these to navigate be
 
 ## Auto-wiring
 
-When a ``Collector`` is in your topology, the logging exporter auto-wires:
+When a ``Collector(port:host:authToken:storagePath:retentionHours:corsOrigin:)`` is in your topology, the logging exporter auto-wires:
 
 ```swift
 var observability: some ObservabilityConfiguration {
-    Logging(.info)  // Automatically exports to the Collector
+    Log(.info)  // Automatically exports to the Collector
 }
 ```
 

@@ -716,7 +716,7 @@ public enum DashboardAssets {
                 </select>
                 <select id="status-filter">
                     <option value="">All</option>
-                    <option value="error">Errors Only</option>
+                    <option value="2">Errors Only</option>
                 </select>
                 <input type="text" id="search-input" placeholder="Search operations..." />
                 <label class="auto-refresh-toggle">

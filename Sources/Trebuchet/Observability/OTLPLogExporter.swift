@@ -12,6 +12,7 @@ public actor OTLPLogExporter {
     private let authToken: String?
     private let batchSize: Int
     private let flushInterval: Duration
+    private let urlSession: URLSession
     private var buffer: [LogEntry] = []
     private var flushTask: Task<Void, Never>?
 
@@ -35,6 +36,10 @@ public actor OTLPLogExporter {
         self.authToken = authToken
         self.batchSize = batchSize
         self.flushInterval = flushInterval
+
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 10
+        self.urlSession = URLSession(configuration: config)
     }
 
     public func append(_ entry: LogEntry) {
@@ -88,7 +93,7 @@ public actor OTLPLogExporter {
         }
         request.httpBody = payload
 
-        _ = try? await URLSession.shared.data(for: request)
+        _ = try? await self.urlSession.data(for: request)
     }
 
     private func buildOTLPPayload(_ entries: [LogEntry]) -> Data {

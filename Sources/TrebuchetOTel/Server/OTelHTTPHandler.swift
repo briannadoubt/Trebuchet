@@ -15,7 +15,7 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
     private let authToken: String?
     /// SHA-256 hex of the token, used as the session cookie value
     private let sessionHash: String?
-    /// SHA-256 hex of the bearer token header value, for constant-time auth comparison
+    /// SHA-256 hex of the bearer token header value, for hash-based auth comparison
     private let bearerHash: String?
     private let corsOrigin: String
 
@@ -107,7 +107,7 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
 
     // MARK: - Auth
 
-    /// Constant-time bearer token check: hashes the submitted token and compares to pre-computed hash
+    /// Hash-based bearer token check: hashes the submitted token and compares to pre-computed hash
     private static func checkBearerAuth(head: HTTPRequestHead, bearerHash: String) -> Bool {
         guard let authHeader = head.headers["Authorization"].first,
               authHeader.hasPrefix("Bearer ") else { return false }
@@ -297,7 +297,7 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
         // Parse form body: token=<value>
         let bodyStr = String(data: body, encoding: .utf8) ?? ""
         let formParams = parseQuery(bodyStr)
-        // Constant-time comparison: hash the submitted token and compare to pre-computed hash
+        // Hash-based comparison: hash the submitted token and compare to pre-computed hash
         guard let submitted = formParams["token"], sha256Hex(submitted) == sessionHash else {
             return HTTPResponse(status: .ok, html: DashboardAssets.loginHTML(error: "Invalid token"))
         }
@@ -334,6 +334,7 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
     private static func handleListTraces(query: [String: String], store: SpanStore) async -> HTTPResponse {
         let service = query["service"]
         let status: Int? = query["status"].flatMap { Int($0) }
+        let search = query["search"]
         let limit = Int(query["limit"] ?? "50") ?? 50
         let cursor = Int64(query["cursor"] ?? "")
 
@@ -341,6 +342,7 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
             let traces = try await store.listTraces(
                 service: service,
                 status: status,
+                search: search,
                 limit: limit,
                 cursor: cursor
             )

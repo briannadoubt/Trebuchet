@@ -25,7 +25,7 @@ curl -X POST http://localhost:4318/v1/traces \
   -d @traces.json
 ```
 
-Bearer token verification uses **constant-time SHA-256 hash comparison** to prevent timing attacks. The token is hashed at server startup and never compared directly.
+Bearer token verification uses **SHA-256 hash comparison** to prevent timing attacks. The submitted token is hashed before comparison, so the actual token value is never compared character-by-character.
 
 ### Dashboard (Session Cookie)
 
@@ -36,7 +36,7 @@ The web dashboard uses session-based authentication:
 3. A session cookie (`otel_session`) is set with `HttpOnly` and `SameSite=Strict` flags
 4. Subsequent requests use the cookie (30-day expiry)
 
-Login also uses constant-time hash comparison for the submitted token.
+Login also uses hash-based comparison for the submitted token.
 
 ## Request Limits
 

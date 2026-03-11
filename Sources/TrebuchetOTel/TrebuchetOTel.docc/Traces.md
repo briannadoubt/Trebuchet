@@ -60,7 +60,7 @@ Response includes ``TraceSummary`` objects with trace ID, root operation, servic
 
 ### Search
 
-`GET /api/search?q=keyword` performs full-text search across span operation names and attributes.
+`GET /api/search?q=keyword` performs full-text search across span operation names and status messages.
 
 ### Statistics
 
@@ -69,7 +69,6 @@ Response includes ``TraceSummary`` objects with trace ID, root operation, servic
 - Total span count
 - Error rate
 - p50 and p95 latency (computed in SQL for efficiency)
-- Throughput over recent time windows
 
 ### Services
 
@@ -77,7 +76,7 @@ Response includes ``TraceSummary`` objects with trace ID, root operation, servic
 
 ## Auto-wiring
 
-When a ``Collector`` is in your System topology, the tracing exporter automatically points at it:
+When a ``Collector(port:host:authToken:storagePath:retentionHours:corsOrigin:)`` is in your System topology, the tracing exporter automatically points at it:
 
 ```swift
 var topology: some Topology {
@@ -87,7 +86,7 @@ var topology: some Topology {
 }
 
 var observability: some ObservabilityConfiguration {
-    Tracing(.otlp)  // Automatically uses http://127.0.0.1:4318
+    Trace()  // Automatically uses http://127.0.0.1:4318
 }
 ```
 

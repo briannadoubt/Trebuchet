@@ -306,8 +306,8 @@ struct MyGame: System {
     }
 
     var observability: some ObservabilityConfiguration {
-        Tracing(.otlp)   // Auto-wires to the Collector
-        Logging(.info)    // Auto-wires to the Collector
+        Trace()           // Auto-wires to the Collector
+        Log(.info)        // Auto-wires to the Collector
     }
 }
 ```
@@ -319,7 +319,7 @@ Features:
 - **Logs**: Structured log collection with severity filtering and full-text search
 - **Metrics**: All 5 OTLP metric types (gauge, sum, histogram, exponential histogram, summary)
 - **Dashboard**: Embedded web UI with trace explorer, log viewer, and auth
-- **Security**: Bearer token auth, 10MB size limits, CORS, constant-time token comparison
+- **Security**: Bearer token auth, 10MB size limits, CORS, hash-based token comparison
 - **Lifecycle**: Graceful shutdown with ordered teardown, configurable retention (default 72h)
 
 ## Xcode Integration

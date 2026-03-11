@@ -190,6 +190,7 @@ public actor SpanStore {
     public func listTraces(
         service: String? = nil,
         status: Int? = nil,
+        search: String? = nil,
         since: Int64? = nil,
         until: Int64? = nil,
         limit: Int = 50,
@@ -206,6 +207,14 @@ public actor SpanStore {
             if let status {
                 conditions.append("statusCode = ?")
                 arguments.append(status)
+            }
+            if let search, !search.isEmpty {
+                let escaped = search
+                    .replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "%", with: "\\%")
+                    .replacingOccurrences(of: "_", with: "\\_")
+                conditions.append("operationName LIKE ? ESCAPE '\\'")
+                arguments.append("%\(escaped)%")
             }
             if let since {
                 conditions.append("startTimeNano >= ?")

@@ -70,7 +70,7 @@ An embedded web UI served at the collector's root URL:
 Production-ready HTTP handler hardening:
 
 - **Authentication**: Bearer token for OTLP ingestion, session cookies for dashboard
-- **Constant-time auth**: SHA-256 hash comparison prevents timing attacks
+- **Hash-based auth**: SHA-256 hash comparison prevents timing attacks
 - **Request limits**: 10MB body size limit (413), protobuf rejection (415)
 - **CORS**: Configurable origin with proper preflight OPTIONS handling
 - **Input sanitization**: Error responses never leak internal details
@@ -105,8 +105,8 @@ struct MyGame: System {
     var observability: some ObservabilityConfiguration {
         // Auto-wired! No need to repeat the collector endpoint.
         // Tracing and logging automatically point at the Collector.
-        Tracing(.otlp)
-        Logging(.info)
+        Trace()
+        Log(.info)
     }
 }
 ```
@@ -214,7 +214,7 @@ Collectors:
 
 ### Topology DSL
 
-- ``Collector``
+- ``Collector(port:host:authToken:storagePath:retentionHours:corsOrigin:)``
 - ``CollectorDescriptor``
 
 ### Server
