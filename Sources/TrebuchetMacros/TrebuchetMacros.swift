@@ -51,17 +51,20 @@ public struct TrebuchetMacro: MemberMacro, ExtensionMacro {
             let observeMethod: DeclSyntax = """
                 public func \(raw: observeMethodName)() async -> AsyncStream<\(propertyType)> {
                     let id = UUID()
-                    print("🟠 [Actor.\(raw: observeMethodName)] Creating stream with ID: \\(id)")
 
                     return AsyncStream { continuation in
-                        print("🟠 [Actor.\(raw: observeMethodName)] Stream continuation created for ID: \\(id)")
                         _\(raw: propertyName)_continuations[id] = continuation
-                        print("🟠 [Actor.\(raw: observeMethodName)] Stored continuation, count: \\(_\(raw: propertyName)_continuations.count)")
+                        #if !os(WASI)
+                        TrebuchetStreamInstrumentation.streamSubscriptionStarted(
+                            property: "\(raw: propertyName)",
+                            actorID: "\\(self.id)",
+                            streamID: "\\(id)",
+                            subscriberCount: _\(raw: propertyName)_continuations.count
+                        )
+                        #endif
                         continuation.yield(_\(raw: propertyName)_storage)
-                        print("🟠 [Actor.\(raw: observeMethodName)] Yielded initial value")
 
                         continuation.onTermination = { @Sendable [weak self, id] _ in
-                            print("🟠 [Actor.\(raw: observeMethodName)] Stream \\(id) terminating")
                             Task {
                                 try? await self?.\(raw: cleanupMethodName)(id)
                             }
@@ -287,7 +290,12 @@ public struct StreamedStateMacro: AccessorMacro, PeerMacro {
         // Generate notification method
         peers.append("""
             private func _notify\(raw: propertyName.prefix(1).uppercased())\(raw: propertyName.dropFirst())Change() {
-                print("🟠 [Actor.notify\(raw: propertyName.prefix(1).uppercased())\(raw: propertyName.dropFirst())] Notifying \\(_\(raw: propertyName)_continuations.count) continuations")
+                #if !os(WASI)
+                TrebuchetStreamInstrumentation.stateChanged(
+                    property: "\(raw: propertyName)",
+                    subscriberCount: _\(raw: propertyName)_continuations.count
+                )
+                #endif
                 for continuation in _\(raw: propertyName)_continuations.values {
                     continuation?.yield(_\(raw: propertyName)_storage)
                 }

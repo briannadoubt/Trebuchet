@@ -45,7 +45,7 @@ public actor SQLiteStateStore: ActorStateStore {
             }
         }
 
-        try await migrator.migrate(dbPool)
+        try migrator.migrate(dbPool)
     }
 
     // MARK: - ActorStateStore Conformance

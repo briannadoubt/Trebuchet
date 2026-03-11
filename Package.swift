@@ -45,6 +45,10 @@ let package = Package(
             name: "trebuchet",
             targets: ["TrebuchetCLITool"]
         ),
+        .library(
+            name: "TrebuchetOTel",
+            targets: ["TrebuchetOTel"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
@@ -58,6 +62,10 @@ let package = Package(
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.4.1"),
         // Cryptography (cross-platform)
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
+        // Observability (Apple standard libraries)
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
+        .package(url: "https://github.com/apple/swift-metrics.git", from: "2.4.0"),
+        .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.1.0"),
         // CLI dependencies
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.0"),
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
@@ -113,6 +121,21 @@ let package = Package(
                 ),
                 .target(
                     name: "TrebuchetMacros",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                .product(
+                    name: "Logging",
+                    package: "swift-log",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                .product(
+                    name: "Metrics",
+                    package: "swift-metrics",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                .product(
+                    name: "Tracing",
+                    package: "swift-distributed-tracing",
                     condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
                 ),
             ]
@@ -191,6 +214,21 @@ let package = Package(
                 ]
             ),
             dependencies: ["TrebuchetCLITool"]
+        ),
+        .target(
+            name: "TrebuchetOTel",
+            dependencies: [
+                "Trebuchet",
+                .product(name: "NIO", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "NIOFoundationCompat", package: "swift-nio"),
+                .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "Crypto", package: "swift-crypto"),
+            ]
+        ),
+        .testTarget(
+            name: "TrebuchetOTelTests",
+            dependencies: ["TrebuchetOTel"]
         ),
         .testTarget(
             name: "TrebuchetTests",

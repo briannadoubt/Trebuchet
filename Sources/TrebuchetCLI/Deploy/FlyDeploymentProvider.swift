@@ -108,17 +108,17 @@ struct FlyDeploymentProvider: DeploymentProvider {
 
     private func writeDockerfile(product: String, to projectPath: String) throws {
         let contents = """
-        FROM swift:6.2-amazonlinux2 AS build
+        FROM swift:noble AS build
 
-        RUN yum install -y sqlite-devel
+        RUN apt-get update && apt-get install -y --no-install-recommends libsqlite3-dev && rm -rf /var/lib/apt/lists/*
         WORKDIR /build
         COPY . .
         RUN swift build -c release --product \(product) --static-swift-stdlib -Xlinker -s
 
-        FROM amazonlinux:2023
+        FROM ubuntu:noble
         WORKDIR /app
 
-        RUN dnf install -y ca-certificates libgcc libstdc++ sqlite-libs && dnf clean all
+        RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 && rm -rf /var/lib/apt/lists/*
 
         COPY --from=build /build/.build/release/\(product) /app/server
 

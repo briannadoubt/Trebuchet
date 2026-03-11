@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Trebuchet
 
@@ -218,5 +219,72 @@ struct SystemDSLTests {
         } catch {
             Issue.record("Unexpected error type: \(error)")
         }
+    }
+
+    @Test("CollectorDescriptor Codable round-trip")
+    func collectorDescriptorCodable() throws {
+        let original = CollectorDescriptor(
+            port: 9999,
+            host: "localhost",
+            authToken: "secret",
+            storagePath: "/tmp/otel.db",
+            retentionHours: 48,
+            corsOrigin: "https://example.com"
+        )
+
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(CollectorDescriptor.self, from: data)
+
+        #expect(decoded == original)
+        #expect(decoded.port == 9999)
+        #expect(decoded.host == "localhost")
+        #expect(decoded.authToken == "secret")
+        #expect(decoded.storagePath == "/tmp/otel.db")
+        #expect(decoded.retentionHours == 48)
+        #expect(decoded.corsOrigin == "https://example.com")
+    }
+
+    @Test("CollectorDescriptor default values")
+    func collectorDescriptorDefaults() {
+        let descriptor = CollectorDescriptor()
+
+        #expect(descriptor.port == 4318)
+        #expect(descriptor.host == "0.0.0.0")
+        #expect(descriptor.authToken == nil)
+        #expect(descriptor.storagePath == nil)
+        #expect(descriptor.retentionHours == 72)
+        #expect(descriptor.corsOrigin == "*")
+    }
+
+    @Test("DeploymentPlan includes collectors")
+    func deploymentPlanIncludesCollectors() {
+        let collector = CollectorDescriptor(port: 4318, authToken: "tok")
+        let plan = DeploymentPlan(
+            systemName: "TestSystem",
+            provider: "fly",
+            environment: nil,
+            actors: [],
+            collectors: [collector],
+            warnings: []
+        )
+
+        #expect(plan.collectors.count == 1)
+        #expect(plan.collectors[0].port == 4318)
+        #expect(plan.collectors[0].authToken == "tok")
+    }
+
+    @Test("SystemDescriptor passes collectors to deployment plan")
+    func systemDescriptorPassesCollectors() {
+        let collector = CollectorDescriptor(port: 4318)
+        let descriptor = SystemDescriptor(
+            systemName: "Test",
+            actors: [],
+            collectors: [collector],
+            deploymentRules: []
+        )
+
+        let plan = descriptor.deploymentPlan(provider: nil, environment: nil)
+        #expect(plan.collectors.count == 1)
+        #expect(plan.collectors[0].port == 4318)
     }
 }

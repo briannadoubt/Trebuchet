@@ -3,12 +3,14 @@
 
 import Testing
 import Foundation
+import Tracing
+@testable import Instrumentation
 @testable import Trebuchet
 @testable import TrebuchetCloud
 @testable import TrebuchetObservability
 @testable import TrebuchetSecurity
 
-@Suite("Middleware Integration Tests")
+@Suite("Middleware Integration Tests", .serialized)
 struct MiddlewareIntegrationTests {
 
     // MARK: - Test Middleware
@@ -119,10 +121,12 @@ struct MiddlewareIntegrationTests {
 
     // MARK: - Tracing Middleware Tests
 
-    @Test("TracingMiddleware creates and exports spans")
+    @Test("TracingMiddleware creates server spans via InstrumentationSystem")
     func testTracingMiddleware() async throws {
-        let exporter = InMemorySpanExporter()
-        let middleware = TracingMiddleware(exporter: exporter)
+        let exportBackend = InMemorySpanExportBackend()
+        InstrumentationSystem.bootstrapInternal(TrebuchetTracer(serviceName: "test", exportBackend: exportBackend))
+
+        let middleware = TracingMiddleware()
 
         let envelope = InvocationEnvelope(
             callID: UUID(),
@@ -142,15 +146,15 @@ struct MiddlewareIntegrationTests {
             return ResponseEnvelope.success(callID: envelope.callID, result: Data())
         }
 
-        let spans = await exporter.getExportedSpans()
+        // Allow the fire-and-forget span export Task to complete
+        try await Task.sleep(for: .milliseconds(50))
+
+        let spans = await exportBackend.spans
         #expect(spans.count == 1)
 
         let span = spans[0]
-        #expect(span.name == "game-room-1.join")
+        #expect(span.operationName == "game-room-1/join")
         #expect(span.kind == .server)
-        #expect(span.status == .ok)
-        #expect(span.attributes["actor.id"] == "game-room-1")
-        #expect(span.attributes["actor.target"] == "join")
     }
 
     // MARK: - Validation Middleware Tests
@@ -467,8 +471,9 @@ struct MiddlewareIntegrationTests {
     @Test("Full middleware stack integration")
     func testFullStackIntegration() async throws {
         // Set up all middleware
-        let exporter = InMemorySpanExporter()
-        let tracingMiddleware = TracingMiddleware(exporter: exporter)
+        let exportBackend = InMemorySpanExportBackend()
+        InstrumentationSystem.bootstrapInternal(TrebuchetTracer(serviceName: "test", exportBackend: exportBackend))
+        let tracingMiddleware = TracingMiddleware()
 
         let validationMiddleware = ValidationMiddleware.default
 
@@ -523,8 +528,11 @@ struct MiddlewareIntegrationTests {
 
         #expect(response.callID == envelope.callID)
 
+        // Allow the fire-and-forget span export Task to complete
+        try await Task.sleep(for: .milliseconds(50))
+
         // Verify span was created
-        let spans = await exporter.getExportedSpans()
+        let spans = await exportBackend.spans
         #expect(spans.count == 1)
     }
 }

@@ -293,6 +293,37 @@ Compote uses Apple's Containerization framework for sub-second container startup
 On macOS, if your compose manifest exposes ports, install `socat` (`brew install socat`) so Compote can set up port forwarding.
 You can override runtime selection with `--runtime compote` or `--runtime docker`.
 
+## Observability
+
+Add a self-hosted OpenTelemetry collector to your system with one line:
+
+```swift
+@main
+struct MyGame: System {
+    var topology: some Topology {
+        Collector(port: 4318, authToken: "my-secret")
+
+        GameRoom.self
+            .expose(as: "room")
+    }
+
+    var observability: some ObservabilityConfiguration {
+        Trace()           // Auto-wires to the Collector
+        Log(.info)        // Auto-wires to the Collector
+    }
+}
+```
+
+The collector accepts OTLP/HTTP JSON for traces, logs, and metrics, stores data in SQLite, and serves a web dashboard at `http://localhost:4318`. Tracing and logging exporters auto-wire to the collector — no duplicate endpoint configuration needed.
+
+Features:
+- **Traces**: Span ingestion, trace listing/detail, service discovery, p50/p95 latency stats
+- **Logs**: Structured log collection with severity filtering and full-text search
+- **Metrics**: All 5 OTLP metric types (gauge, sum, histogram, exponential histogram, summary)
+- **Dashboard**: Embedded web UI with trace explorer, log viewer, and auth
+- **Security**: Bearer token auth, 10MB size limits, CORS, hash-based token comparison
+- **Lifecycle**: Graceful shutdown with ordered teardown, configurable retention (default 72h)
+
 ## Xcode Integration
 
 For apps with a companion server package:
@@ -324,7 +355,8 @@ The TCP transport and server-side `listen` are compiled out on WASI. Client `con
 | `TrebuchetCloud` | Cloud gateway, provider protocol, state stores, service registry |
 | `TrebuchetSQLite` | Local SQLite persistence with Maglev consistent hashing, automatic shard routing, lazy migration |
 | `TrebuchetSecurity` | Authentication (API key, JWT), RBAC authorization, rate limiting |
-| `TrebuchetObservability` | Structured logging, metrics, distributed tracing |
+| `TrebuchetObservability` | Structured logging, metrics, distributed tracing, CloudWatch |
+| `TrebuchetOTel` | Self-hosted OpenTelemetry collector with traces, logs, metrics, and web dashboard |
 | `TrebuchetCLI` | CLI library for `trebuchet dev`, `deploy`, `xcode`, `doctor`, `db` |
 | `TrebuchetPlugin` | SwiftPM command plugin entry point |
 
