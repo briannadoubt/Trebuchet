@@ -224,12 +224,11 @@ public actor SpanStore {
                 conditions.append("startTimeNano <= ?")
                 arguments.append(until)
             }
-            if let cursor {
-                conditions.append("startTimeNano < ?")
-                arguments.append(cursor)
-            }
-
             let whereClause = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
+
+            // Cursor is applied post-grouping via HAVING so it filters on the
+            // trace's actual MIN(startTimeNano), not individual span rows.
+            let havingClause = cursor != nil ? "HAVING minStart < ?" : ""
 
             // Fetch traceIds ordered by their earliest startTimeNano, paginated
             let traceSQL = """
@@ -237,9 +236,11 @@ public actor SpanStore {
                 FROM spans
                 \(whereClause)
                 GROUP BY traceId
+                \(havingClause)
                 ORDER BY minStart DESC
                 LIMIT ?
                 """
+            if let cursor { arguments.append(cursor) }
             arguments.append(limit + 1)
 
             let traceRows = try Row.fetchAll(db, sql: traceSQL, arguments: StatementArguments(arguments))
