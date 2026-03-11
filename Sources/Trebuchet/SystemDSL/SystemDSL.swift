@@ -6,12 +6,28 @@ import Foundation
 public protocol System {
     associatedtype TopologyBody: Topology
     associatedtype DeploymentsBody: Deployments = EmptyDeployments
+    associatedtype ObservabilityBody: ObservabilityConfiguration = EmptyObservability
 
     @TopologyBuilder
     var topology: TopologyBody { get }
 
     @DeploymentsBuilder
     var deployments: DeploymentsBody { get }
+
+    /// Declare observability configuration for this system.
+    ///
+    /// The observability declaration automatically bootstraps swift-log,
+    /// swift-metrics, and swift-distributed-tracing when the system starts.
+    ///
+    /// ```swift
+    /// var observability: some ObservabilityConfiguration {
+    ///     Log(.info, format: .json)
+    ///     Metric(exportTo: .otlp(endpoint: "localhost:4318"))
+    ///     Trace(exportTo: .otlp(endpoint: "localhost:4318"))
+    /// }
+    /// ```
+    @ObservabilityBuilder
+    var observability: ObservabilityBody { get }
 
     /// Create a state store from the topology's ``StateConfiguration``.
     ///
@@ -36,6 +52,10 @@ public protocol System {
 public extension System {
     var deployments: EmptyDeployments {
         EmptyDeployments()
+    }
+
+    var observability: EmptyObservability {
+        EmptyObservability()
     }
 
     static func makeStateStore(for config: StateConfiguration) async throws -> (any Sendable)? {
@@ -112,6 +132,25 @@ public struct AnyTopology: Topology {
             }
         }
     }
+
+    /// Override observability configuration for this specific actor.
+    ///
+    /// Per-actor overrides are merged on top of the system-level observability
+    /// configuration. Only the fields you declare are overridden.
+    ///
+    /// ```swift
+    /// GameRoom.self
+    ///     .expose(as: "game-room")
+    ///     .observability {
+    ///         Log(.debug)  // debug logging just for this actor
+    ///     }
+    /// ```
+    public func observability(@ObservabilityBuilder _ config: () -> some ObservabilityConfiguration) -> AnyTopology {
+        let built = config()
+        var resolved = ResolvedObservability()
+        built.collect(into: &resolved)
+        return applying { $0.observability = resolved }
+    }
 }
 
 public extension Topology {
@@ -142,6 +181,10 @@ public extension Topology {
 
     func deploy(_ hint: DeploymentHint) -> AnyTopology {
         eraseToAnyTopology().deploy(hint)
+    }
+
+    func observability(@ObservabilityBuilder _ config: () -> some ObservabilityConfiguration) -> AnyTopology {
+        eraseToAnyTopology().observability(config)
     }
 }
 
@@ -471,6 +514,7 @@ public struct ActorDescriptor: Codable, Sendable, Hashable {
     public var network: NetworkConfiguration?
     public var secrets: [String]
     public var inlineDeploymentHints: [DeploymentHint]
+    public var observability: ObservabilityDescriptor?
 
     public init(
         actorType: String,
@@ -479,7 +523,8 @@ public struct ActorDescriptor: Codable, Sendable, Hashable {
         state: StateConfiguration?,
         network: NetworkConfiguration?,
         secrets: [String],
-        inlineDeploymentHints: [DeploymentHint]
+        inlineDeploymentHints: [DeploymentHint],
+        observability: ObservabilityDescriptor? = nil
     ) {
         self.actorType = actorType
         self.exposeName = exposeName
@@ -488,6 +533,7 @@ public struct ActorDescriptor: Codable, Sendable, Hashable {
         self.network = network
         self.secrets = secrets
         self.inlineDeploymentHints = inlineDeploymentHints
+        self.observability = observability
     }
 
     public var shortActorName: String {
@@ -820,6 +866,11 @@ enum TrebuchetSystemEntrypoint {
     }
 
     private static func runDev<S: System>(graph: BuiltSystemGraph, systemType: S.Type, host: String, port: UInt16) async throws {
+        // Bootstrap observability before anything else
+        #if !os(WASI)
+        ObservabilityBootstrap.apply(graph.observabilityConfig, serviceName: graph.descriptor.systemName)
+        #endif
+
         let server = TrebuchetServer(transport: .webSocket(host: host, port: port))
 
         // Resolve state store from topology configuration
@@ -855,6 +906,10 @@ enum TrebuchetSystemEntrypoint {
         var rules: [DeploymentRule] = []
         system.deployments.collect(into: &rules, environment: nil)
 
+        // Collect system-level observability configuration
+        var observabilityConfig = ResolvedObservability()
+        system.observability.collect(into: &observabilityConfig)
+
         var diagnostics = collector.diagnostics
         diagnostics.append(contentsOf: deploymentRuleDiagnostics(rules: rules, actors: collector.descriptors))
 
@@ -875,7 +930,8 @@ enum TrebuchetSystemEntrypoint {
             descriptor: descriptor,
             runtimeRegistrations: collector.runtimeRegistrations,
             dynamicRegistrations: collector.dynamicRegistrations,
-            stateConfig: stateConfig
+            stateConfig: stateConfig,
+            observabilityConfig: observabilityConfig
         )
     }
 
@@ -1011,7 +1067,8 @@ public final class TopologyCollector {
             state: context.metadata.state,
             network: context.metadata.network,
             secrets: context.metadata.secrets.sorted(),
-            inlineDeploymentHints: context.metadata.deploymentHints.values.sorted { $0.provider < $1.provider }
+            inlineDeploymentHints: context.metadata.deploymentHints.values.sorted { $0.provider < $1.provider },
+            observability: context.metadata.observability.map { ObservabilityDescriptor(from: $0) }
         )
 
         descriptors.append(descriptor)
@@ -1029,6 +1086,7 @@ struct InlineDeploymentMetadata {
     var secrets: [String] = []
     var deploymentHints: [String: DeploymentHint] = [:]
     var dynamicRegistration: DynamicActorDefinition?
+    var observability: ResolvedObservability?
 }
 
 private struct RuntimeActorRegistration {
@@ -1055,6 +1113,7 @@ private struct BuiltSystemGraph {
     let runtimeRegistrations: [RuntimeActorRegistration]
     let dynamicRegistrations: [RuntimeDynamicRegistration]
     let stateConfig: StateConfiguration?
+    let observabilityConfig: ResolvedObservability
 }
 
 private enum DeploymentRuleSource {

@@ -1,5 +1,9 @@
 import Distributed
 import Foundation
+#if !os(WASI)
+import Metrics
+import Tracing
+#endif
 
 /// The core distributed actor system for Trebuchet.
 ///
@@ -146,10 +150,73 @@ public final class TrebuchetRuntime: DistributedActorSystem, @unchecked Sendable
         }
 
         // Remote call
+        #if !os(WASI)
+        return try await withSpan("trebuchet.call \(target.identifier)", ofKind: .client) { span in
+            // Propagate trace context from the CURRENT span onto the envelope
+            var tracedEnvelope = envelope
+            let ctx = ServiceContext.current ?? .topLevel
+            if let traceID = ctx.trebuchetTraceID,
+               let spanID = ctx.trebuchetSpanID {
+                tracedEnvelope = InvocationEnvelope(
+                    callID: envelope.callID,
+                    actorID: envelope.actorID,
+                    targetIdentifier: envelope.targetIdentifier,
+                    protocolVersion: envelope.protocolVersion,
+                    genericSubstitutions: envelope.genericSubstitutions,
+                    arguments: envelope.arguments,
+                    streamFilter: envelope.streamFilter,
+                    traceContext: TraceContext(
+                        traceID: UUID(uuidString: traceID) ?? UUID(),
+                        spanID: UUID(uuidString: spanID) ?? UUID()
+                    )
+                )
+            }
+
+            span.attributes["rpc.system"] = "trebuchet"
+            span.attributes["rpc.method"] = target.identifier
+            span.attributes["trebuchet.actor_id"] = actor.id.id
+            span.attributes["trebuchet.call_id"] = callID.uuidString
+            span.attributes["trebuchet.call_type"] = "request"
+
+            Counter(label: "trebuchet_client_calls_total", dimensions: [
+                ("actor", actor.id.id),
+                ("method", target.identifier),
+            ]).increment()
+
+            let startTime = ContinuousClock.now
+
+            do {
+                let result: Res = try await executeRemoteCall(
+                    envelope: tracedEnvelope,
+                    returning: Res.self
+                )
+
+                let elapsed = ContinuousClock.now - startTime
+                Timer(label: "trebuchet_client_call_duration_ns", dimensions: [
+                    ("actor", actor.id.id),
+                    ("method", target.identifier),
+                ]).recordNanoseconds(Int64(elapsed.components.seconds * 1_000_000_000 + elapsed.components.attoseconds / 1_000_000_000))
+
+                return result
+            } catch {
+                span.recordError(error)
+                span.setStatus(.init(code: .error))
+
+                let elapsed = ContinuousClock.now - startTime
+                Timer(label: "trebuchet_client_call_duration_ns", dimensions: [
+                    ("actor", actor.id.id),
+                    ("method", target.identifier),
+                ]).recordNanoseconds(Int64(elapsed.components.seconds * 1_000_000_000 + elapsed.components.attoseconds / 1_000_000_000))
+
+                throw error
+            }
+        }
+        #else
         return try await executeRemoteCall(
             envelope: envelope,
             returning: Res.self
         )
+        #endif
     }
 
     public func remoteCallVoid<Act, Err>(
@@ -182,7 +249,65 @@ public final class TrebuchetRuntime: DistributedActorSystem, @unchecked Sendable
         }
 
         // Remote call
+        #if !os(WASI)
+        try await withSpan("trebuchet.call \(target.identifier)", ofKind: .client) { span in
+            // Propagate trace context from the CURRENT span onto the envelope
+            var tracedEnvelope = envelope
+            let ctx = ServiceContext.current ?? .topLevel
+            if let traceID = ctx.trebuchetTraceID,
+               let spanID = ctx.trebuchetSpanID {
+                tracedEnvelope = InvocationEnvelope(
+                    callID: envelope.callID,
+                    actorID: envelope.actorID,
+                    targetIdentifier: envelope.targetIdentifier,
+                    protocolVersion: envelope.protocolVersion,
+                    genericSubstitutions: envelope.genericSubstitutions,
+                    arguments: envelope.arguments,
+                    streamFilter: envelope.streamFilter,
+                    traceContext: TraceContext(
+                        traceID: UUID(uuidString: traceID) ?? UUID(),
+                        spanID: UUID(uuidString: spanID) ?? UUID()
+                    )
+                )
+            }
+
+            span.attributes["rpc.system"] = "trebuchet"
+            span.attributes["rpc.method"] = target.identifier
+            span.attributes["trebuchet.actor_id"] = actor.id.id
+            span.attributes["trebuchet.call_id"] = callID.uuidString
+            span.attributes["trebuchet.call_type"] = "request_void"
+
+            Counter(label: "trebuchet_client_calls_total", dimensions: [
+                ("actor", actor.id.id),
+                ("method", target.identifier),
+            ]).increment()
+
+            let startTime = ContinuousClock.now
+
+            do {
+                try await executeRemoteCallVoid(envelope: tracedEnvelope)
+
+                let elapsed = ContinuousClock.now - startTime
+                Timer(label: "trebuchet_client_call_duration_ns", dimensions: [
+                    ("actor", actor.id.id),
+                    ("method", target.identifier),
+                ]).recordNanoseconds(Int64(elapsed.components.seconds * 1_000_000_000 + elapsed.components.attoseconds / 1_000_000_000))
+            } catch {
+                span.recordError(error)
+                span.setStatus(.init(code: .error))
+
+                let elapsed = ContinuousClock.now - startTime
+                Timer(label: "trebuchet_client_call_duration_ns", dimensions: [
+                    ("actor", actor.id.id),
+                    ("method", target.identifier),
+                ]).recordNanoseconds(Int64(elapsed.components.seconds * 1_000_000_000 + elapsed.components.attoseconds / 1_000_000_000))
+
+                throw error
+            }
+        }
+        #else
         try await executeRemoteCallVoid(envelope: envelope)
+        #endif
     }
 
     // MARK: - Internal Methods
@@ -286,6 +411,86 @@ public final class TrebuchetRuntime: DistributedActorSystem, @unchecked Sendable
         // Log stream start
         onStreamStart?(actor.id.id, target.identifier)
 
+        #if !os(WASI)
+        return try await withSpan("trebuchet.call \(target.identifier)", ofKind: .client) { span in
+            // Propagate trace context from the CURRENT span onto the envelope
+            var tracedEnvelope = envelope
+            let ctx = ServiceContext.current ?? .topLevel
+            if let traceID = ctx.trebuchetTraceID,
+               let spanID = ctx.trebuchetSpanID {
+                tracedEnvelope = InvocationEnvelope(
+                    callID: envelope.callID,
+                    actorID: envelope.actorID,
+                    targetIdentifier: envelope.targetIdentifier,
+                    protocolVersion: envelope.protocolVersion,
+                    genericSubstitutions: envelope.genericSubstitutions,
+                    arguments: envelope.arguments,
+                    streamFilter: envelope.streamFilter,
+                    traceContext: TraceContext(
+                        traceID: UUID(uuidString: traceID) ?? UUID(),
+                        spanID: UUID(uuidString: spanID) ?? UUID()
+                    )
+                )
+            }
+
+            span.attributes["rpc.system"] = "trebuchet"
+            span.attributes["rpc.method"] = target.identifier
+            span.attributes["trebuchet.actor_id"] = actor.id.id
+            span.attributes["trebuchet.call_id"] = callID.uuidString
+            span.attributes["trebuchet.call_type"] = "stream"
+            if let filter = tracedEnvelope.streamFilter {
+                span.attributes["trebuchet.stream_filter"] = filter.name ?? filter.type.rawValue
+            }
+
+            Counter(label: "trebuchet_client_calls_total", dimensions: [
+                ("actor", actor.id.id),
+                ("method", target.identifier),
+            ]).increment()
+
+            let startTime = ContinuousClock.now
+
+            do {
+                let result = try await _executeRemoteCallStream(
+                    envelope: tracedEnvelope,
+                    callID: callID,
+                    returning: Res.self
+                )
+
+                let elapsed = ContinuousClock.now - startTime
+                Timer(label: "trebuchet_client_call_duration_ns", dimensions: [
+                    ("actor", actor.id.id),
+                    ("method", target.identifier),
+                ]).recordNanoseconds(Int64(elapsed.components.seconds * 1_000_000_000 + elapsed.components.attoseconds / 1_000_000_000))
+
+                return result
+            } catch {
+                span.recordError(error)
+                span.setStatus(.init(code: .error))
+
+                let elapsed = ContinuousClock.now - startTime
+                Timer(label: "trebuchet_client_call_duration_ns", dimensions: [
+                    ("actor", actor.id.id),
+                    ("method", target.identifier),
+                ]).recordNanoseconds(Int64(elapsed.components.seconds * 1_000_000_000 + elapsed.components.attoseconds / 1_000_000_000))
+
+                throw error
+            }
+        }
+        #else
+        return try await _executeRemoteCallStream(
+            envelope: envelope,
+            callID: callID,
+            returning: Res.self
+        )
+        #endif
+    }
+
+    /// Internal helper for the remote stream call path
+    private func _executeRemoteCallStream<Res: Codable & Sendable>(
+        envelope: InvocationEnvelope,
+        callID: UUID,
+        returning: Res.Type
+    ) async throws -> (streamID: UUID, stream: AsyncStream<Res>) {
         guard let transport else {
             throw TrebuchetError.systemNotRunning
         }

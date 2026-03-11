@@ -1,23 +1,19 @@
 // TracingMiddleware.swift
-// Distributed tracing middleware
+// Distributed tracing middleware using swift-distributed-tracing
 
+#if !os(WASI)
 import Foundation
 import Trebuchet
-import TrebuchetObservability
+import Tracing
 
-/// Middleware that creates and exports spans for distributed tracing
-public struct TracingMiddleware: CloudMiddleware {
-    private let exporter: any SpanExporter
-    private let logExportErrors: Bool
-
-    /// Creates a tracing middleware
-    /// - Parameters:
-    ///   - exporter: Span exporter
-    ///   - logExportErrors: Whether to log export errors to stderr (default: true)
-    public init(exporter: any SpanExporter = InMemorySpanExporter(), logExportErrors: Bool = true) {
-        self.exporter = exporter
-        self.logExportErrors = logExportErrors
-    }
+/// Middleware that creates server spans for distributed tracing.
+///
+/// Traces flow through the globally-bootstrapped `InstrumentationSystem`,
+/// so no exporter configuration is needed on the middleware itself.
+/// If the incoming envelope carries a `traceContext`, its trace and span IDs
+/// are propagated into the `ServiceContext` for distributed correlation.
+public final class TracingMiddleware: CloudMiddleware, Sendable {
+    public init() {}
 
     public func process(
         _ envelope: InvocationEnvelope,
@@ -25,53 +21,32 @@ public struct TracingMiddleware: CloudMiddleware {
         context: MiddlewareContext,
         next: @Sendable (InvocationEnvelope, MiddlewareContext) async throws -> ResponseEnvelope
     ) async throws -> ResponseEnvelope {
-        // Get or create trace context
-        let traceContext = envelope.traceContext ?? TraceContext()
+        var serviceContext = ServiceContext.current ?? .topLevel
 
-        // Create span for this invocation
-        var span = Span(
-            context: traceContext,
-            name: "\(envelope.actorID.id).\(envelope.targetIdentifier)",
-            kind: .server,
-            startTime: Date()
-        )
-
-        // Add attributes
-        span.setAttribute("actor.id", value: envelope.actorID.id)
-        span.setAttribute("actor.target", value: envelope.targetIdentifier)
-        span.setAttribute("call.id", value: envelope.callID.uuidString)
-
-        do {
-            // Execute with tracing
-            let response = try await next(envelope, context)
-
-            // Mark success
-            span.end(status: .ok)
-            await exportSpan(span)
-
-            return response
-        } catch {
-            // Mark error
-            span.setAttribute("error.type", value: String(describing: type(of: error)))
-            span.setAttribute("error.message", value: String(describing: error))
-            span.end(status: .error)
-            await exportSpan(span)
-
-            throw error
+        // Propagate trace context from the envelope if present
+        if let tc = envelope.traceContext {
+            serviceContext.trebuchetTraceID = tc.traceID.uuidString
+            serviceContext.trebuchetSpanID = tc.spanID.uuidString
         }
-    }
 
-    /// Exports a span, logging errors without failing the request
-    private func exportSpan(_ span: Span) async {
-        do {
-            try await exporter.export([span])
-        } catch {
-            if logExportErrors {
-                let message = "⚠️  TracingMiddleware: Failed to export span '\(span.name)': \(error)\n"
-                if let data = message.data(using: .utf8) {
-                    try? FileHandle.standardError.write(contentsOf: data)
-                }
+        return try await withSpan(
+            "\(envelope.actorID.id)/\(envelope.targetIdentifier)",
+            context: serviceContext,
+            ofKind: .server
+        ) { span in
+            span.attributes["rpc.system"] = "trebuchet"
+            span.attributes["rpc.method"] = envelope.targetIdentifier
+            span.attributes["trebuchet.actor_id"] = envelope.actorID.id
+            span.attributes["trebuchet.call_id"] = envelope.callID.uuidString
+
+            do {
+                let response = try await next(envelope, context)
+                return response
+            } catch {
+                span.recordError(error)
+                throw error
             }
         }
     }
 }
+#endif
