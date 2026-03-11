@@ -40,6 +40,8 @@ try await room.join(player: me)
 - ``TrebuchetRuntime``
 - ``TrebuchetActorID``
 - ``TrebuchetError``
+- ``System``
+- ``GracefullyShutdownable``
 
 ### Server and Client
 
@@ -67,6 +69,16 @@ try await room.join(player: me)
 - ``TrebuchetConnectionManager``
 - ``ConnectionState``
 
+### Observability
+
+- <doc:Observability>
+- ``ObservabilityBootstrap``
+- ``Log``
+- ``Metric``
+- ``Trace``
+- ``ObservabilityConfiguration``
+- ``ResolvedObservability``
+
 ### Cloud Deployment
 
 - <doc:CloudDeploymentOverview>
@@ -84,6 +96,7 @@ try await room.join(player: me)
 - <doc:TrebuchetCloud>
 - <doc:TrebuchetSQLite> (recommended persistence)
 - <doc:TrebuchetAWS>
+- <doc:TrebuchetOTel>
 - <doc:TrebuchetObservability>
 - <doc:TrebuchetSecurity>
 - <doc:TrebuchetPostgreSQL>
