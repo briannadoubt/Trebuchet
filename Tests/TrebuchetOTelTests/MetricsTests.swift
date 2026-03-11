@@ -211,7 +211,6 @@ struct MetricsTests {
         let server = try await OTelHTTPServer(host: "127.0.0.1", port: port, ingester: ingester, store: store, authToken: nil)
         Task { try await server.run() }
         defer { Task { try? await server.shutdown() } }
-        try await Task.sleep(for: .milliseconds(100))
 
         let metricsJSON = """
         {

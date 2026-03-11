@@ -16,9 +16,9 @@ struct HTTPIntegrationTests {
         let ingester = SpanIngester(store: store)
         let port = Int.random(in: 30000...40000)
         let server = try await OTelHTTPServer(host: "127.0.0.1", port: port, ingester: ingester, store: store, authToken: authToken)
+        // server.init binds the port synchronously via await, so it's already listening.
+        // run() just blocks on closeFuture — fire-and-forget is fine.
         Task { try await server.run() }
-        // Brief pause to let the server bind
-        try await Task.sleep(for: .milliseconds(500))
         return (server, port, store, ingester)
     }
 
