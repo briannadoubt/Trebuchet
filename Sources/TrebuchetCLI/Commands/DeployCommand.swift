@@ -185,6 +185,20 @@ public struct DeployCommand: AsyncParsableCommand {
             }
         }
 
+        if !plan.collectors.isEmpty {
+            terminal.print("", style: .info)
+            terminal.print("  Collectors:", style: .info)
+            for collector in plan.collectors {
+                terminal.print("    OTel Collector: http://\(collector.host):\(collector.port)", style: .info)
+                if collector.authToken != nil {
+                    terminal.print("      Auth: enabled", style: .dim)
+                }
+                terminal.print("      Retention: \(collector.retentionHours)h", style: .dim)
+                terminal.print("      CORS: \(collector.corsOrigin)", style: .dim)
+                // TODO: Deploy collectors as sidecars on Fly.io / ECS tasks on AWS
+            }
+        }
+
         if !plan.warnings.isEmpty {
             terminal.print("", style: .info)
             terminal.print("Warnings:", style: .warning)

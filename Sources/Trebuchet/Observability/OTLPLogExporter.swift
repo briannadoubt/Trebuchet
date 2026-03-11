@@ -61,6 +61,16 @@ public actor OTLPLogExporter {
         await send(batch)
     }
 
+    /// Gracefully shut down the exporter, flushing any buffered logs.
+    public func shutdown() async {
+        flushTask?.cancel()
+        flushTask = nil
+        guard !buffer.isEmpty else { return }
+        let batch = buffer
+        buffer = []
+        await send(batch)
+    }
+
     private func send(_ entries: [LogEntry]) async {
         guard !entries.isEmpty else { return }
 

@@ -114,6 +114,20 @@ public actor SpanStore {
             try db.execute(sql: "CREATE INDEX IF NOT EXISTS idx_logs_severity_time ON logs(severityNumber, timestamp DESC)")
             try db.execute(sql: "CREATE INDEX IF NOT EXISTS idx_logs_service_time ON logs(serviceName, timestamp DESC)")
             try db.execute(sql: "CREATE INDEX IF NOT EXISTS idx_logs_trace ON logs(traceId)")
+
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS metrics (
+                    timestamp INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    metricType TEXT NOT NULL,
+                    serviceName TEXT NOT NULL,
+                    attributes TEXT,
+                    dataJSON TEXT NOT NULL
+                )
+                """)
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics(timestamp DESC)")
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS idx_metrics_name_time ON metrics(name, timestamp DESC)")
+            try db.execute(sql: "CREATE INDEX IF NOT EXISTS idx_metrics_service_time ON metrics(serviceName, timestamp DESC)")
         }
         dbPool = pool
     }
@@ -321,6 +335,16 @@ public actor SpanStore {
         }
     }
 
+    // MARK: - Metric Write
+
+    public func insertMetrics(_ metrics: [MetricRecord]) throws {
+        try dbPool.write { db in
+            for metric in metrics {
+                try metric.insert(db)
+            }
+        }
+    }
+
     // MARK: - Log Write
 
     public func insertLogs(_ logs: [LogRecord]) throws {
@@ -390,6 +414,57 @@ public actor SpanStore {
         }
     }
 
+    // MARK: - Metric Read
+
+    public func listMetrics(
+        name: String? = nil,
+        service: String? = nil,
+        limit: Int = 50,
+        cursor: Int64? = nil
+    ) throws -> MetricPage {
+        try dbPool.read { db in
+            var conditions: [String] = []
+            var arguments: [any DatabaseValueConvertible] = []
+
+            if let name {
+                conditions.append("name = ?")
+                arguments.append(name)
+            }
+            if let service {
+                conditions.append("serviceName = ?")
+                arguments.append(service)
+            }
+            if let cursor {
+                conditions.append("timestamp < ?")
+                arguments.append(cursor)
+            }
+
+            let whereClause = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
+
+            let sql = """
+                SELECT * FROM metrics
+                \(whereClause)
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """
+            arguments.append(limit + 1)
+
+            let metrics = try MetricRecord.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
+
+            let hasMore = metrics.count > limit
+            let pageMetrics = hasMore ? Array(metrics.prefix(limit)) : metrics
+            let nextCursor: Int64? = hasMore ? pageMetrics.last?.timestamp : nil
+
+            return MetricPage(metrics: pageMetrics, nextCursor: nextCursor)
+        }
+    }
+
+    public func listMetricNames() throws -> [String] {
+        try dbPool.read { db in
+            try String.fetchAll(db, sql: "SELECT DISTINCT name FROM metrics ORDER BY name")
+        }
+    }
+
     // MARK: - Cleanup
 
     public func deleteOlderThan(_ cutoff: Int64) throws {
@@ -400,6 +475,10 @@ public actor SpanStore {
             )
             try db.execute(
                 sql: "DELETE FROM logs WHERE timestamp < ?",
+                arguments: [cutoff]
+            )
+            try db.execute(
+                sql: "DELETE FROM metrics WHERE timestamp < ?",
                 arguments: [cutoff]
             )
         }

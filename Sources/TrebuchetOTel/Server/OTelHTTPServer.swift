@@ -2,12 +2,15 @@ import NIO
 import NIOHTTP1
 import NIOFoundationCompat
 import Foundation
+import Trebuchet
+
+extension OTelHTTPServer: GracefullyShutdownable {}
 
 public final class OTelHTTPServer: Sendable {
     private let group: EventLoopGroup
     private let channel: Channel
 
-    public init(host: String, port: Int, ingester: SpanIngester, store: SpanStore, authToken: String?) async throws {
+    public init(host: String, port: Int, ingester: SpanIngester, store: SpanStore, authToken: String?, corsOrigin: String = "*") async throws {
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
 
         let bootstrap = ServerBootstrap(group: group)
@@ -18,7 +21,8 @@ public final class OTelHTTPServer: Sendable {
                     channel.pipeline.addHandler(OTelHTTPHandler(
                         ingester: ingester,
                         store: store,
-                        authToken: authToken
+                        authToken: authToken,
+                        corsOrigin: corsOrigin
                     ))
                 }
             }

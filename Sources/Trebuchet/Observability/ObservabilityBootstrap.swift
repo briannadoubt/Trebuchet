@@ -10,6 +10,10 @@ import Tracing
 /// This is called once during ``System`` startup. The bootstrap is idempotent —
 /// subsequent calls are ignored by the underlying libraries.
 public enum ObservabilityBootstrap {
+    /// Stored references to exporters for graceful shutdown.
+    nonisolated(unsafe) private static var _spanExporter: (any Sendable)?
+    nonisolated(unsafe) private static var _logExporter: (any Sendable)?
+
     /// Apply the resolved observability configuration, bootstrapping
     /// the Swift observability stack.
     ///
@@ -20,6 +24,18 @@ public enum ObservabilityBootstrap {
         bootstrapLogging(config.logging)
         bootstrapMetrics(config.metrics, serviceName: serviceName)
         bootstrapTracing(config.tracing, serviceName: serviceName)
+    }
+
+    /// Gracefully shut down all OTLP exporters, flushing any buffered data.
+    public static func shutdown() async {
+        if let spanExporter = _spanExporter as? OTLPSpanExporter {
+            await spanExporter.shutdown()
+        }
+        if let logExporter = _logExporter as? OTLPLogExporter {
+            await logExporter.shutdown()
+        }
+        _spanExporter = nil
+        _logExporter = nil
     }
 
     // MARK: - Logging
@@ -35,6 +51,7 @@ public enum ObservabilityBootstrap {
                 serviceName: "trebuchet",
                 authToken: config?.authToken
             )
+            _logExporter = exporter
             LoggingSystem.bootstrap { label in
                 var handler = OTLPLogHandler(label: label, exporter: exporter, format: format)
                 handler.logLevel = swiftLogLevel
@@ -81,7 +98,9 @@ public enum ObservabilityBootstrap {
         case .console:
             backend = ConsoleSpanExportBackend()
         case .otlp(let endpoint, let authToken):
-            backend = OTLPSpanExporter(endpoint: endpoint, serviceName: serviceName, authToken: authToken)
+            let exporter = OTLPSpanExporter(endpoint: endpoint, serviceName: serviceName, authToken: authToken)
+            _spanExporter = exporter
+            backend = exporter
         }
 
         let tracer = TrebuchetTracer(serviceName: serviceName, exportBackend: backend)

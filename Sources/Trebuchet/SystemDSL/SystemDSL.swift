@@ -1,7 +1,15 @@
 import Distributed
 import Foundation
+#if !os(WASI)
+import Dispatch
+#endif
 
 // MARK: - System API
+
+/// Protocol for infrastructure nodes that support graceful shutdown.
+public protocol GracefullyShutdownable: Sendable {
+    func shutdown() async throws
+}
 
 public protocol System {
     associatedtype TopologyBody: Topology
@@ -503,6 +511,7 @@ public struct SystemDescriptor: Codable, Sendable {
             provider: normalizedProvider,
             environment: environment,
             actors: actorPlans,
+            collectors: collectors,
             warnings: warnings
         )
     }
@@ -545,15 +554,26 @@ public struct ActorDescriptor: Codable, Sendable, Hashable {
 
 public struct CollectorDescriptor: Codable, Sendable, Hashable {
     public var port: Int
+    public var host: String
     public var authToken: String?
     public var storagePath: String?
     public var retentionHours: Int
+    public var corsOrigin: String
 
-    public init(port: Int = 4318, authToken: String? = nil, storagePath: String? = nil, retentionHours: Int = 72) {
+    public init(
+        port: Int = 4318,
+        host: String = "0.0.0.0",
+        authToken: String? = nil,
+        storagePath: String? = nil,
+        retentionHours: Int = 72,
+        corsOrigin: String = "*"
+    ) {
         self.port = port
+        self.host = host
         self.authToken = authToken
         self.storagePath = storagePath
         self.retentionHours = retentionHours
+        self.corsOrigin = corsOrigin
     }
 }
 
@@ -562,6 +582,7 @@ public struct DeploymentPlan: Codable, Sendable {
     public var provider: String?
     public var environment: String?
     public var actors: [DeploymentActorPlan]
+    public var collectors: [CollectorDescriptor]
     public var warnings: [String]
 
     public init(
@@ -569,12 +590,14 @@ public struct DeploymentPlan: Codable, Sendable {
         provider: String?,
         environment: String?,
         actors: [DeploymentActorPlan],
+        collectors: [CollectorDescriptor] = [],
         warnings: [String]
     ) {
         self.systemName = systemName
         self.provider = provider
         self.environment = environment
         self.actors = actors
+        self.collectors = collectors
         self.warnings = warnings
     }
 }
@@ -882,9 +905,38 @@ enum TrebuchetSystemEntrypoint {
     }
 
     private static func runDev<S: System>(graph: BuiltSystemGraph, systemType: S.Type, host: String, port: UInt16) async throws {
-        // Bootstrap observability before anything else
+        // Auto-wire collector endpoints into observability config if not explicitly set
+        var observabilityConfig = graph.observabilityConfig
         #if !os(WASI)
-        ObservabilityBootstrap.apply(graph.observabilityConfig, serviceName: graph.descriptor.systemName)
+        if let collector = graph.collectorStartups.first {
+            let collectorEndpoint = "http://127.0.0.1:\(collector.descriptor.port)"
+            let collectorAuthToken = collector.descriptor.authToken
+
+            // Auto-wire tracing to collector if not explicitly configured
+            if observabilityConfig.tracing == nil {
+                observabilityConfig.tracing = TracingDeclaration(
+                    exportTo: .otlp(endpoint: collectorEndpoint, authToken: collectorAuthToken)
+                )
+            }
+
+            // Auto-wire logging endpoint to collector if not explicitly configured
+            if observabilityConfig.logging == nil {
+                observabilityConfig.logging = LoggingDeclaration(
+                    .info,
+                    format: .console,
+                    endpoint: collectorEndpoint,
+                    authToken: collectorAuthToken
+                )
+            } else if observabilityConfig.logging?.endpoint == nil {
+                observabilityConfig.logging?.endpoint = collectorEndpoint
+                if observabilityConfig.logging?.authToken == nil {
+                    observabilityConfig.logging?.authToken = collectorAuthToken
+                }
+            }
+        }
+
+        // Bootstrap observability
+        ObservabilityBootstrap.apply(observabilityConfig, serviceName: graph.descriptor.systemName)
         #endif
 
         let server = TrebuchetServer(transport: .webSocket(host: host, port: port))
@@ -919,6 +971,50 @@ enum TrebuchetSystemEntrypoint {
         }
 
         print("Trebuchet System running on ws://\(host):\(port)")
+
+        // Set up graceful shutdown on SIGINT/SIGTERM
+        #if !os(WASI)
+        signal(SIGINT, SIG_IGN)
+        signal(SIGTERM, SIG_IGN)
+
+        let sigintSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        let sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+
+        let shutdownOnce = ShutdownCoordinator()
+
+        let performShutdown: @Sendable () -> Void = { [collectorServers] in
+            Task {
+                guard await shutdownOnce.beginShutdown() else { return }
+                print("\nShutting down gracefully...")
+
+                // 1. Stop accepting new connections
+                await server.shutdown()
+
+                // 2. Shut down collectors
+                for collectorServer in collectorServers {
+                    if let shutdownable = collectorServer as? GracefullyShutdownable {
+                        try? await shutdownable.shutdown()
+                    }
+                }
+
+                // 3. Flush and shut down exporters
+                await ObservabilityBootstrap.shutdown()
+
+                print("Shutdown complete.")
+
+                sigintSource.cancel()
+                sigtermSource.cancel()
+
+                exit(0)
+            }
+        }
+
+        sigintSource.setEventHandler(handler: performShutdown)
+        sigtermSource.setEventHandler(handler: performShutdown)
+        sigintSource.resume()
+        sigtermSource.resume()
+        #endif
+
         _ = collectorServers // keep alive
         try await server.run()
     }
@@ -1183,5 +1279,18 @@ private func mergeField<Value: Equatable>(
     }
     if current != incoming {
         conflicts.append(field)
+    }
+}
+
+// MARK: - Shutdown Coordinator
+
+/// Ensures shutdown logic runs exactly once even if multiple signals arrive.
+private actor ShutdownCoordinator {
+    private var hasStarted = false
+
+    func beginShutdown() -> Bool {
+        if hasStarted { return false }
+        hasStarted = true
+        return true
     }
 }

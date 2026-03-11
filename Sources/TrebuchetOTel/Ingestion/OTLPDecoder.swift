@@ -56,6 +56,74 @@ public enum OTLPDecoder {
         return records
     }
 
+    public static func decodeMetrics(from data: Data) throws -> [MetricRecord] {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let resourceMetrics = json["resourceMetrics"] as? [[String: Any]] else {
+            return []
+        }
+
+        var records: [MetricRecord] = []
+
+        for resourceMetric in resourceMetrics {
+            let serviceName = extractServiceName(from: resourceMetric)
+
+            guard let scopeMetrics = resourceMetric["scopeMetrics"] as? [[String: Any]] else { continue }
+
+            for scopeMetric in scopeMetrics {
+                guard let metrics = scopeMetric["metrics"] as? [[String: Any]] else { continue }
+
+                for metric in metrics {
+                    guard let name = metric["name"] as? String else { continue }
+
+                    // Determine metric type and extract data points
+                    let metricTypeAndPoints: [(String, [String: Any])]
+                    if let gauge = metric["gauge"] as? [String: Any],
+                       let dataPoints = gauge["dataPoints"] as? [[String: Any]] {
+                        metricTypeAndPoints = dataPoints.map { ("gauge", $0) }
+                    } else if let sum = metric["sum"] as? [String: Any],
+                              let dataPoints = sum["dataPoints"] as? [[String: Any]] {
+                        metricTypeAndPoints = dataPoints.map { ("sum", $0) }
+                    } else if let histogram = metric["histogram"] as? [String: Any],
+                              let dataPoints = histogram["dataPoints"] as? [[String: Any]] {
+                        metricTypeAndPoints = dataPoints.map { ("histogram", $0) }
+                    } else if let expHistogram = metric["exponentialHistogram"] as? [String: Any],
+                              let dataPoints = expHistogram["dataPoints"] as? [[String: Any]] {
+                        metricTypeAndPoints = dataPoints.map { ("exponentialHistogram", $0) }
+                    } else if let summary = metric["summary"] as? [String: Any],
+                              let dataPoints = summary["dataPoints"] as? [[String: Any]] {
+                        metricTypeAndPoints = dataPoints.map { ("summary", $0) }
+                    } else {
+                        continue
+                    }
+
+                    for (metricType, dataPoint) in metricTypeAndPoints {
+                        let timestamp = parseNanoTimestamp(dataPoint["timeUnixNano"])
+
+                        let attributes: String?
+                        if let attrs = dataPoint["attributes"] as? [[String: Any]], !attrs.isEmpty {
+                            attributes = serializeJSON(flattenAttributes(attrs))
+                        } else {
+                            attributes = nil
+                        }
+
+                        let dataJSON = serializeJSON(dataPoint) ?? "{}"
+
+                        records.append(MetricRecord(
+                            timestamp: timestamp,
+                            name: name,
+                            metricType: metricType,
+                            serviceName: serviceName,
+                            attributes: attributes,
+                            dataJSON: dataJSON
+                        ))
+                    }
+                }
+            }
+        }
+
+        return records
+    }
+
     // MARK: - Log Parsing
 
     private static func parseLogRecord(

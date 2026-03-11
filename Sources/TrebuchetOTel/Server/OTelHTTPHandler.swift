@@ -8,20 +8,24 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
     typealias InboundIn = HTTPServerRequestPart
     typealias OutboundOut = HTTPServerResponsePart
 
+    private static let maxBodySize = 10_485_760 // 10 MB
+
     private let ingester: SpanIngester
     private let store: SpanStore
     private let authToken: String?
     /// SHA-256 hex of the token, used as the session cookie value
     private let sessionHash: String?
+    private let corsOrigin: String
 
     private var requestHead: HTTPRequestHead?
     private var body = ByteBuffer()
 
-    init(ingester: SpanIngester, store: SpanStore, authToken: String?) {
+    init(ingester: SpanIngester, store: SpanStore, authToken: String?, corsOrigin: String = "*") {
         self.ingester = ingester
         self.store = store
         self.authToken = authToken
         self.sessionHash = authToken.map { Self.sha256Hex($0) }
+        self.corsOrigin = corsOrigin
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -34,14 +38,49 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
 
         case .body(var buf):
             body.writeBuffer(&buf)
+            if body.readableBytes > Self.maxBodySize {
+                let allocator = context.channel.allocator
+                let corsOrigin = self.corsOrigin
+                nonisolated(unsafe) let ctx = context
+                Self.sendResponse(
+                    context: ctx,
+                    response: HTTPResponse(status: .payloadTooLarge, json: ["error": "Request body too large (max 10MB)"]),
+                    allocator: allocator,
+                    corsOrigin: corsOrigin
+                )
+                requestHead = nil
+                body.clear()
+            }
 
         case .end:
             guard let head = requestHead else { return }
-            let bodyData = Data(buffer: body)
+            let rawData = Data(buffer: body)
+
+            // Reject compressed request bodies — not supported in MVP
+            let bodyData: Data
+            if let contentEncoding = head.headers["Content-Encoding"].first?.lowercased(),
+               contentEncoding.contains("gzip") || contentEncoding.contains("deflate") {
+                let allocator = context.channel.allocator
+                let corsOrigin = self.corsOrigin
+                nonisolated(unsafe) let ctx = context
+                Self.sendResponse(
+                    context: ctx,
+                    response: HTTPResponse(status: .badRequest, json: [
+                        "error": "Compressed request bodies are not supported. Configure your OTLP exporter to disable compression (OTEL_EXPORTER_OTLP_COMPRESSION=none)."
+                    ]),
+                    allocator: allocator,
+                    corsOrigin: corsOrigin
+                )
+                return
+            } else {
+                bodyData = rawData
+            }
+
             let ingester = self.ingester
             let store = self.store
             let authToken = self.authToken
             let sessionHash = self.sessionHash
+            let corsOrigin = self.corsOrigin
 
             nonisolated(unsafe) let ctx = context
             let allocator = context.channel.allocator
@@ -55,7 +94,7 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
                     sessionHash: sessionHash
                 )
                 ctx.eventLoop.execute {
-                    Self.sendResponse(context: ctx, response: response, allocator: allocator)
+                    Self.sendResponse(context: ctx, response: response, allocator: allocator, corsOrigin: corsOrigin)
                 }
             }
         }
@@ -105,6 +144,17 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
         let queryString = components.count > 1 ? String(components[1]) : ""
         let query = parseQuery(queryString)
 
+        // Reject protobuf — we only support OTLP/HTTP JSON
+        if head.method == .POST, path.hasPrefix("/v1/") {
+            if let contentType = head.headers["Content-Type"].first,
+               contentType.contains("protobuf") || contentType.contains("x-protobuf") {
+                return HTTPResponse(
+                    status: .unsupportedMediaType,
+                    json: ["error": "Protobuf encoding is not supported. Configure your OTLP exporter to use JSON (OTEL_EXPORTER_OTLP_PROTOCOL=http/json)."]
+                )
+            }
+        }
+
         // Health check is always public
         if head.method == .GET && path == "/health" {
             return HTTPResponse(status: .ok, json: ["status": "ok"])
@@ -125,6 +175,13 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
                     return HTTPResponse(status: .unauthorized, json: ["error": "Invalid or missing Authorization header"])
                 }
                 return await handleIngestLogs(body: body, ingester: ingester)
+            }
+
+            if head.method == .POST && path == "/v1/metrics" {
+                guard checkBearerAuth(head: head, token: authToken) else {
+                    return HTTPResponse(status: .unauthorized, json: ["error": "Invalid or missing Authorization header"])
+                }
+                return await handleIngestMetrics(body: body, ingester: ingester)
             }
 
             // Login page and login POST are public
@@ -169,6 +226,12 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
             return await handleIngestTraces(body: body, ingester: ingester)
         case (.POST, "/v1/logs"):
             return await handleIngestLogs(body: body, ingester: ingester)
+        case (.POST, "/v1/metrics"):
+            return await handleIngestMetrics(body: body, ingester: ingester)
+        case (.GET, "/api/metrics"):
+            return await handleListMetrics(query: query, store: store)
+        case (.GET, "/api/metric-names"):
+            return await handleListMetricNames(store: store)
         case (.GET, "/api/logs"):
             return await handleListLogs(query: query, store: store)
         case (.GET, _) where path.hasPrefix("/api/traces/") && path.hasSuffix("/logs"):
@@ -313,6 +376,48 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
         }
     }
 
+    private static func handleIngestMetrics(body: Data, ingester: SpanIngester) async -> HTTPResponse {
+        do {
+            let metrics = try OTLPDecoder.decodeMetrics(from: body)
+            if !metrics.isEmpty {
+                await ingester.ingestMetrics(metrics)
+            }
+            return HTTPResponse(status: .ok, json: [:])
+        } catch {
+            return HTTPResponse(status: .badRequest, json: ["error": "\(error)"])
+        }
+    }
+
+    private static func handleListMetrics(query: [String: String], store: SpanStore) async -> HTTPResponse {
+        let name = query["name"]
+        let service = query["service"]
+        let limit = Int(query["limit"] ?? "50") ?? 50
+        let cursor = Int64(query["cursor"] ?? "")
+
+        do {
+            let page = try await store.listMetrics(
+                name: name,
+                service: service,
+                limit: limit,
+                cursor: cursor
+            )
+            let json = try JSONEncoder().encode(page)
+            return HTTPResponse(status: .ok, body: json, contentType: "application/json")
+        } catch {
+            return HTTPResponse(status: .internalServerError, json: ["error": "\(error)"])
+        }
+    }
+
+    private static func handleListMetricNames(store: SpanStore) async -> HTTPResponse {
+        do {
+            let names = try await store.listMetricNames()
+            let json = try JSONEncoder().encode(names)
+            return HTTPResponse(status: .ok, body: json, contentType: "application/json")
+        } catch {
+            return HTTPResponse(status: .internalServerError, json: ["error": "\(error)"])
+        }
+    }
+
     private static func handleIngestLogs(body: Data, ingester: SpanIngester) async -> HTTPResponse {
         do {
             let logs = try OTLPDecoder.decodeLogs(from: body)
@@ -372,11 +477,11 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
         return result
     }
 
-    private static func sendResponse(context: ChannelHandlerContext, response: HTTPResponse, allocator: ByteBufferAllocator) {
+    private static func sendResponse(context: ChannelHandlerContext, response: HTTPResponse, allocator: ByteBufferAllocator, corsOrigin: String = "*") {
         var headers = HTTPHeaders()
         headers.add(name: "Content-Type", value: response.contentType)
         headers.add(name: "Content-Length", value: "\(response.body.count)")
-        headers.add(name: "Access-Control-Allow-Origin", value: "*")
+        headers.add(name: "Access-Control-Allow-Origin", value: corsOrigin)
         for (name, value) in response.extraHeaders {
             headers.add(name: name, value: value)
         }

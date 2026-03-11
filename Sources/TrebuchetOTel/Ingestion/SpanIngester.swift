@@ -43,6 +43,15 @@ public actor SpanIngester {
         }
     }
 
+    public func ingestMetrics(_ metrics: [MetricRecord]) async {
+        guard !metrics.isEmpty else { return }
+        do {
+            try await store.insertMetrics(metrics)
+        } catch {
+            FileHandle.standardError.write(Data("[OTel] Failed to write metrics: \(error)\n".utf8))
+        }
+    }
+
     private func startFlushTimer() {
         flushTask = Task { [weak self, flushInterval] in
             try? await Task.sleep(for: flushInterval)

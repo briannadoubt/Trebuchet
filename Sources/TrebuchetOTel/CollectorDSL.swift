@@ -21,15 +21,19 @@ import Foundation
 /// and serves an embedded web dashboard.
 public func Collector(
     port: Int = 4318,
+    host: String = "0.0.0.0",
     authToken: String? = nil,
     storagePath: String? = nil,
-    retentionHours: Int = 72
+    retentionHours: Int = 72,
+    corsOrigin: String = "*"
 ) -> AnyTopology {
     let descriptor = CollectorDescriptor(
         port: port,
+        host: host,
         authToken: authToken,
         storagePath: storagePath,
-        retentionHours: retentionHours
+        retentionHours: retentionHours,
+        corsOrigin: corsOrigin
     )
 
     return AnyTopology { collector, _ in
@@ -38,11 +42,12 @@ public func Collector(
             let store = try SpanStore(path: path)
             let ingester = SpanIngester(store: store)
             let server = try await OTelHTTPServer(
-                host: "0.0.0.0",
+                host: host,
                 port: port,
                 ingester: ingester,
                 store: store,
-                authToken: authToken
+                authToken: authToken,
+                corsOrigin: corsOrigin
             )
             Task { try await server.run() }
 

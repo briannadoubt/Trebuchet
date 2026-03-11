@@ -110,6 +110,15 @@ public final class TrebuchetRuntime: DistributedActorSystem, @unchecked Sendable
         Task { await localActors.register(actor) }
     }
 
+    /// Ensure an actor is registered in the local registry.
+    ///
+    /// `actorReady` uses a fire-and-forget `Task` because the protocol requires
+    /// it to be synchronous. Call this after actor creation when you need to
+    /// guarantee the actor is available for dispatch before proceeding.
+    public func ensureActorRegistered(_ actor: some DistributedActor) async {
+        await localActors.register(actor)
+    }
+
     public func resignID(_ id: TrebuchetActorID) {
         Task { await localActors.unregister(id: id) }
     }

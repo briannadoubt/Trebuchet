@@ -79,7 +79,7 @@ distributed actor LocalTestActorWithID {
     }
 }
 
-@Suite("Local Transport Tests")
+@Suite("Local Transport Tests", .serialized)
 struct LocalTransportTests {
 
     @Test("Local transport basic connection")

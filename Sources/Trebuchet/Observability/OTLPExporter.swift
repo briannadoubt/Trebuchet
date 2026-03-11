@@ -50,6 +50,16 @@ public actor OTLPSpanExporter: SpanExportBackend {
         startPeriodicFlush()
     }
 
+    /// Gracefully shut down the exporter, flushing any buffered spans.
+    public func shutdown() async {
+        flushTask?.cancel()
+        flushTask = nil
+        guard !buffer.isEmpty else { return }
+        let spans = buffer
+        buffer.removeAll()
+        await sendBatch(spans)
+    }
+
     deinit {
         flushTask?.cancel()
     }

@@ -248,6 +248,9 @@ public final class TrebuchetLocal: Sendable {
     /// ```
     public func expose<Act: DistributedActor>(_ actor: Act, as name: String) async where Act.ID == TrebuchetActorID {
         await exposedActors.register(actor, as: name)
+        // actorReady() uses fire-and-forget Task, so explicitly ensure the
+        // actor is in the local registry before callers try to invoke it.
+        await actorSystem.ensureActorRegistered(actor)
     }
 
     /// Create and expose an actor with a factory closure
@@ -270,6 +273,7 @@ public final class TrebuchetLocal: Sendable {
     ) async -> Act where Act.ID == TrebuchetActorID {
         let actor = factory(actorSystem)
         await exposedActors.register(actor, as: name)
+        await actorSystem.ensureActorRegistered(actor)
         return actor
     }
 
