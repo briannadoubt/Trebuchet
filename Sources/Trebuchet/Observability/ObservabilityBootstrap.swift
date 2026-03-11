@@ -11,7 +11,11 @@ import Tracing
 /// subsequent calls are ignored by the underlying libraries.
 public enum ObservabilityBootstrap {
     /// Stored references to exporters for graceful shutdown.
+    /// Safety: Only written once during `apply()` (called at startup before any concurrent access)
+    /// and read once during `shutdown()` (called at teardown after concurrent work completes).
     nonisolated(unsafe) private static var _spanExporter: (any Sendable)?
+    /// Safety: Only written once during `apply()` (called at startup before any concurrent access)
+    /// and read once during `shutdown()` (called at teardown after concurrent work completes).
     nonisolated(unsafe) private static var _logExporter: (any Sendable)?
 
     /// Apply the resolved observability configuration, bootstrapping
@@ -168,6 +172,12 @@ struct TrebuchetJSONLogHandler: LogHandler {
     var logLevel: Logger.Level = .info
     let label: String
 
+    private static nonisolated(unsafe) let dateFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
     init(label: String) {
         self.label = label
     }
@@ -188,7 +198,7 @@ struct TrebuchetJSONLogHandler: LogHandler {
     ) {
         let merged = self.metadata.merging(metadata ?? [:]) { _, new in new }
         var dict: [String: Any] = [
-            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "timestamp": Self.dateFormatter.string(from: Date()),
             "level": "\(level)",
             "label": label,
             "message": "\(message)",
@@ -210,6 +220,7 @@ struct TrebuchetJSONLogHandler: LogHandler {
 ///
 /// This is a basic implementation that creates counters, gauges, and histograms
 /// and periodically exports them to an OTLP collector.
+// TODO: Metrics export not yet implemented — handlers record locally but do not flush to an OTLP endpoint
 final class OTLPMetricsFactory: MetricsFactory, @unchecked Sendable {
     private let endpoint: String
     private let serviceName: String
@@ -304,7 +315,8 @@ private final class OTLPRecorderHandler: RecorderHandler, MetricHandler, @unchec
     let label: String
     let dimensions: [(String, String)]
     private let lock = NSLock()
-    private var values: [Double] = []
+    // TODO: Metrics export not yet implemented — values are discarded to prevent unbounded memory growth
+    private var lastValue: Double = 0
 
     init(label: String, dimensions: [(String, String)]) {
         self.label = label
@@ -312,11 +324,11 @@ private final class OTLPRecorderHandler: RecorderHandler, MetricHandler, @unchec
     }
 
     func record(_ value: Int64) {
-        lock.withLock { values.append(Double(value)) }
+        lock.withLock { lastValue = Double(value) }
     }
 
     func record(_ value: Double) {
-        lock.withLock { values.append(value) }
+        lock.withLock { lastValue = value }
     }
 }
 
@@ -352,7 +364,8 @@ private final class OTLPTimerHandler: TimerHandler, MetricHandler, @unchecked Se
     let label: String
     let dimensions: [(String, String)]
     private let lock = NSLock()
-    private var values: [Int64] = []
+    // TODO: Metrics export not yet implemented — only the last value is kept to prevent unbounded memory growth
+    private var lastNanoseconds: Int64 = 0
 
     init(label: String, dimensions: [(String, String)]) {
         self.label = label
@@ -360,7 +373,7 @@ private final class OTLPTimerHandler: TimerHandler, MetricHandler, @unchecked Se
     }
 
     func recordNanoseconds(_ duration: Int64) {
-        lock.withLock { values.append(duration) }
+        lock.withLock { lastNanoseconds = duration }
     }
 }
 #endif

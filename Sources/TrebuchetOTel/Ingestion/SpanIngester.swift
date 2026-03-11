@@ -21,16 +21,21 @@ public actor SpanIngester {
     }
 
     public func flush() async {
+        flushTask?.cancel()
+        flushTask = nil
+
         guard !buffer.isEmpty else { return }
         let batch = buffer
         buffer.removeAll(keepingCapacity: true)
-        flushTask?.cancel()
-        flushTask = nil
 
         do {
             try await store.insertSpans(batch)
         } catch {
             FileHandle.standardError.write(Data("[OTel] Failed to write spans: \(error)\n".utf8))
+        }
+
+        if !buffer.isEmpty {
+            startFlushTimer()
         }
     }
 

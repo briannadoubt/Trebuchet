@@ -18,7 +18,7 @@ struct HTTPIntegrationTests {
         let server = try await OTelHTTPServer(host: "127.0.0.1", port: port, ingester: ingester, store: store, authToken: authToken)
         Task { try await server.run() }
         // Brief pause to let the server bind
-        try await Task.sleep(for: .milliseconds(100))
+        try await Task.sleep(for: .milliseconds(500))
         return (server, port, store, ingester)
     }
 
@@ -305,6 +305,98 @@ struct HTTPIntegrationTests {
 
         let page = try JSONDecoder().decode(TracePage.self, from: queryData)
         #expect(page.traces.count >= 1)
+    }
+
+    @Test func testUnauthorizedAccessReturns401() async throws {
+        let (server, port, _, _) = try await startServer(authToken: "test-secret")
+        defer { Task { try? await server.shutdown() } }
+
+        let config = URLSessionConfiguration.ephemeral
+        let delegate = NoRedirectDelegate()
+        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+
+        // GET /api/traces without auth should return 401 for API paths
+        let apiURL = URL(string: "http://127.0.0.1:\(port)/api/traces")!
+        var apiRequest = URLRequest(url: apiURL)
+        apiRequest.httpMethod = "GET"
+        let (_, apiResponse) = try await session.data(for: apiRequest)
+        let apiHTTP = apiResponse as! HTTPURLResponse
+        #expect(apiHTTP.statusCode == 401)
+
+        // GET / (browser root) without session cookie should redirect to /login with 303
+        let rootURL = URL(string: "http://127.0.0.1:\(port)/")!
+        var rootRequest = URLRequest(url: rootURL)
+        rootRequest.httpMethod = "GET"
+        let (_, rootResponse) = try await session.data(for: rootRequest)
+        let rootHTTP = rootResponse as! HTTPURLResponse
+        #expect(rootHTTP.statusCode == 303)
+        let location = rootHTTP.value(forHTTPHeaderField: "Location")
+        #expect(location == "/login")
+    }
+
+    @Test func testBearerTokenAuth() async throws {
+        let (server, port, _, _) = try await startServer(authToken: "test-secret")
+        defer { Task { try? await server.shutdown() } }
+
+        let ingestURL = URL(string: "http://127.0.0.1:\(port)/v1/traces")!
+        let body = makeTracesJSON(
+            traceId: "bearertest111111111111111aaaaaa",
+            spanId: "bearerspan000001",
+            operationName: "bearer-auth-op"
+        )
+
+        let (_, response) = try await post(
+            ingestURL,
+            body: body,
+            headers: ["Authorization": "Bearer test-secret"]
+        )
+        #expect(response.statusCode == 200)
+    }
+
+    @Test func testInvalidBearerTokenReturns401() async throws {
+        let (server, port, _, _) = try await startServer(authToken: "test-secret")
+        defer { Task { try? await server.shutdown() } }
+
+        let ingestURL = URL(string: "http://127.0.0.1:\(port)/v1/traces")!
+        let body = makeTracesJSON(
+            traceId: "badtoken1111111111111111aaaaaaaa",
+            spanId: "badtokenspan0001",
+            operationName: "bad-token-op"
+        )
+
+        let (_, response) = try await post(
+            ingestURL,
+            body: body,
+            headers: ["Authorization": "Bearer wrong-token"]
+        )
+        #expect(response.statusCode == 401)
+    }
+
+    @Test func testCORSPreflightOptions() async throws {
+        let (server, port, _, _) = try await startServer()
+        defer { Task { try? await server.shutdown() } }
+
+        let url = URL(string: "http://127.0.0.1:\(port)/v1/traces")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "OPTIONS"
+        request.setValue("http://localhost:3000", forHTTPHeaderField: "Origin")
+        request.setValue("POST", forHTTPHeaderField: "Access-Control-Request-Method")
+        request.setValue("Content-Type, Authorization", forHTTPHeaderField: "Access-Control-Request-Headers")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        let httpResponse = response as! HTTPURLResponse
+
+        #expect(httpResponse.statusCode == 204)
+
+        let allowMethods = httpResponse.value(forHTTPHeaderField: "Access-Control-Allow-Methods")
+        #expect(allowMethods != nil)
+        #expect(allowMethods?.contains("POST") == true)
+        #expect(allowMethods?.contains("OPTIONS") == true)
+
+        let allowHeaders = httpResponse.value(forHTTPHeaderField: "Access-Control-Allow-Headers")
+        #expect(allowHeaders != nil)
+        #expect(allowHeaders?.contains("Authorization") == true)
+        #expect(allowHeaders?.contains("Content-Type") == true)
     }
 
     @Test func testLoginFlow() async throws {

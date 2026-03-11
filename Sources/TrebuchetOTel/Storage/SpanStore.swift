@@ -274,12 +274,16 @@ public actor SpanStore {
 
     public func searchSpans(query: String, limit: Int = 100) throws -> [SpanRecord] {
         try dbPool.read { db in
-            let pattern = "%\(query)%"
+            let escaped = query
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_")
+            let pattern = "%\(escaped)%"
             return try SpanRecord.fetchAll(
                 db,
                 sql: """
                     SELECT * FROM spans
-                    WHERE operationName LIKE ? OR statusMessage LIKE ?
+                    WHERE operationName LIKE ? ESCAPE '\\' OR statusMessage LIKE ? ESCAPE '\\'
                     ORDER BY startTimeNano DESC
                     LIMIT ?
                     """,
@@ -305,20 +309,28 @@ public actor SpanStore {
             let totalCount: Int = countRow["totalCount"]
             let errorCount: Int = countRow["errorCount"]
 
-            // Fetch durations for percentile computation, capped to avoid reading too many rows
-            let durations = try Int64.fetchAll(
+            // Compute percentiles via SQL OFFSET/LIMIT to avoid loading all durations into memory
+            let p50 = try Int64.fetchOne(
                 db,
                 sql: """
                     SELECT durationNano FROM spans
                     WHERE startTimeNano >= ?
                     ORDER BY durationNano ASC
-                    LIMIT 100000
+                    LIMIT 1 OFFSET (SELECT COUNT(*) FROM spans WHERE startTimeNano >= ?) / 2
                     """,
-                arguments: [since]
-            )
+                arguments: [since, since]
+            ) ?? 0
 
-            let p50 = percentile(durations, p: 0.50)
-            let p95 = percentile(durations, p: 0.95)
+            let p95 = try Int64.fetchOne(
+                db,
+                sql: """
+                    SELECT durationNano FROM spans
+                    WHERE startTimeNano >= ?
+                    ORDER BY durationNano ASC
+                    LIMIT 1 OFFSET (SELECT COUNT(*) FROM spans WHERE startTimeNano >= ?) * 95 / 100
+                    """,
+                arguments: [since, since]
+            ) ?? 0
 
             return SpanStats(
                 totalCount: totalCount,
@@ -377,8 +389,12 @@ public actor SpanStore {
                 arguments.append(minSeverity)
             }
             if let search, !search.isEmpty {
-                conditions.append("body LIKE ?")
-                arguments.append("%\(search)%")
+                let escaped = search
+                    .replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "%", with: "\\%")
+                    .replacingOccurrences(of: "_", with: "\\_")
+                conditions.append("body LIKE ? ESCAPE '\\'")
+                arguments.append("%\(escaped)%")
             }
             if let cursor {
                 conditions.append("timestamp < ?")
@@ -484,11 +500,4 @@ public actor SpanStore {
         }
     }
 
-    // MARK: - Helpers
-
-    private func percentile(_ sorted: [Int64], p: Double) -> Int64 {
-        guard !sorted.isEmpty else { return 0 }
-        let index = Int(Double(sorted.count - 1) * p)
-        return sorted[index]
-    }
 }

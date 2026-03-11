@@ -49,7 +49,13 @@ public func Collector(
                 authToken: authToken,
                 corsOrigin: corsOrigin
             )
-            Task { try await server.run() }
+            Task {
+                do {
+                    try await server.run()
+                } catch {
+                    print("[TrebuchetOTel] Collector server error: \(error)")
+                }
+            }
 
             if retentionHours > 0 {
                 let sweeper = RetentionSweeper(store: store, maxAge: .seconds(retentionHours * 3600))

@@ -15,6 +15,8 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
     private let authToken: String?
     /// SHA-256 hex of the token, used as the session cookie value
     private let sessionHash: String?
+    /// SHA-256 hex of the bearer token header value, for constant-time auth comparison
+    private let bearerHash: String?
     private let corsOrigin: String
 
     private var requestHead: HTTPRequestHead?
@@ -25,6 +27,7 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
         self.store = store
         self.authToken = authToken
         self.sessionHash = authToken.map { Self.sha256Hex($0) }
+        self.bearerHash = authToken.map { Self.sha256Hex($0) }
         self.corsOrigin = corsOrigin
     }
 
@@ -80,6 +83,7 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
             let store = self.store
             let authToken = self.authToken
             let sessionHash = self.sessionHash
+            let bearerHash = self.bearerHash
             let corsOrigin = self.corsOrigin
 
             nonisolated(unsafe) let ctx = context
@@ -91,7 +95,8 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
                     ingester: ingester,
                     store: store,
                     authToken: authToken,
-                    sessionHash: sessionHash
+                    sessionHash: sessionHash,
+                    bearerHash: bearerHash
                 )
                 ctx.eventLoop.execute {
                     Self.sendResponse(context: ctx, response: response, allocator: allocator, corsOrigin: corsOrigin)
@@ -102,9 +107,12 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
 
     // MARK: - Auth
 
-    private static func checkBearerAuth(head: HTTPRequestHead, token: String) -> Bool {
-        guard let authHeader = head.headers["Authorization"].first else { return false }
-        return authHeader == "Bearer \(token)"
+    /// Constant-time bearer token check: hashes the submitted token and compares to pre-computed hash
+    private static func checkBearerAuth(head: HTTPRequestHead, bearerHash: String) -> Bool {
+        guard let authHeader = head.headers["Authorization"].first,
+              authHeader.hasPrefix("Bearer ") else { return false }
+        let submittedToken = String(authHeader.dropFirst("Bearer ".count))
+        return sha256Hex(submittedToken) == bearerHash
     }
 
     private static func checkSessionCookie(head: HTTPRequestHead, sessionHash: String) -> Bool {
@@ -133,12 +141,26 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
         ingester: SpanIngester,
         store: SpanStore,
         authToken: String?,
-        sessionHash: String?
+        sessionHash: String?,
+        bearerHash: String?
     ) async -> HTTPResponse {
         let components = head.uri.split(separator: "?", maxSplits: 1)
         let path = String(components[0])
         let queryString = components.count > 1 ? String(components[1]) : ""
         let query = parseQuery(queryString)
+
+        // CORS preflight
+        if head.method == .OPTIONS {
+            return HTTPResponse(
+                status: .noContent,
+                body: Data(),
+                contentType: "text/plain",
+                extraHeaders: [
+                    ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
+                    ("Access-Control-Allow-Headers", "Content-Type, Authorization"),
+                ]
+            )
+        }
 
         // Reject protobuf — we only support OTLP/HTTP JSON
         if head.method == .POST, path.hasPrefix("/v1/") {
@@ -157,24 +179,24 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
         }
 
         // If auth is configured, enforce it
-        if let authToken, let sessionHash {
+        if let authToken, let sessionHash, let bearerHash {
             // OTLP ingestion uses Bearer token
             if head.method == .POST && path == "/v1/traces" {
-                guard checkBearerAuth(head: head, token: authToken) else {
+                guard checkBearerAuth(head: head, bearerHash: bearerHash) else {
                     return HTTPResponse(status: .unauthorized, json: ["error": "Invalid or missing Authorization header"])
                 }
                 return await handleIngestTraces(body: body, ingester: ingester)
             }
 
             if head.method == .POST && path == "/v1/logs" {
-                guard checkBearerAuth(head: head, token: authToken) else {
+                guard checkBearerAuth(head: head, bearerHash: bearerHash) else {
                     return HTTPResponse(status: .unauthorized, json: ["error": "Invalid or missing Authorization header"])
                 }
                 return await handleIngestLogs(body: body, ingester: ingester)
             }
 
             if head.method == .POST && path == "/v1/metrics" {
-                guard checkBearerAuth(head: head, token: authToken) else {
+                guard checkBearerAuth(head: head, bearerHash: bearerHash) else {
                     return HTTPResponse(status: .unauthorized, json: ["error": "Invalid or missing Authorization header"])
                 }
                 return await handleIngestMetrics(body: body, ingester: ingester)
@@ -275,11 +297,14 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
         // Parse form body: token=<value>
         let bodyStr = String(data: body, encoding: .utf8) ?? ""
         let formParams = parseQuery(bodyStr)
-        guard let submitted = formParams["token"], submitted == authToken else {
+        // Constant-time comparison: hash the submitted token and compare to pre-computed hash
+        guard let submitted = formParams["token"], sha256Hex(submitted) == sessionHash else {
             return HTTPResponse(status: .ok, html: DashboardAssets.loginHTML(error: "Invalid token"))
         }
 
         // Set session cookie (30 days) and redirect to dashboard
+        // Note: Secure flag intentionally omitted — the collector typically runs on localhost
+        // over plain HTTP during development. Browsers ignore Secure over HTTP anyway.
         let maxAge = 30 * 24 * 3600
         return HTTPResponse(
             status: .seeOther,
@@ -302,7 +327,7 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
             }
             return HTTPResponse(status: .ok, json: [:])
         } catch {
-            return HTTPResponse(status: .badRequest, json: ["error": "\(error)"])
+            return HTTPResponse(status: .badRequest, json: ["error": "Invalid payload"])
         }
     }
 
@@ -380,7 +405,7 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
             }
             return HTTPResponse(status: .ok, json: [:])
         } catch {
-            return HTTPResponse(status: .badRequest, json: ["error": "\(error)"])
+            return HTTPResponse(status: .badRequest, json: ["error": "Invalid payload"])
         }
     }
 
@@ -422,7 +447,7 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
             }
             return HTTPResponse(status: .ok, json: [:])
         } catch {
-            return HTTPResponse(status: .badRequest, json: ["error": "\(error)"])
+            return HTTPResponse(status: .badRequest, json: ["error": "Invalid payload"])
         }
     }
 
@@ -478,6 +503,8 @@ final class OTelHTTPHandler: ChannelInboundHandler, RemovableChannelHandler, @un
         headers.add(name: "Content-Type", value: response.contentType)
         headers.add(name: "Content-Length", value: "\(response.body.count)")
         headers.add(name: "Access-Control-Allow-Origin", value: corsOrigin)
+        headers.add(name: "Access-Control-Allow-Methods", value: "GET, POST, OPTIONS")
+        headers.add(name: "Access-Control-Allow-Headers", value: "Content-Type, Authorization")
         for (name, value) in response.extraHeaders {
             headers.add(name: name, value: value)
         }

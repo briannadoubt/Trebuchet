@@ -37,6 +37,7 @@ public final class OTelHTTPServer: Sendable {
     }
 
     public func shutdown() async throws {
+        try? await channel.close()
         try await group.shutdownGracefully()
     }
 }
