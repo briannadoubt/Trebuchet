@@ -1,5 +1,10 @@
 import Distributed
 import Foundation
+#if !os(WASI)
+import Logging
+import Metrics
+import Tracing
+#endif
 
 /// Server state for graceful shutdown
 public enum ServerState: Sendable {
@@ -34,6 +39,10 @@ public final class TrebuchetServer: Sendable {
         FileHandle.standardError.write(Data((output + "\n").utf8))
         #endif
     }
+
+    #if !os(WASI)
+    private let logger = Logger(label: "trebuchet.server")
+    #endif
 
     /// The actor system used by this server
     public let actorSystem: TrebuchetRuntime
@@ -272,6 +281,13 @@ public final class TrebuchetServer: Sendable {
         // Set state to running
         await serverState.setState(.running)
 
+        #if !os(WASI)
+        logger.info("Trebuchet server starting", metadata: [
+            "host": .string(transportConfig.endpoint.host),
+            "port": .stringConvertible(transportConfig.endpoint.port),
+        ])
+        #endif
+
         // Start listening
         try await transport.listen(on: transportConfig.endpoint)
 
@@ -421,7 +437,9 @@ public final class TrebuchetServer: Sendable {
                         actorID: realID,
                         targetIdentifier: invocationEnvelope.targetIdentifier,
                         genericSubstitutions: invocationEnvelope.genericSubstitutions,
-                        arguments: invocationEnvelope.arguments
+                        arguments: invocationEnvelope.arguments,
+                        streamFilter: invocationEnvelope.streamFilter,
+                        traceContext: invocationEnvelope.traceContext
                     )
                 }
 
@@ -429,8 +447,65 @@ public final class TrebuchetServer: Sendable {
                 if invocationEnvelope.targetIdentifier.hasPrefix("observe") {
                     await handleStreamingInvocation(invocationEnvelope, respond: message.respond)
                 } else {
-                    // Regular RPC invocation
-                    // Track the request
+                    #if !os(WASI)
+                    // Instrumented RPC path
+                    let actorID = invocationEnvelope.actorID.id
+                    let method = invocationEnvelope.targetIdentifier
+                    let callID = invocationEnvelope.callID
+
+                    // Propagate incoming trace context into ServiceContext
+                    var context = ServiceContext.topLevel
+                    if let tc = invocationEnvelope.traceContext {
+                        context.trebuchetTraceID = tc.traceID.uuidString
+                        context.trebuchetParentSpanID = tc.spanID.uuidString
+                    }
+
+                    try await withSpan("trebuchet.invoke \(method)", context: context, ofKind: .server) { span in
+                        span.attributes["rpc.system"] = "trebuchet"
+                        span.attributes["rpc.method"] = method
+                        span.attributes["trebuchet.actor_id"] = actorID
+                        span.attributes["trebuchet.call_id"] = callID.uuidString
+
+                        Counter(label: "trebuchet_invocations_total", dimensions: [
+                            ("actor", actorID),
+                            ("method", method),
+                        ]).increment()
+
+                        let startTime = ContinuousClock.now
+
+                        // Regular RPC invocation
+                        // Track the request
+                        await inflightTracker.begin(
+                            callID: callID,
+                            actorID: actorID,
+                            method: method
+                        )
+
+                        let response = await actorSystem.handleIncomingInvocation(invocationEnvelope)
+
+                        // Mark as complete
+                        await inflightTracker.complete(callID: callID)
+
+                        let elapsed = ContinuousClock.now - startTime
+                        Timer(label: "trebuchet_invocation_duration_ns", dimensions: [
+                            ("actor", actorID),
+                            ("method", method),
+                        ]).recordNanoseconds(Int64(elapsed.components.seconds * 1_000_000_000 + elapsed.components.attoseconds / 1_000_000_000))
+
+                        if response.errorMessage != nil {
+                            span.setStatus(.init(code: .error))
+                            Counter(label: "trebuchet_invocation_errors_total", dimensions: [
+                                ("actor", actorID),
+                                ("method", method),
+                            ]).increment()
+                        }
+
+                        let responseEnvelope = TrebuchetEnvelope.response(response)
+                        let responseData = try encoder.encode(responseEnvelope)
+                        try await message.respond(responseData)
+                    }
+                    #else
+                    // Regular RPC invocation (WASI — no instrumentation)
                     await inflightTracker.begin(
                         callID: invocationEnvelope.callID,
                         actorID: invocationEnvelope.actorID.id,
@@ -439,12 +514,12 @@ public final class TrebuchetServer: Sendable {
 
                     let response = await actorSystem.handleIncomingInvocation(invocationEnvelope)
 
-                    // Mark as complete
                     await inflightTracker.complete(callID: invocationEnvelope.callID)
 
                     let responseEnvelope = TrebuchetEnvelope.response(response)
                     let responseData = try encoder.encode(responseEnvelope)
                     try await message.respond(responseData)
+                    #endif
                 }
 
             case .streamResume(let resumeEnvelope):
@@ -475,6 +550,18 @@ public final class TrebuchetServer: Sendable {
         encoder.dateEncodingStrategy = .iso8601
 
         let streamID = UUID()
+
+        #if !os(WASI)
+        Counter(label: "trebuchet_streams_started_total", dimensions: [
+            ("actor", envelope.actorID.id),
+            ("method", envelope.targetIdentifier),
+        ]).increment()
+        logger.info("Stream started", metadata: [
+            "actor": .string(envelope.actorID.id),
+            "method": .string(envelope.targetIdentifier),
+            "streamID": .string(streamID.uuidString),
+        ])
+        #endif
 
         do {
             // Send StreamStart envelope

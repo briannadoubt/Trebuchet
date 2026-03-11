@@ -1,17 +1,41 @@
 import Distributed
 import Foundation
+#if !os(WASI)
+import Dispatch
+#endif
 
 // MARK: - System API
+
+/// Protocol for infrastructure nodes that support graceful shutdown.
+public protocol GracefullyShutdownable: Sendable {
+    func shutdown() async throws
+}
 
 public protocol System {
     associatedtype TopologyBody: Topology
     associatedtype DeploymentsBody: Deployments = EmptyDeployments
+    associatedtype ObservabilityBody: ObservabilityConfiguration = EmptyObservability
 
     @TopologyBuilder
     var topology: TopologyBody { get }
 
     @DeploymentsBuilder
     var deployments: DeploymentsBody { get }
+
+    /// Declare observability configuration for this system.
+    ///
+    /// The observability declaration automatically bootstraps swift-log,
+    /// swift-metrics, and swift-distributed-tracing when the system starts.
+    ///
+    /// ```swift
+    /// var observability: some ObservabilityConfiguration {
+    ///     Log(.info, format: .json)
+    ///     Metric(exportTo: .otlp(endpoint: "localhost:4318"))
+    ///     Trace(exportTo: .otlp(endpoint: "localhost:4318"))
+    /// }
+    /// ```
+    @ObservabilityBuilder
+    var observability: ObservabilityBody { get }
 
     /// Create a state store from the topology's ``StateConfiguration``.
     ///
@@ -36,6 +60,10 @@ public protocol System {
 public extension System {
     var deployments: EmptyDeployments {
         EmptyDeployments()
+    }
+
+    var observability: EmptyObservability {
+        EmptyObservability()
     }
 
     static func makeStateStore(for config: StateConfiguration) async throws -> (any Sendable)? {
@@ -112,6 +140,25 @@ public struct AnyTopology: Topology {
             }
         }
     }
+
+    /// Override observability configuration for this specific actor.
+    ///
+    /// Per-actor overrides are merged on top of the system-level observability
+    /// configuration. Only the fields you declare are overridden.
+    ///
+    /// ```swift
+    /// GameRoom.self
+    ///     .expose(as: "game-room")
+    ///     .observability {
+    ///         Log(.debug)  // debug logging just for this actor
+    ///     }
+    /// ```
+    public func observability(@ObservabilityBuilder _ config: () -> some ObservabilityConfiguration) -> AnyTopology {
+        let built = config()
+        var resolved = ResolvedObservability()
+        built.collect(into: &resolved)
+        return applying { $0.observability = resolved }
+    }
 }
 
 public extension Topology {
@@ -142,6 +189,10 @@ public extension Topology {
 
     func deploy(_ hint: DeploymentHint) -> AnyTopology {
         eraseToAnyTopology().deploy(hint)
+    }
+
+    func observability(@ObservabilityBuilder _ config: () -> some ObservabilityConfiguration) -> AnyTopology {
+        eraseToAnyTopology().observability(config)
     }
 }
 
@@ -389,11 +440,13 @@ public enum DeploymentsBuilder {
 public struct SystemDescriptor: Codable, Sendable {
     public var systemName: String
     public var actors: [ActorDescriptor]
+    public var collectors: [CollectorDescriptor]
     public var deploymentRules: [DeploymentRule]
 
-    public init(systemName: String, actors: [ActorDescriptor], deploymentRules: [DeploymentRule]) {
+    public init(systemName: String, actors: [ActorDescriptor], collectors: [CollectorDescriptor] = [], deploymentRules: [DeploymentRule]) {
         self.systemName = systemName
         self.actors = actors
+        self.collectors = collectors
         self.deploymentRules = deploymentRules
     }
 
@@ -458,6 +511,7 @@ public struct SystemDescriptor: Codable, Sendable {
             provider: normalizedProvider,
             environment: environment,
             actors: actorPlans,
+            collectors: collectors,
             warnings: warnings
         )
     }
@@ -471,6 +525,7 @@ public struct ActorDescriptor: Codable, Sendable, Hashable {
     public var network: NetworkConfiguration?
     public var secrets: [String]
     public var inlineDeploymentHints: [DeploymentHint]
+    public var observability: ObservabilityDescriptor?
 
     public init(
         actorType: String,
@@ -479,7 +534,8 @@ public struct ActorDescriptor: Codable, Sendable, Hashable {
         state: StateConfiguration?,
         network: NetworkConfiguration?,
         secrets: [String],
-        inlineDeploymentHints: [DeploymentHint]
+        inlineDeploymentHints: [DeploymentHint],
+        observability: ObservabilityDescriptor? = nil
     ) {
         self.actorType = actorType
         self.exposeName = exposeName
@@ -488,10 +544,36 @@ public struct ActorDescriptor: Codable, Sendable, Hashable {
         self.network = network
         self.secrets = secrets
         self.inlineDeploymentHints = inlineDeploymentHints
+        self.observability = observability
     }
 
     public var shortActorName: String {
         actorType.split(separator: ".").last.map(String.init) ?? actorType
+    }
+}
+
+public struct CollectorDescriptor: Codable, Sendable, Hashable {
+    public var port: Int
+    public var host: String
+    public var authToken: String?
+    public var storagePath: String?
+    public var retentionHours: Int
+    public var corsOrigin: String
+
+    public init(
+        port: Int = 4318,
+        host: String = "0.0.0.0",
+        authToken: String? = nil,
+        storagePath: String? = nil,
+        retentionHours: Int = 72,
+        corsOrigin: String = "*"
+    ) {
+        self.port = port
+        self.host = host
+        self.authToken = authToken
+        self.storagePath = storagePath
+        self.retentionHours = retentionHours
+        self.corsOrigin = corsOrigin
     }
 }
 
@@ -500,6 +582,7 @@ public struct DeploymentPlan: Codable, Sendable {
     public var provider: String?
     public var environment: String?
     public var actors: [DeploymentActorPlan]
+    public var collectors: [CollectorDescriptor]
     public var warnings: [String]
 
     public init(
@@ -507,12 +590,14 @@ public struct DeploymentPlan: Codable, Sendable {
         provider: String?,
         environment: String?,
         actors: [DeploymentActorPlan],
+        collectors: [CollectorDescriptor] = [],
         warnings: [String]
     ) {
         self.systemName = systemName
         self.provider = provider
         self.environment = environment
         self.actors = actors
+        self.collectors = collectors
         self.warnings = warnings
     }
 }
@@ -820,6 +905,47 @@ enum TrebuchetSystemEntrypoint {
     }
 
     private static func runDev<S: System>(graph: BuiltSystemGraph, systemType: S.Type, host: String, port: UInt16) async throws {
+        // Auto-wire collector endpoints into observability config if not explicitly set
+        var observabilityConfig = graph.observabilityConfig
+        #if !os(WASI)
+        if let collector = graph.collectorStartups.first {
+            let collectorHost: String
+            switch collector.descriptor.host {
+            case "0.0.0.0", "::", "0:0:0:0:0:0:0:0":
+                collectorHost = "127.0.0.1"
+            default:
+                collectorHost = collector.descriptor.host
+            }
+            let collectorEndpoint = "http://\(collectorHost):\(collector.descriptor.port)"
+            let collectorAuthToken = collector.descriptor.authToken
+
+            // Auto-wire tracing to collector if not explicitly configured
+            if observabilityConfig.tracing == nil {
+                observabilityConfig.tracing = TracingDeclaration(
+                    exportTo: .otlp(endpoint: collectorEndpoint, authToken: collectorAuthToken)
+                )
+            }
+
+            // Auto-wire logging endpoint to collector if not explicitly configured
+            if observabilityConfig.logging == nil {
+                observabilityConfig.logging = LoggingDeclaration(
+                    .info,
+                    format: .console,
+                    endpoint: collectorEndpoint,
+                    authToken: collectorAuthToken
+                )
+            } else if observabilityConfig.logging?.endpoint == nil {
+                observabilityConfig.logging?.endpoint = collectorEndpoint
+                if observabilityConfig.logging?.authToken == nil {
+                    observabilityConfig.logging?.authToken = collectorAuthToken
+                }
+            }
+        }
+
+        // Bootstrap observability
+        ObservabilityBootstrap.apply(observabilityConfig, serviceName: graph.descriptor.systemName)
+        #endif
+
         let server = TrebuchetServer(transport: .webSocket(host: host, port: port))
 
         // Resolve state store from topology configuration
@@ -839,11 +965,64 @@ enum TrebuchetSystemEntrypoint {
             }
         }
 
+        // Start OTel collectors (before actors so telemetry is ready)
+        var collectorServers: [any Sendable] = []
+        for startup in graph.collectorStartups {
+            let collectorServer = try await startup.start()
+            collectorServers.append(collectorServer)
+            print("OTel Collector running on http://0.0.0.0:\(startup.descriptor.port)")
+        }
+
         for registration in graph.runtimeRegistrations {
             try await registration.expose(server, registration.exposeName)
         }
 
         print("Trebuchet System running on ws://\(host):\(port)")
+
+        // Set up graceful shutdown on SIGINT/SIGTERM
+        #if !os(WASI)
+        signal(SIGINT, SIG_IGN)
+        signal(SIGTERM, SIG_IGN)
+
+        nonisolated(unsafe) let sigintSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        nonisolated(unsafe) let sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+
+        let shutdownOnce = ShutdownCoordinator()
+
+        let performShutdown: @Sendable () -> Void = { [collectorServers] in
+            Task {
+                guard await shutdownOnce.beginShutdown() else { return }
+                print("\nShutting down gracefully...")
+
+                // 1. Stop accepting new connections
+                await server.shutdown()
+
+                // 2. Shut down collectors
+                for collectorServer in collectorServers {
+                    if let shutdownable = collectorServer as? GracefullyShutdownable {
+                        try? await shutdownable.shutdown()
+                    }
+                }
+
+                // 3. Flush and shut down exporters
+                await ObservabilityBootstrap.shutdown()
+
+                print("Shutdown complete.")
+
+                sigintSource.cancel()
+                sigtermSource.cancel()
+
+                exit(0)
+            }
+        }
+
+        sigintSource.setEventHandler(handler: performShutdown)
+        sigtermSource.setEventHandler(handler: performShutdown)
+        sigintSource.resume()
+        sigtermSource.resume()
+        #endif
+
+        _ = collectorServers // keep alive
         try await server.run()
     }
 
@@ -855,6 +1034,10 @@ enum TrebuchetSystemEntrypoint {
         var rules: [DeploymentRule] = []
         system.deployments.collect(into: &rules, environment: nil)
 
+        // Collect system-level observability configuration
+        var observabilityConfig = ResolvedObservability()
+        system.observability.collect(into: &observabilityConfig)
+
         var diagnostics = collector.diagnostics
         diagnostics.append(contentsOf: deploymentRuleDiagnostics(rules: rules, actors: collector.descriptors))
 
@@ -865,6 +1048,7 @@ enum TrebuchetSystemEntrypoint {
         let descriptor = SystemDescriptor(
             systemName: String(describing: S.self),
             actors: collector.descriptors,
+            collectors: collector.collectorDescriptors,
             deploymentRules: rules
         )
 
@@ -875,7 +1059,9 @@ enum TrebuchetSystemEntrypoint {
             descriptor: descriptor,
             runtimeRegistrations: collector.runtimeRegistrations,
             dynamicRegistrations: collector.dynamicRegistrations,
-            stateConfig: stateConfig
+            collectorStartups: collector.collectorStartups,
+            stateConfig: stateConfig,
+            observabilityConfig: observabilityConfig
         )
     }
 
@@ -966,11 +1152,22 @@ public final class TopologyCollector {
     fileprivate var runtimeRegistrations: [RuntimeActorRegistration] = []
     fileprivate var dynamicRegistrations: [RuntimeDynamicRegistration] = []
     fileprivate var descriptors: [ActorDescriptor] = []
+    fileprivate var collectorDescriptors: [CollectorDescriptor] = []
+    fileprivate var collectorStartups: [CollectorStartup] = []
     fileprivate var seenExposeNames: Set<String> = []
     fileprivate var seenDynamicPrefixes: Set<String> = []
     fileprivate var diagnostics: [String] = []
 
     fileprivate init() {}
+
+    /// Register an OTel collector infrastructure node.
+    public func addCollector(
+        descriptor: CollectorDescriptor,
+        start: @escaping @Sendable () async throws -> any Sendable
+    ) {
+        collectorDescriptors.append(descriptor)
+        collectorStartups.append(CollectorStartup(descriptor: descriptor, start: start))
+    }
 
     fileprivate func addActor<A: TrebuchetActor>(_ actorType: A.Type, context: TopologyBuildContext) {
         let actorTypeName = String(reflecting: actorType)
@@ -1011,7 +1208,8 @@ public final class TopologyCollector {
             state: context.metadata.state,
             network: context.metadata.network,
             secrets: context.metadata.secrets.sorted(),
-            inlineDeploymentHints: context.metadata.deploymentHints.values.sorted { $0.provider < $1.provider }
+            inlineDeploymentHints: context.metadata.deploymentHints.values.sorted { $0.provider < $1.provider },
+            observability: context.metadata.observability.map { ObservabilityDescriptor(from: $0) }
         )
 
         descriptors.append(descriptor)
@@ -1029,6 +1227,7 @@ struct InlineDeploymentMetadata {
     var secrets: [String] = []
     var deploymentHints: [String: DeploymentHint] = [:]
     var dynamicRegistration: DynamicActorDefinition?
+    var observability: ResolvedObservability?
 }
 
 private struct RuntimeActorRegistration {
@@ -1050,11 +1249,18 @@ private struct RuntimeDynamicRegistration: Sendable {
     let instantiateAndExpose: @Sendable (TrebuchetServer, TrebuchetActorID) async throws -> Void
 }
 
+struct CollectorStartup: Sendable {
+    let descriptor: CollectorDescriptor
+    let start: @Sendable () async throws -> any Sendable
+}
+
 private struct BuiltSystemGraph {
     let descriptor: SystemDescriptor
     let runtimeRegistrations: [RuntimeActorRegistration]
     let dynamicRegistrations: [RuntimeDynamicRegistration]
+    let collectorStartups: [CollectorStartup]
     let stateConfig: StateConfiguration?
+    let observabilityConfig: ResolvedObservability
 }
 
 private enum DeploymentRuleSource {
@@ -1080,5 +1286,18 @@ private func mergeField<Value: Equatable>(
     }
     if current != incoming {
         conflicts.append(field)
+    }
+}
+
+// MARK: - Shutdown Coordinator
+
+/// Ensures shutdown logic runs exactly once even if multiple signals arrive.
+private actor ShutdownCoordinator {
+    private var hasStarted = false
+
+    func beginShutdown() -> Bool {
+        if hasStarted { return false }
+        hasStarted = true
+        return true
     }
 }
