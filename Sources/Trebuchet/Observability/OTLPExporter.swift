@@ -1,5 +1,8 @@
 #if !os(WASI)
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// OTLP/HTTP JSON span exporter.
 ///

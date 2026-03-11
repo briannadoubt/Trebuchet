@@ -1,5 +1,8 @@
 #if !os(WASI)
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import Logging
 
 /// Exports log records to an OTLP/HTTP collector at `/v1/logs`.
