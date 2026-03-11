@@ -1,16 +1,35 @@
 import Foundation
 import GRDB
 
+/// A single OTLP metric data point persisted in the ``SpanStore`` database.
+///
+/// Each ``MetricRecord`` corresponds to one data point from an OTLP metrics payload.
+/// The raw data point JSON is preserved in ``dataJSON`` for full-fidelity retrieval.
 public struct MetricRecord: Codable, FetchableRecord, PersistableRecord, Sendable {
     public static let databaseTableName = "metrics"
 
-    public var timestamp: Int64  // nanoseconds
+    /// The data point timestamp in nanoseconds since epoch.
+    public var timestamp: Int64
+    /// The metric name (e.g., `"http.server.duration"`).
     public var name: String
-    public var metricType: String  // gauge, sum, histogram, exponentialHistogram, summary
+    /// The OTLP metric type: `"gauge"`, `"sum"`, `"histogram"`, `"exponentialHistogram"`, or `"summary"`.
+    public var metricType: String
+    /// The service that emitted this metric.
     public var serviceName: String
-    public var attributes: String?  // JSON
-    public var dataJSON: String  // Raw OTLP data point as JSON
+    /// Flattened data point attributes as a JSON string, or `nil` if no attributes are present.
+    public var attributes: String?
+    /// The raw OTLP data point serialized as JSON.
+    public var dataJSON: String
 
+    /// Creates a new metric record.
+    ///
+    /// - Parameters:
+    ///   - timestamp: The data point timestamp in nanoseconds since epoch.
+    ///   - name: The metric name.
+    ///   - metricType: The OTLP metric type string.
+    ///   - serviceName: The originating service name.
+    ///   - attributes: Optional JSON string of flattened data point attributes.
+    ///   - dataJSON: The raw OTLP data point as a JSON string.
     public init(
         timestamp: Int64,
         name: String,
@@ -28,8 +47,11 @@ public struct MetricRecord: Codable, FetchableRecord, PersistableRecord, Sendabl
     }
 }
 
+/// A cursor-paginated page of metric records.
 public struct MetricPage: Codable, Sendable {
+    /// The metric records in this page.
     public var metrics: [MetricRecord]
+    /// The cursor value for fetching the next page, or `nil` if this is the last page.
     public var nextCursor: Int64?
 
     public init(metrics: [MetricRecord], nextCursor: Int64? = nil) {

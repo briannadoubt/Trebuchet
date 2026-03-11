@@ -1,5 +1,10 @@
 import Foundation
 
+/// Buffers incoming spans and flushes them to a ``SpanStore`` in batches.
+///
+/// ``SpanIngester`` accumulates spans in memory and writes them to the backing store either
+/// when the batch reaches 500 spans or after a 1-second flush interval, whichever comes first.
+/// Logs and metrics are forwarded to the store immediately without buffering.
 public actor SpanIngester {
     private let store: SpanStore
     private var buffer: [SpanRecord] = []
@@ -7,10 +12,19 @@ public actor SpanIngester {
     private let flushInterval: Duration = .seconds(1)
     private var flushTask: Task<Void, Never>?
 
+    /// Creates a new span ingester backed by the given store.
+    ///
+    /// - Parameter store: The ``SpanStore`` to persist telemetry data into.
     public init(store: SpanStore) {
         self.store = store
     }
 
+    /// Ingests a batch of spans into the buffer.
+    ///
+    /// Triggers an immediate flush if the buffer reaches the maximum batch size,
+    /// otherwise starts a timer-based flush if one is not already scheduled.
+    ///
+    /// - Parameter spans: The span records to buffer for writing.
     public func ingest(_ spans: [SpanRecord]) async {
         buffer.append(contentsOf: spans)
         if buffer.count >= maxBatchSize {
@@ -20,6 +34,10 @@ public actor SpanIngester {
         }
     }
 
+    /// Flushes all buffered spans to the backing ``SpanStore``.
+    ///
+    /// Cancels any pending flush timer and writes the current buffer contents.
+    /// Errors are logged to stderr rather than thrown, to avoid losing subsequent data.
     public func flush() async {
         flushTask?.cancel()
         flushTask = nil
@@ -39,6 +57,11 @@ public actor SpanIngester {
         }
     }
 
+    /// Writes log records directly to the backing ``SpanStore``.
+    ///
+    /// Unlike spans, logs are not buffered and are inserted immediately.
+    ///
+    /// - Parameter logs: The log records to persist.
     public func ingestLogs(_ logs: [LogRecord]) async {
         guard !logs.isEmpty else { return }
         do {
@@ -48,6 +71,11 @@ public actor SpanIngester {
         }
     }
 
+    /// Writes metric records directly to the backing ``SpanStore``.
+    ///
+    /// Unlike spans, metrics are not buffered and are inserted immediately.
+    ///
+    /// - Parameter metrics: The metric records to persist.
     public func ingestMetrics(_ metrics: [MetricRecord]) async {
         guard !metrics.isEmpty else { return }
         do {

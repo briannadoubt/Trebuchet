@@ -1,6 +1,18 @@
 import Foundation
 
+/// Decodes OTLP/HTTP JSON payloads into typed telemetry records.
+///
+/// ``OTLPDecoder`` provides static methods for parsing the three OTLP signal types
+/// (traces, logs, and metrics) from their JSON wire format into ``SpanRecord``,
+/// ``LogRecord``, and ``MetricRecord`` values suitable for storage.
 public enum OTLPDecoder {
+    /// Decodes an OTLP traces JSON payload into an array of span records.
+    ///
+    /// Parses the `resourceSpans` → `scopeSpans` → `spans` hierarchy, extracting
+    /// service name, resource attributes, timing, status, and span attributes.
+    ///
+    /// - Parameter data: The raw JSON body from an OTLP `/v1/traces` request.
+    /// - Returns: An array of ``SpanRecord`` values parsed from the payload.
     public static func decodeTraces(from data: Data) throws -> [SpanRecord] {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let resourceSpans = json["resourceSpans"] as? [[String: Any]] else {
@@ -29,6 +41,13 @@ public enum OTLPDecoder {
         return records
     }
 
+    /// Decodes an OTLP logs JSON payload into an array of log records.
+    ///
+    /// Parses the `resourceLogs` → `scopeLogs` → `logRecords` hierarchy, extracting
+    /// service name, severity, body text, trace correlation IDs, and attributes.
+    ///
+    /// - Parameter data: The raw JSON body from an OTLP `/v1/logs` request.
+    /// - Returns: An array of ``LogRecord`` values parsed from the payload.
     public static func decodeLogs(from data: Data) throws -> [LogRecord] {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let resourceLogs = json["resourceLogs"] as? [[String: Any]] else {
@@ -56,6 +75,14 @@ public enum OTLPDecoder {
         return records
     }
 
+    /// Decodes an OTLP metrics JSON payload into an array of metric records.
+    ///
+    /// Parses the `resourceMetrics` → `scopeMetrics` → `metrics` hierarchy, supporting
+    /// gauge, sum, histogram, exponential histogram, and summary metric types.
+    /// Each data point becomes a separate ``MetricRecord``.
+    ///
+    /// - Parameter data: The raw JSON body from an OTLP `/v1/metrics` request.
+    /// - Returns: An array of ``MetricRecord`` values parsed from the payload.
     public static func decodeMetrics(from data: Data) throws -> [MetricRecord] {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let resourceMetrics = json["resourceMetrics"] as? [[String: Any]] else {
