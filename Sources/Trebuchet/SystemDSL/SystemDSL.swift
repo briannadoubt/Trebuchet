@@ -977,8 +977,8 @@ enum TrebuchetSystemEntrypoint {
         signal(SIGINT, SIG_IGN)
         signal(SIGTERM, SIG_IGN)
 
-        let sigintSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-        let sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        nonisolated(unsafe) let sigintSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        nonisolated(unsafe) let sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
 
         let shutdownOnce = ShutdownCoordinator()
 
