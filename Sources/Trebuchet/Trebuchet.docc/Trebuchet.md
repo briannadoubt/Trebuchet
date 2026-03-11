@@ -83,7 +83,5 @@ try await room.join(player: me)
 
 - <doc:TrebuchetCloud>
 - <doc:TrebuchetSQLite> (recommended persistence)
-- <doc:TrebuchetAWS>
 - <doc:TrebuchetObservability>
 - <doc:TrebuchetSecurity>
-- <doc:TrebuchetPostgreSQL>

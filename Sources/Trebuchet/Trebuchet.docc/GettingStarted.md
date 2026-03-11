@@ -99,5 +99,5 @@ struct CounterView: View {
 ## Next Steps
 
 - Learn about <doc:DefiningActors> for best practices
-- Explore cloud deployment with ``TrebuchetCloud`` and ``TrebuchetAWS``
+- Explore cloud deployment with ``TrebuchetCloud``
 - Use the `trebuchet` CLI for serverless deployment
