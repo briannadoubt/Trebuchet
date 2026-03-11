@@ -432,11 +432,13 @@ public enum DeploymentsBuilder {
 public struct SystemDescriptor: Codable, Sendable {
     public var systemName: String
     public var actors: [ActorDescriptor]
+    public var collectors: [CollectorDescriptor]
     public var deploymentRules: [DeploymentRule]
 
-    public init(systemName: String, actors: [ActorDescriptor], deploymentRules: [DeploymentRule]) {
+    public init(systemName: String, actors: [ActorDescriptor], collectors: [CollectorDescriptor] = [], deploymentRules: [DeploymentRule]) {
         self.systemName = systemName
         self.actors = actors
+        self.collectors = collectors
         self.deploymentRules = deploymentRules
     }
 
@@ -538,6 +540,20 @@ public struct ActorDescriptor: Codable, Sendable, Hashable {
 
     public var shortActorName: String {
         actorType.split(separator: ".").last.map(String.init) ?? actorType
+    }
+}
+
+public struct CollectorDescriptor: Codable, Sendable, Hashable {
+    public var port: Int
+    public var authToken: String?
+    public var storagePath: String?
+    public var retentionHours: Int
+
+    public init(port: Int = 4318, authToken: String? = nil, storagePath: String? = nil, retentionHours: Int = 72) {
+        self.port = port
+        self.authToken = authToken
+        self.storagePath = storagePath
+        self.retentionHours = retentionHours
     }
 }
 
@@ -890,11 +906,20 @@ enum TrebuchetSystemEntrypoint {
             }
         }
 
+        // Start OTel collectors (before actors so telemetry is ready)
+        var collectorServers: [any Sendable] = []
+        for startup in graph.collectorStartups {
+            let collectorServer = try await startup.start()
+            collectorServers.append(collectorServer)
+            print("OTel Collector running on http://0.0.0.0:\(startup.descriptor.port)")
+        }
+
         for registration in graph.runtimeRegistrations {
             try await registration.expose(server, registration.exposeName)
         }
 
         print("Trebuchet System running on ws://\(host):\(port)")
+        _ = collectorServers // keep alive
         try await server.run()
     }
 
@@ -920,6 +945,7 @@ enum TrebuchetSystemEntrypoint {
         let descriptor = SystemDescriptor(
             systemName: String(describing: S.self),
             actors: collector.descriptors,
+            collectors: collector.collectorDescriptors,
             deploymentRules: rules
         )
 
@@ -930,6 +956,7 @@ enum TrebuchetSystemEntrypoint {
             descriptor: descriptor,
             runtimeRegistrations: collector.runtimeRegistrations,
             dynamicRegistrations: collector.dynamicRegistrations,
+            collectorStartups: collector.collectorStartups,
             stateConfig: stateConfig,
             observabilityConfig: observabilityConfig
         )
@@ -1022,11 +1049,22 @@ public final class TopologyCollector {
     fileprivate var runtimeRegistrations: [RuntimeActorRegistration] = []
     fileprivate var dynamicRegistrations: [RuntimeDynamicRegistration] = []
     fileprivate var descriptors: [ActorDescriptor] = []
+    fileprivate var collectorDescriptors: [CollectorDescriptor] = []
+    fileprivate var collectorStartups: [CollectorStartup] = []
     fileprivate var seenExposeNames: Set<String> = []
     fileprivate var seenDynamicPrefixes: Set<String> = []
     fileprivate var diagnostics: [String] = []
 
     fileprivate init() {}
+
+    /// Register an OTel collector infrastructure node.
+    public func addCollector(
+        descriptor: CollectorDescriptor,
+        start: @escaping @Sendable () async throws -> any Sendable
+    ) {
+        collectorDescriptors.append(descriptor)
+        collectorStartups.append(CollectorStartup(descriptor: descriptor, start: start))
+    }
 
     fileprivate func addActor<A: TrebuchetActor>(_ actorType: A.Type, context: TopologyBuildContext) {
         let actorTypeName = String(reflecting: actorType)
@@ -1108,10 +1146,16 @@ private struct RuntimeDynamicRegistration: Sendable {
     let instantiateAndExpose: @Sendable (TrebuchetServer, TrebuchetActorID) async throws -> Void
 }
 
+struct CollectorStartup: Sendable {
+    let descriptor: CollectorDescriptor
+    let start: @Sendable () async throws -> any Sendable
+}
+
 private struct BuiltSystemGraph {
     let descriptor: SystemDescriptor
     let runtimeRegistrations: [RuntimeActorRegistration]
     let dynamicRegistrations: [RuntimeDynamicRegistration]
+    let collectorStartups: [CollectorStartup]
     let stateConfig: StateConfiguration?
     let observabilityConfig: ResolvedObservability
 }
