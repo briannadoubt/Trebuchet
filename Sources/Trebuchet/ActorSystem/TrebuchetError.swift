@@ -30,6 +30,10 @@ public enum TrebuchetError: Error, Sendable {
     case invalidConfiguration(String)
 }
 
+extension TrebuchetError: LocalizedError {
+    public var errorDescription: String? { description }
+}
+
 extension TrebuchetError: CustomStringConvertible {
     public var description: String {
         switch self {
