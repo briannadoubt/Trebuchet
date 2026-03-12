@@ -120,7 +120,7 @@ public struct DevCommand: AsyncParsableCommand {
     private func ensurePortAvailable(_ port: UInt16, terminal: Terminal) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["lsof", "-i", ":\(port)"]
+        process.arguments = ["lsof", "-i", ":\(port)", "-sTCP:LISTEN"]
 
         let outputPipe = Pipe()
         process.standardOutput = outputPipe

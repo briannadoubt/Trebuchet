@@ -919,8 +919,8 @@ enum TrebuchetSystemEntrypoint {
             let collectorEndpoint = "http://\(collectorHost):\(collector.descriptor.port)"
             let collectorAuthToken = collector.descriptor.authToken
 
-            // Auto-wire tracing to collector if not explicitly configured
-            if observabilityConfig.tracing == nil {
+            // Auto-wire tracing to collector if not explicitly configured or defaulting to console
+            if observabilityConfig.tracing == nil || observabilityConfig.tracing?.exporter == .console {
                 observabilityConfig.tracing = TracingDeclaration(
                     exportTo: .otlp(endpoint: collectorEndpoint, authToken: collectorAuthToken)
                 )
