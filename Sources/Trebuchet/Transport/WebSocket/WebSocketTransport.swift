@@ -17,6 +17,14 @@ public final class WebSocketTransport: TrebuchetTransport, @unchecked Sendable {
     private let ownsEventLoopGroup: Bool
     private let tlsConfiguration: TLSConfiguration?
 
+    /// Custom HTTP headers sent during WebSocket upgrade (client side).
+    private let headers: [String: String]
+
+    /// Optional authentication handler invoked during WebSocket upgrade (server side).
+    /// Receives the HTTP request head and returns an optional user ID string.
+    /// If it throws, the upgrade is rejected.
+    public var authenticationHandler: (@Sendable (HTTPRequestHead) async throws -> String?)?
+
     private var serverChannel: Channel?
     private let connectionManager: ConnectionManager
 
@@ -27,7 +35,8 @@ public final class WebSocketTransport: TrebuchetTransport, @unchecked Sendable {
     /// - Parameters:
     ///   - eventLoopGroup: Optional event loop group. If nil, creates a new one.
     ///   - tlsConfiguration: Optional TLS configuration for secure connections.
-    public init(eventLoopGroup: EventLoopGroup? = nil, tlsConfiguration: TLSConfiguration? = nil) {
+    ///   - headers: Custom HTTP headers to send during WebSocket upgrade (client side).
+    public init(eventLoopGroup: EventLoopGroup? = nil, tlsConfiguration: TLSConfiguration? = nil, headers: [String: String] = [:]) {
         if let eventLoopGroup {
             self.eventLoopGroup = eventLoopGroup
             self.ownsEventLoopGroup = false
@@ -39,7 +48,8 @@ public final class WebSocketTransport: TrebuchetTransport, @unchecked Sendable {
         }
 
         self.tlsConfiguration = tlsConfiguration
-        self.connectionManager = ConnectionManager(useTLS: tlsConfiguration != nil)
+        self.headers = headers
+        self.connectionManager = ConnectionManager(useTLS: tlsConfiguration != nil, headers: headers)
 
         var continuation: AsyncStream<TransportMessage>.Continuation!
         self.incoming = AsyncStream { continuation = $0 }
@@ -111,10 +121,24 @@ public final class WebSocketTransport: TrebuchetTransport, @unchecked Sendable {
                     tlsFuture = channel.eventLoop.makeSucceededFuture(())
                 }
 
-                return tlsFuture.flatMap {
+                return tlsFuture.flatMap { [weak self] in
+                    let authHandler = self?.authenticationHandler
                     let upgrader = NIOWebSocketServerUpgrader(
                         shouldUpgrade: { channel, head in
-                            channel.eventLoop.makeSucceededFuture(HTTPHeaders())
+                            guard let authHandler else {
+                                return channel.eventLoop.makeSucceededFuture(HTTPHeaders())
+                            }
+                            let promise = channel.eventLoop.makePromise(of: HTTPHeaders?.self)
+                            promise.completeWithTask {
+                                do {
+                                    _ = try await authHandler(head)
+                                    return HTTPHeaders()
+                                } catch {
+                                    // Returning nil rejects the WebSocket upgrade
+                                    return nil
+                                }
+                            }
+                            return promise.futureResult
                         },
                         upgradePipelineHandler: { [weak self] channel, req in
                             guard let self else {
@@ -164,9 +188,11 @@ public final class WebSocketTransport: TrebuchetTransport, @unchecked Sendable {
 private actor ConnectionManager {
     private var connections: [Endpoint: WebSocket] = [:]
     private let useTLS: Bool
+    private let headers: [String: String]
 
-    init(useTLS: Bool = false) {
+    init(useTLS: Bool = false, headers: [String: String] = [:]) {
         self.useTLS = useTLS
+        self.headers = headers
     }
 
     func getOrCreate(
@@ -195,8 +221,14 @@ private actor ConnectionManager {
             tlsConfig.tlsConfiguration?.certificateVerification = .none // For self-signed certs in dev
         }
 
+        var httpHeaders = HTTPHeaders()
+        for (key, value) in headers {
+            httpHeaders.add(name: key, value: value)
+        }
+
         WebSocket.connect(
             to: url,
+            headers: httpHeaders,
             configuration: tlsConfig,
             on: group
         ) { ws in

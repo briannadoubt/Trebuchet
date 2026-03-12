@@ -142,7 +142,7 @@ public struct AutoTransportOptions: Sendable {
 
 /// Configuration options for transports
 public enum TransportConfiguration: Sendable {
-    case webSocket(host: String = "0.0.0.0", port: UInt16, tls: TLSConfiguration? = nil)
+    case webSocket(host: String = "0.0.0.0", port: UInt16, tls: TLSConfiguration? = nil, headers: [String: String] = [:])
 #if !os(WASI)
     case tcp(host: String = "0.0.0.0", port: UInt16)
 #endif
@@ -151,7 +151,7 @@ public enum TransportConfiguration: Sendable {
 
     public var endpoint: Endpoint {
         switch resolvedForRuntime().resolved {
-        case .webSocket(let host, let port, _):
+        case .webSocket(let host, let port, _, _):
             return Endpoint(host: host, port: port)
 #if !os(WASI)
         case .tcp(let host, let port):
@@ -167,7 +167,7 @@ public enum TransportConfiguration: Sendable {
     /// Whether TLS is enabled for this transport
     public var tlsEnabled: Bool {
         switch resolvedForRuntime().resolved {
-        case .webSocket(_, _, let tls):
+        case .webSocket(_, _, let tls, _):
             return tls != nil
 #if !os(WASI)
         case .tcp:
@@ -180,10 +180,26 @@ public enum TransportConfiguration: Sendable {
         }
     }
 
+    /// Custom HTTP headers for the connection (WebSocket only)
+    public var headers: [String: String] {
+        switch resolvedForRuntime().resolved {
+        case .webSocket(_, _, _, let headers):
+            return headers
+#if !os(WASI)
+        case .tcp:
+            return [:]
+#endif
+        case .local:
+            return [:]
+        case .auto:
+            return [:]
+        }
+    }
+
     /// The TLS configuration, if any
     public var tlsConfiguration: TLSConfiguration? {
         switch resolvedForRuntime().resolved {
-        case .webSocket(_, _, let tls):
+        case .webSocket(_, _, let tls, _):
             return tls
 #if !os(WASI)
         case .tcp:

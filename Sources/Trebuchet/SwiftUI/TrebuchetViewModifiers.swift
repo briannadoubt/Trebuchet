@@ -38,13 +38,15 @@ extension View {
         transport: TransportConfiguration,
         reconnectionPolicy: ReconnectionPolicy = .default,
         autoConnect: Bool = true,
-        tracing: ClientTracing? = nil
+        tracing: ClientTracing? = nil,
+        headers: [String: String] = [:]
     ) -> some View {
         modifier(TrebuchetClientModifier(
             transport: transport,
             reconnectionPolicy: reconnectionPolicy,
             autoConnect: autoConnect,
-            tracing: tracing
+            tracing: tracing,
+            headers: headers
         ))
     }
 
@@ -138,6 +140,7 @@ private struct TrebuchetClientModifier: ViewModifier {
     let reconnectionPolicy: ReconnectionPolicy
     let autoConnect: Bool
     let tracing: ClientTracing?
+    let headers: [String: String]
 
     @State private var connection: TrebuchetConnection?
 
@@ -153,7 +156,8 @@ private struct TrebuchetClientModifier: ViewModifier {
 
                 let conn = TrebuchetConnection(
                     transport: transport,
-                    reconnectionPolicy: reconnectionPolicy
+                    reconnectionPolicy: reconnectionPolicy,
+                    headers: headers
                 )
                 connection = conn
 

@@ -126,6 +126,7 @@ public struct TrebuchetEnvironment<Content: View>: View {
     private let defaultConnectionName: String?
     private let reconnectionPolicy: ReconnectionPolicy
     private let autoConnect: Bool
+    private let headers: [String: String]
 
     // MARK: - Single Connection Initializer
 
@@ -135,11 +136,13 @@ public struct TrebuchetEnvironment<Content: View>: View {
     ///   - transport: The transport configuration.
     ///   - reconnectionPolicy: Policy for automatic reconnection. Defaults to `.default`.
     ///   - autoConnect: Whether to connect automatically on appear. Defaults to `true`.
+    ///   - headers: Additional HTTP headers to send during WebSocket connection.
     ///   - content: The content view.
     public init(
         transport: TransportConfiguration,
         reconnectionPolicy: ReconnectionPolicy = .default,
         autoConnect: Bool = true,
+        headers: [String: String] = [:],
         @ViewBuilder content: () -> Content
     ) {
         self.singleTransport = transport
@@ -147,6 +150,7 @@ public struct TrebuchetEnvironment<Content: View>: View {
         self.defaultConnectionName = nil
         self.reconnectionPolicy = reconnectionPolicy
         self.autoConnect = autoConnect
+        self.headers = headers
         self.content = content()
     }
 
@@ -159,12 +163,14 @@ public struct TrebuchetEnvironment<Content: View>: View {
     ///   - defaultConnection: The default connection name. Defaults to the first key.
     ///   - reconnectionPolicy: Policy for automatic reconnection. Defaults to `.default`.
     ///   - autoConnect: Whether to connect automatically on appear. Defaults to `true`.
+    ///   - headers: Additional HTTP headers to send during WebSocket connection.
     ///   - content: The content view.
     public init(
         connections: [String: TransportConfiguration],
         defaultConnection: String? = nil,
         reconnectionPolicy: ReconnectionPolicy = .default,
         autoConnect: Bool = true,
+        headers: [String: String] = [:],
         @ViewBuilder content: () -> Content
     ) {
         self.singleTransport = nil
@@ -172,6 +178,7 @@ public struct TrebuchetEnvironment<Content: View>: View {
         self.defaultConnectionName = defaultConnection ?? connections.keys.sorted().first
         self.reconnectionPolicy = reconnectionPolicy
         self.autoConnect = autoConnect
+        self.headers = headers
         self.content = content()
     }
 
@@ -203,7 +210,8 @@ public struct TrebuchetEnvironment<Content: View>: View {
         if let singleTransport {
             let conn = TrebuchetConnection(
                 transport: singleTransport,
-                reconnectionPolicy: reconnectionPolicy
+                reconnectionPolicy: reconnectionPolicy,
+                headers: headers
             )
             connection = conn
 

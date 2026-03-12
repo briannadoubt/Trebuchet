@@ -34,17 +34,22 @@ public final class TrebuchetClient: Sendable {
     }()
 
     /// Create a new client with the specified transport
-    /// - Parameter transport: The transport configuration (e.g., `.webSocket(host: "localhost", port: 8080)`)
-    public init(transport: TransportConfiguration) {
+    /// - Parameters:
+    ///   - transport: The transport configuration (e.g., `.webSocket(host: "localhost", port: 8080)`)
+    ///   - headers: Additional HTTP headers to send during WebSocket connection (e.g., authentication tokens).
+    public init(transport: TransportConfiguration, headers: [String: String] = [:]) {
         let resolved = transport.resolvedForRuntime()
         self.transportConfig = resolved.resolved
         self.transportConfigurationError = resolved.error
         self.serverEndpoint = resolved.resolved.endpoint
         self.actorSystem = TrebuchetRuntime()
 
+        // Merge explicit headers with any headers from transport configuration
+        let mergedHeaders = resolved.resolved.headers.merging(headers) { _, explicit in explicit }
+
         switch resolved.resolved {
-        case .webSocket(_, _, let tls):
-            self.transport = WebSocketTransport(tlsConfiguration: tls)
+        case .webSocket(_, _, let tls, _):
+            self.transport = WebSocketTransport(tlsConfiguration: tls, headers: mergedHeaders)
 #if !os(WASI)
         case .tcp:
             self.transport = TCPTransport()

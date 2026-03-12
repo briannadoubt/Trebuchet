@@ -1,6 +1,7 @@
 import Distributed
 import Foundation
 #if !os(WASI)
+@preconcurrency import NIOHTTP1
 import Logging
 import Metrics
 import Tracing
@@ -82,7 +83,7 @@ public final class TrebuchetServer: Sendable {
         self.actorSystem = TrebuchetRuntime()
 
         switch resolved.resolved {
-        case .webSocket(_, _, let tls):
+        case .webSocket(_, _, let tls, _):
             self.transport = WebSocketTransport(tlsConfiguration: tls)
 #if !os(WASI)
         case .tcp:
@@ -114,6 +115,30 @@ public final class TrebuchetServer: Sendable {
             await exposed.getID(for: name)
         }
     }
+
+    #if !os(WASI)
+    /// Create a new server with the specified transport and an authentication handler.
+    ///
+    /// The authentication handler is invoked during WebSocket upgrade. It receives the
+    /// HTTP request head (which includes `Authorization` headers) and returns an optional
+    /// user ID string. If the handler throws, the upgrade is rejected and the client
+    /// cannot connect.
+    ///
+    /// - Parameters:
+    ///   - transport: The transport configuration (e.g., `.webSocket(port: 8080)`)
+    ///   - authenticationHandler: Handler invoked during WebSocket upgrade to authenticate clients.
+    public convenience init(
+        transport: TransportConfiguration,
+        authenticationHandler: @escaping @Sendable (HTTPRequestHead) async throws -> String?
+    ) {
+        self.init(transport: transport)
+
+        // Attach the authentication handler to the WebSocket transport if applicable
+        if let wsTransport = self.transport as? WebSocketTransport {
+            wsTransport.authenticationHandler = authenticationHandler
+        }
+    }
+    #endif
 
     /// Configure dynamic actor creation callback
     /// Called when a client requests an actor that doesn't exist

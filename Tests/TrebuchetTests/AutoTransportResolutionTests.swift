@@ -13,7 +13,7 @@ struct AutoTransportResolutionTests {
         ])
 
         switch resolved {
-        case .webSocket(let host, let port, _):
+        case .webSocket(let host, let port, _, _):
             #expect(host == "dev.internal")
             #expect(port == 9090)
         default:
@@ -27,7 +27,7 @@ struct AutoTransportResolutionTests {
         let resolved = try config.resolved(environment: [:])
 
         switch resolved {
-        case .webSocket(let host, let port, _):
+        case .webSocket(let host, let port, _, _):
             #expect(host == "127.0.0.1")
             #expect(port == 8080)
         default:

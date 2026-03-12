@@ -106,20 +106,26 @@ public final class TrebuchetConnection {
 
     // MARK: - Initialization
 
+    /// Custom HTTP headers to send during WebSocket connection (e.g., authentication tokens).
+    public let headers: [String: String]
+
     /// Creates a new connection with the specified configuration.
     ///
     /// - Parameters:
     ///   - transport: The transport configuration (e.g., `.webSocket(host:port:)`).
     ///   - reconnectionPolicy: Policy for automatic reconnection. Defaults to `.default`.
     ///   - name: Optional name for this connection (useful in multi-server scenarios).
+    ///   - headers: Additional HTTP headers to send during WebSocket connection.
     public init(
         transport: TransportConfiguration,
         reconnectionPolicy: ReconnectionPolicy = .default,
-        name: String? = nil
+        name: String? = nil,
+        headers: [String: String] = [:]
     ) {
         self.transportConfiguration = transport
         self.reconnectionPolicy = reconnectionPolicy
         self.name = name
+        self.headers = headers
 
         var continuation: AsyncStream<ConnectionEvent>.Continuation!
         self.events = AsyncStream { continuation = $0 }
@@ -189,7 +195,7 @@ public final class TrebuchetConnection {
         emit(.willConnect)
 
         do {
-            let client = TrebuchetClient(transport: transportConfiguration)
+            let client = TrebuchetClient(transport: transportConfiguration, headers: headers)
             try await client.connect()
 
             _client = client
@@ -239,7 +245,7 @@ public final class TrebuchetConnection {
                 if Task.isCancelled { return }
 
                 do {
-                    let client = TrebuchetClient(transport: self.transportConfiguration)
+                    let client = TrebuchetClient(transport: self.transportConfiguration, headers: self.headers)
                     try await client.connect()
 
                     await MainActor.run {
